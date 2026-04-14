@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import bcrypt
 import jwt as pyjwt
+import feedparser
+import httpx
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -777,6 +779,223 @@ async def link_social_to_project(inp: ProjectSocialLink, request: Request):
         })
     return {"ok": True, "count": len(inp.social_profile_ids)}
 
+# ── FEED / RSS ────────────────────────────────────────
+class FeedAddInput(BaseModel):
+    project_id: str
+    feed_url: str
+    feed_name: Optional[str] = ""
+
+class FeedGenerateInput(BaseModel):
+    project_id: str
+    feed_item_title: str
+    feed_item_summary: Optional[str] = ""
+
+@api.post("/feeds/add")
+async def add_feed(inp: FeedAddInput, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "project_id": inp.project_id,
+        "user_id": user["_id"],
+        "feed_url": inp.feed_url,
+        "feed_name": inp.feed_name or inp.feed_url,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.feeds.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.get("/feeds/{project_id}")
+async def list_feeds(project_id: str, request: Request):
+    await get_current_user(request)
+    feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
+    return feeds
+
+@api.delete("/feeds/{feed_id}")
+async def delete_feed(feed_id: str, request: Request):
+    await get_current_user(request)
+    await db.feeds.delete_one({"id": feed_id})
+    await db.feed_cache.delete_many({"feed_id": feed_id})
+    return {"ok": True}
+
+@api.get("/feeds/{project_id}/items")
+async def get_feed_items(project_id: str, request: Request):
+    await get_current_user(request)
+    feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
+    all_items = []
+    for feed in feeds:
+        cached = await db.feed_cache.find({"feed_id": feed["id"]}, {"_id": 0}).to_list(50)
+        if cached:
+            all_items.extend(cached)
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client_http:
+                    resp = await client_http.get(feed["feed_url"])
+                    parsed = feedparser.parse(resp.text)
+                    for entry in parsed.entries[:10]:
+                        item = {
+                            "id": str(uuid.uuid4()),
+                            "feed_id": feed["id"],
+                            "feed_name": feed.get("feed_name", ""),
+                            "title": getattr(entry, "title", ""),
+                            "summary": getattr(entry, "summary", "")[:500] if hasattr(entry, "summary") else "",
+                            "link": getattr(entry, "link", ""),
+                            "published": getattr(entry, "published", ""),
+                            "image": "",
+                            "cached_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        media = getattr(entry, "media_content", None) or getattr(entry, "media_thumbnail", None)
+                        if media and len(media) > 0:
+                            item["image"] = media[0].get("url", "")
+                        if not item["image"]:
+                            enclosures = getattr(entry, "enclosures", [])
+                            for enc in enclosures:
+                                if enc.get("type", "").startswith("image"):
+                                    item["image"] = enc.get("href", "")
+                                    break
+                        await db.feed_cache.insert_one({**item})
+                        all_items.append(item)
+            except Exception as e:
+                logger.error(f"Feed fetch error {feed['feed_url']}: {e}")
+    return all_items
+
+@api.post("/feeds/refresh/{project_id}")
+async def refresh_feeds(project_id: str, request: Request):
+    await get_current_user(request)
+    feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
+    for feed in feeds:
+        await db.feed_cache.delete_many({"feed_id": feed["id"]})
+    items = await get_feed_items(project_id, request)
+    return {"ok": True, "count": len(items)}
+
+@api.post("/feeds/generate-content")
+async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
+    if not project:
+        raise HTTPException(404, "Progetto non trovato")
+    tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
+    tov_desc = ""
+    if tov:
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10."
+    system = "Sei un copywriter professionista per social media. Genera contenuto ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
+    prompt = f"""Genera un contenuto social ispirato a questo articolo:
+Titolo: {inp.feed_item_title}
+Sommario: {inp.feed_item_summary}
+Settore progetto: {project['sector']}
+{tov_desc}
+
+Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script, caption, hashtags, format ("reel" o "carousel")"""
+    try:
+        result = await call_ai(system, prompt)
+        data = extract_json(result)
+        content_doc = {
+            "id": str(uuid.uuid4()),
+            "project_id": inp.project_id,
+            "hook_id": "",
+            "hook_text": data.get("hook_text", inp.feed_item_title),
+            "format": data.get("format", "reel"),
+            "pillar": "awareness",
+            "persona_target": "",
+            "day_offset": 0,
+            "script": data.get("script", ""),
+            "caption": data.get("caption", ""),
+            "hashtags": data.get("hashtags", ""),
+            "slides": data.get("slides", []),
+            "media": [],
+            "status": "draft",
+            "source": "feed",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.contents.insert_one({k: v for k, v in content_doc.items() if k != "_id"})
+        await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$inc": {"content_count": 1}})
+        return content_doc
+    except Exception as e:
+        raise HTTPException(500, f"Errore generazione: {str(e)}")
+
+# ── PUBLISH QUEUE ─────────────────────────────────────
+class PublishSchedule(BaseModel):
+    content_id: str
+    project_id: str
+    social_profile_ids: List[str]
+    scheduled_at: str
+    first_comment: Optional[str] = ""
+
+class PublishUpdate(BaseModel):
+    status: Optional[str] = None
+    error_message: Optional[str] = None
+
+@api.post("/publish/schedule")
+async def schedule_publish(inp: PublishSchedule, request: Request):
+    user = await get_current_user(request)
+    content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    items = []
+    for sp_id in inp.social_profile_ids:
+        profile = await db.social_accounts.find_one({"id": sp_id, "user_id": user["_id"]}, {"_id": 0})
+        if not profile:
+            continue
+        doc = {
+            "id": str(uuid.uuid4()),
+            "content_id": inp.content_id,
+            "project_id": inp.project_id,
+            "social_profile_id": sp_id,
+            "platform": profile.get("platform", ""),
+            "profile_name": profile.get("profile_name", ""),
+            "user_id": user["_id"],
+            "status": "queued",
+            "scheduled_at": inp.scheduled_at,
+            "first_comment": inp.first_comment,
+            "error_message": "",
+            "published_at": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.publish_queue.insert_one(doc)
+        doc.pop("_id", None)
+        items.append(doc)
+    await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": "scheduled"}})
+    return {"ok": True, "items": items}
+
+@api.get("/publish/queue/{project_id}")
+async def get_publish_queue(project_id: str, request: Request):
+    user = await get_current_user(request)
+    items = await db.publish_queue.find({"project_id": project_id, "user_id": user["_id"]}, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
+    return items
+
+@api.get("/publish/queue-all")
+async def get_all_publish_queue(request: Request):
+    user = await get_current_user(request)
+    items = await db.publish_queue.find({"user_id": user["_id"]}, {"_id": 0}).sort("scheduled_at", 1).to_list(500)
+    return items
+
+@api.put("/publish/queue/{item_id}")
+async def update_publish_item(item_id: str, inp: PublishUpdate, request: Request):
+    await get_current_user(request)
+    updates = {k: v for k, v in inp.model_dump().items() if v is not None}
+    if "status" in updates and updates["status"] == "published":
+        updates["published_at"] = datetime.now(timezone.utc).isoformat()
+    if updates:
+        await db.publish_queue.update_one({"id": item_id}, {"$set": updates})
+    return {"ok": True}
+
+@api.delete("/publish/queue/{item_id}")
+async def cancel_publish(item_id: str, request: Request):
+    user = await get_current_user(request)
+    item = await db.publish_queue.find_one({"id": item_id, "user_id": user["_id"]})
+    if item:
+        await db.publish_queue.delete_one({"id": item_id})
+        remaining = await db.publish_queue.count_documents({"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
+        if remaining == 0:
+            await db.contents.update_one({"id": item["content_id"]}, {"$set": {"status": "draft"}})
+    return {"ok": True}
+
+@api.post("/publish/mark-published/{content_id}")
+async def mark_published(content_id: str, request: Request):
+    await get_current_user(request)
+    await db.contents.update_one({"id": content_id}, {"$set": {"status": "published"}})
+    return {"ok": True}
+
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/json")
 async def export_json(project_id: str, request: Request):
@@ -815,6 +1034,9 @@ async def startup():
     await db.brand_kits.create_index("project_id")
     await db.social_accounts.create_index("user_id")
     await db.project_social_accounts.create_index("project_id")
+    await db.feeds.create_index("project_id")
+    await db.feed_cache.create_index("feed_id")
+    await db.publish_queue.create_index([("project_id", 1), ("scheduled_at", 1)])
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sketchario.app")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Sketchario2026!")

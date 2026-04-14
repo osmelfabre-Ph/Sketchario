@@ -1,387 +1,330 @@
 #!/usr/bin/env python3
+"""
+Sketchario V4 Backend API Testing - Feed/RSS and Publishing Queue
+Tests all backend APIs for the new Feed and Queue features
+"""
 
 import requests
-import sys
 import json
-from datetime import datetime
+import sys
+from datetime import datetime, timedelta
 
 class SketcharioAPITester:
-    def __init__(self, base_url="https://editorial-flow-v4.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://editorial-flow-v4.preview.emergentagent.com"):
         self.base_url = base_url
         self.token = None
         self.tests_run = 0
         self.tests_passed = 0
-        self.session = requests.Session()
-        self.session.headers.update({'Content-Type': 'application/json'})
+        self.project_id = None
+        self.content_id = None
+        self.social_profile_id = None
+        self.feed_id = None
+        self.queue_item_id = None
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, auth_required=True):
+    def log(self, message):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):
         """Run a single API test"""
-        url = f"{self.base_url}/{endpoint}"
-        headers = {'Content-Type': 'application/json'}
-        
-        if auth_required and self.token:
-            headers['Authorization'] = f'Bearer {self.token}'
+        url = f"{self.base_url}/api/{endpoint}"
+        test_headers = {'Content-Type': 'application/json'}
+        if self.token:
+            test_headers['Authorization'] = f'Bearer {self.token}'
+        if headers:
+            test_headers.update(headers)
 
         self.tests_run += 1
-        print(f"\n🔍 Testing {name}...")
-        print(f"   URL: {url}")
+        self.log(f"🔍 Testing {name}...")
         
         try:
             if method == 'GET':
-                response = self.session.get(url, headers=headers)
+                response = requests.get(url, headers=test_headers, timeout=30)
             elif method == 'POST':
-                response = self.session.post(url, json=data, headers=headers)
+                response = requests.post(url, json=data, headers=test_headers, timeout=30)
             elif method == 'PUT':
-                response = self.session.put(url, json=data, headers=headers)
+                response = requests.put(url, json=data, headers=test_headers, timeout=30)
             elif method == 'DELETE':
-                response = self.session.delete(url, headers=headers)
+                response = requests.delete(url, headers=test_headers, timeout=30)
 
             success = response.status_code == expected_status
             if success:
                 self.tests_passed += 1
-                print(f"✅ Passed - Status: {response.status_code}")
+                self.log(f"✅ {name} - Status: {response.status_code}")
                 try:
-                    response_data = response.json()
-                    print(f"   Response: {json.dumps(response_data, indent=2)[:200]}...")
-                    return True, response_data
+                    return True, response.json()
                 except:
                     return True, {}
             else:
-                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
+                self.log(f"❌ {name} - Expected {expected_status}, got {response.status_code}")
                 try:
-                    error_data = response.json()
-                    print(f"   Error: {error_data}")
+                    error_detail = response.json()
+                    self.log(f"   Error: {error_detail}")
                 except:
-                    print(f"   Error: {response.text}")
+                    self.log(f"   Response: {response.text[:200]}")
                 return False, {}
 
         except Exception as e:
-            print(f"❌ Failed - Error: {str(e)}")
+            self.log(f"❌ {name} - Exception: {str(e)}")
             return False, {}
 
-    def test_root_endpoint(self):
-        """Test root API endpoint"""
-        return self.run_test("Root API", "GET", "", 200, auth_required=False)
-
-    def test_admin_login(self):
-        """Test admin login"""
+    def test_auth_login(self):
+        """Test login with admin credentials"""
         success, response = self.run_test(
             "Admin Login",
             "POST",
             "auth/login",
             200,
-            data={"email": "admin@sketchario.app", "password": "Sketchario2026!"},
-            auth_required=False
+            data={"email": "admin@sketchario.app", "password": "Sketchario2026!"}
         )
         if success and 'access_token' in response:
             self.token = response['access_token']
-            print(f"   Token obtained: {self.token[:20]}...")
+            self.log(f"✅ Login successful, token acquired")
             return True
         return False
-
-    def test_register_new_user(self):
-        """Test user registration"""
-        timestamp = datetime.now().strftime('%H%M%S')
-        test_user = {
-            "name": f"Test User {timestamp}",
-            "email": f"test{timestamp}@example.com",
-            "password": "TestPassword123!"
-        }
-        
-        success, response = self.run_test(
-            "User Registration",
-            "POST",
-            "auth/register",
-            200,
-            data=test_user,
-            auth_required=False
-        )
-        return success
-
-    def test_auth_me(self):
-        """Test get current user"""
-        return self.run_test("Get Current User", "GET", "auth/me", 200)
-
-    def test_logout(self):
-        """Test logout"""
-        return self.run_test("Logout", "POST", "auth/logout", 200)
 
     def test_get_projects(self):
-        """Test get projects list"""
-        return self.run_test("Get Projects", "GET", "projects", 200)
-
-    def test_create_project(self):
-        """Test create project"""
-        project_data = {
-            "name": f"Test Project {datetime.now().strftime('%H%M%S')}",
-            "sector": "Test Sector",
-            "description": "Test project description",
-            "objective_awareness": 60,
-            "objective_education": 30,
-            "objective_monetizing": 10,
-            "formats": ["reel", "carousel"],
-            "duration_weeks": 1,
-            "geo": "Italy",
-            "brief_notes": "Test notes"
-        }
-        
+        """Get existing projects to use for testing"""
         success, response = self.run_test(
-            "Create Project",
-            "POST",
+            "Get Projects",
+            "GET", 
             "projects",
-            200,
-            data=project_data
+            200
         )
-        
-        if success and 'id' in response:
-            self.project_id = response['id']
-            print(f"   Project ID: {self.project_id}")
+        if success and response and len(response) > 0:
+            self.project_id = response[0]['id']
+            self.log(f"✅ Using project ID: {self.project_id}")
             return True
         return False
 
-    def test_get_project(self):
-        """Test get specific project"""
-        if hasattr(self, 'project_id'):
-            return self.run_test("Get Project", "GET", f"projects/{self.project_id}", 200)
-        else:
-            print("❌ Skipping - No project ID available")
+    def test_get_contents(self):
+        """Get existing content to use for queue testing"""
+        if not self.project_id:
             return False
-
-    def test_profile_endpoints(self):
-        """Test profile related endpoints"""
-        # Get profile
-        success1, _ = self.run_test("Get Profile", "GET", "profile", 200)
-        
-        # Update profile
-        success2, _ = self.run_test(
-            "Update Profile",
-            "PUT",
-            "profile",
-            200,
-            data={"name": "Updated Test Name", "sector": "Updated Sector"}
-        )
-        
-        return success1 and success2
-
-    def test_ai_generation_endpoints(self):
-        """Test AI generation endpoints (if project exists)"""
-        if not hasattr(self, 'project_id'):
-            print("❌ Skipping AI tests - No project ID available")
-            return False
-            
-        # Test personas generation
-        success1, _ = self.run_test(
-            "Generate Personas",
-            "POST",
-            "personas/generate",
-            200,
-            data={"project_id": self.project_id}
-        )
-        
-        # Test ToV save
-        success2, _ = self.run_test(
-            "Save ToV Profile",
-            "POST",
-            "tov/save",
-            200,
-            data={
-                "project_id": self.project_id,
-                "formality": 5,
-                "energy": 5,
-                "empathy": 5,
-                "humor": 3,
-                "storytelling": 5,
-                "caption_length": "medium"
-            }
-        )
-        
-        return success1 and success2
-
-    def test_content_create_post(self):
-        """Test new content creation endpoint"""
-        if not hasattr(self, 'project_id'):
-            print("❌ Skipping content creation test - No project ID available")
-            return False
-            
-        # Test create post Da zero (manual)
-        success1, response1 = self.run_test(
-            "Create Post (Da zero)",
-            "POST",
-            "content/create-post",
-            200,
-            data={
-                "project_id": self.project_id,
-                "hook_text": "Test hook for manual post creation",
-                "format": "reel",
-                "use_ai": False
-            }
-        )
-        
-        if success1 and 'id' in response1:
-            self.content_id = response1['id']
-            print(f"   Content ID: {self.content_id}")
-        
-        # Test create post Con AI
-        success2, _ = self.run_test(
-            "Create Post (Con AI)",
-            "POST",
-            "content/create-post",
-            200,
-            data={
-                "project_id": self.project_id,
-                "hook_text": "Test hook for AI-generated post",
-                "format": "carousel",
-                "use_ai": True
-            }
-        )
-        
-        return success1 and success2
-
-    def test_social_platforms(self):
-        """Test social platforms endpoint"""
         success, response = self.run_test(
-            "Get Social Platforms",
-            "GET",
-            "social/platforms",
-            200
-        )
-        
-        if success and isinstance(response, list):
-            # Check if all 5 platforms are present
-            platform_ids = [p.get('id') for p in response]
-            expected_platforms = ['instagram', 'facebook', 'linkedin', 'tiktok', 'pinterest']
-            all_present = all(platform in platform_ids for platform in expected_platforms)
-            
-            if all_present:
-                print(f"   ✅ All 5 platforms present: {platform_ids}")
-                # Check if all are configured
-                configured_count = sum(1 for p in response if p.get('configured', False))
-                print(f"   📊 Configured platforms: {configured_count}/5")
-                return True
-            else:
-                print(f"   ❌ Missing platforms. Found: {platform_ids}")
-                return False
-        
-        return success
-
-    def test_social_profiles(self):
-        """Test social profiles endpoints"""
-        # Get profiles list
-        success1, _ = self.run_test(
-            "Get Social Profiles",
-            "GET",
-            "social/profiles",
-            200
-        )
-        
-        # Create manual profile
-        success2, response2 = self.run_test(
-            "Create Manual Social Profile",
-            "POST",
-            "social/profiles",
-            200,
-            data={
-                "platform": "instagram",
-                "profile_name": "@test_profile_manual",
-                "connection_mode": "manual"
-            }
-        )
-        
-        if success2 and 'id' in response2:
-            self.social_profile_id = response2['id']
-            print(f"   Social Profile ID: {self.social_profile_id}")
-        
-        return success1 and success2
-
-    def test_content_operations(self):
-        """Test content CRUD operations"""
-        if not hasattr(self, 'project_id'):
-            print("❌ Skipping content operations - No project ID available")
-            return False
-            
-        # Get contents
-        success1, _ = self.run_test(
             "Get Contents",
             "GET",
             f"contents/{self.project_id}",
             200
         )
-        
-        # Update content (if we have content_id)
-        success2 = True
-        if hasattr(self, 'content_id'):
-            success2, _ = self.run_test(
-                "Update Content",
-                "PUT",
-                f"contents/{self.content_id}",
-                200,
-                data={
-                    "script": "Updated test script",
-                    "caption": "Updated test caption",
-                    "hashtags": "#test #updated"
-                }
-            )
-        
-        return success1 and success2
+        if success and response and len(response) > 0:
+            self.content_id = response[0]['id']
+            self.log(f"✅ Using content ID: {self.content_id}")
+            return True
+        return False
 
-    def test_delete_content(self):
-        """Test content deletion"""
-        if hasattr(self, 'content_id'):
-            return self.run_test(
-                "Delete Content",
-                "DELETE",
-                f"contents/{self.content_id}",
-                200
-            )[0]
+    def test_get_social_profiles(self):
+        """Get existing social profiles for queue testing"""
+        success, response = self.run_test(
+            "Get Social Profiles",
+            "GET",
+            "social/profiles",
+            200
+        )
+        if success and response and len(response) > 0:
+            self.social_profile_id = response[0]['id']
+            self.log(f"✅ Using social profile ID: {self.social_profile_id}")
+            return True
+        return False
+
+    # ── FEED TESTS ──
+    def test_add_feed(self):
+        """Test POST /api/feeds/add"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Add RSS Feed",
+            "POST",
+            "feeds/add",
+            200,
+            data={
+                "project_id": self.project_id,
+                "feed_url": "https://feeds.feedburner.com/socialmediaexaminer",
+                "feed_name": "Social Media Examiner Test"
+            }
+        )
+        if success and 'id' in response:
+            self.feed_id = response['id']
+            self.log(f"✅ Feed created with ID: {self.feed_id}")
+            return True
+        return False
+
+    def test_list_feeds(self):
+        """Test GET /api/feeds/{project_id}"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "List Project Feeds",
+            "GET",
+            f"feeds/{self.project_id}",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} feeds")
+            return True
+        return False
+
+    def test_get_feed_items(self):
+        """Test GET /api/feeds/{project_id}/items"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Get Feed Items",
+            "GET",
+            f"feeds/{self.project_id}/items",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} feed items")
+            return True
+        return False
+
+    def test_generate_content_from_feed(self):
+        """Test POST /api/feeds/generate-content"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Generate Content from Feed",
+            "POST",
+            "feeds/generate-content",
+            200,
+            data={
+                "project_id": self.project_id,
+                "feed_item_title": "Test Article: 5 Social Media Trends",
+                "feed_item_summary": "This article discusses the latest trends in social media marketing for 2024."
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ Content generated from feed with ID: {response['id']}")
+            return True
+        return False
+
+    # ── PUBLISH QUEUE TESTS ──
+    def test_schedule_publish(self):
+        """Test POST /api/publish/schedule"""
+        if not self.project_id or not self.content_id or not self.social_profile_id:
+            self.log("❌ Missing required IDs for schedule test")
+            return False
+        
+        # Schedule for tomorrow
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%dT10:00:00Z')
+        
+        success, response = self.run_test(
+            "Schedule Content Publish",
+            "POST",
+            "publish/schedule",
+            200,
+            data={
+                "content_id": self.content_id,
+                "project_id": self.project_id,
+                "social_profile_ids": [self.social_profile_id],
+                "scheduled_at": tomorrow,
+                "first_comment": "Test comment"
+            }
+        )
+        if success and 'items' in response and len(response['items']) > 0:
+            self.queue_item_id = response['items'][0]['id']
+            self.log(f"✅ Content scheduled with queue item ID: {self.queue_item_id}")
+            return True
+        return False
+
+    def test_get_publish_queue(self):
+        """Test GET /api/publish/queue/{project_id}"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Get Publish Queue",
+            "GET",
+            f"publish/queue/{self.project_id}",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} queue items")
+            return True
+        return False
+
+    def test_cancel_queue_item(self):
+        """Test DELETE /api/publish/queue/{item_id}"""
+        if not self.queue_item_id:
+            return False
+        success, response = self.run_test(
+            "Cancel Queue Item",
+            "DELETE",
+            f"publish/queue/{self.queue_item_id}",
+            200
+        )
+        if success:
+            self.log(f"✅ Queue item cancelled successfully")
+            return True
+        return False
+
+    # ── CLEANUP ──
+    def test_cleanup_feed(self):
+        """Clean up test feed"""
+        if not self.feed_id:
+            return True
+        success, response = self.run_test(
+            "Delete Test Feed",
+            "DELETE",
+            f"feeds/{self.feed_id}",
+            200
+        )
+        return success
+
+    def run_all_tests(self):
+        """Run all tests in sequence"""
+        self.log("🚀 Starting Sketchario V4 Feed/RSS and Queue API Tests")
+        self.log("=" * 60)
+
+        # Authentication
+        if not self.test_auth_login():
+            self.log("❌ Authentication failed, stopping tests")
+            return False
+
+        # Setup - get existing data
+        if not self.test_get_projects():
+            self.log("❌ No projects found, stopping tests")
+            return False
+
+        if not self.test_get_contents():
+            self.log("❌ No content found, stopping tests")
+            return False
+
+        if not self.test_get_social_profiles():
+            self.log("❌ No social profiles found, stopping tests")
+            return False
+
+        # Feed Tests
+        self.log("\n📡 Testing Feed/RSS APIs...")
+        self.test_add_feed()
+        self.test_list_feeds()
+        self.test_get_feed_items()
+        self.test_generate_content_from_feed()
+
+        # Queue Tests
+        self.log("\n📋 Testing Publish Queue APIs...")
+        self.test_schedule_publish()
+        self.test_get_publish_queue()
+        self.test_cancel_queue_item()
+
+        # Cleanup
+        self.log("\n🧹 Cleaning up...")
+        self.test_cleanup_feed()
+
+        # Results
+        self.log("\n" + "=" * 60)
+        self.log(f"📊 Test Results: {self.tests_passed}/{self.tests_run} passed")
+        
+        if self.tests_passed == self.tests_run:
+            self.log("🎉 All tests passed!")
+            return True
         else:
-            print("❌ Skipping content deletion - No content ID available")
-            return True  # Not a failure if no content to delete
+            self.log(f"⚠️  {self.tests_run - self.tests_passed} tests failed")
+            return False
 
 def main():
-    print("🚀 Starting Sketchario V4 API Tests")
-    print("=" * 50)
-    
     tester = SketcharioAPITester()
-    
-    # Test sequence
-    tests = [
-        ("Root API", tester.test_root_endpoint),
-        ("Admin Login", tester.test_admin_login),
-        ("Auth Me", tester.test_auth_me),
-        ("Get Projects", tester.test_get_projects),
-        ("Create Project", tester.test_create_project),
-        ("Get Project", tester.test_get_project),
-        ("Profile Endpoints", tester.test_profile_endpoints),
-        ("AI Generation", tester.test_ai_generation_endpoints),
-        ("Content Create Post", tester.test_content_create_post),
-        ("Social Platforms", tester.test_social_platforms),
-        ("Social Profiles", tester.test_social_profiles),
-        ("Content Operations", tester.test_content_operations),
-        ("Delete Content", tester.test_delete_content),
-        ("User Registration", tester.test_register_new_user),
-        ("Logout", tester.test_logout),
-    ]
-    
-    failed_tests = []
-    
-    for test_name, test_func in tests:
-        try:
-            if not test_func():
-                failed_tests.append(test_name)
-        except Exception as e:
-            print(f"❌ {test_name} failed with exception: {e}")
-            failed_tests.append(test_name)
-    
-    # Print results
-    print("\n" + "=" * 50)
-    print(f"📊 Test Results: {tester.tests_passed}/{tester.tests_run} passed")
-    
-    if failed_tests:
-        print(f"❌ Failed tests: {', '.join(failed_tests)}")
-        return 1
-    else:
-        print("✅ All tests passed!")
-        return 0
+    success = tester.run_all_tests()
+    return 0 if success else 1
 
 if __name__ == "__main__":
     sys.exit(main())

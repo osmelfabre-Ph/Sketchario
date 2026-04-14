@@ -4,12 +4,15 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   CalendarBlank, List, Users as UsersIcon, Palette, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
-  Eye, Sparkle, Link as LinkIcon, Trash, Warning, WifiHigh, Globe
+  Eye, Sparkle, Link as LinkIcon, Trash, WifiHigh, Globe,
+  RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt
 } from '@phosphor-icons/react';
 
 const TABS = [
   { id: 'calendar', label: 'Calendario', icon: CalendarBlank },
   { id: 'list', label: 'Tutti', icon: List },
+  { id: 'feed', label: 'Feed', icon: RssSimple },
+  { id: 'queue', label: 'Queue', icon: Queue },
   { id: 'personas', label: 'Personas', icon: UsersIcon },
   { id: 'tov', label: 'Tono', icon: Palette },
   { id: 'social', label: 'Social', icon: Globe },
@@ -49,6 +52,22 @@ export default function ProjectView({ project, setActiveView }) {
   const [showAddManual, setShowAddManual] = useState(null);
   const [manualName, setManualName] = useState('');
 
+  // Feed
+  const [feeds, setFeeds] = useState([]);
+  const [feedItems, setFeedItems] = useState([]);
+  const [newFeedUrl, setNewFeedUrl] = useState('');
+  const [newFeedName, setNewFeedName] = useState('');
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedGenLoading, setFeedGenLoading] = useState(null);
+
+  // Publish Queue
+  const [queueItems, setQueueItems] = useState([]);
+  const [showSchedule, setShowSchedule] = useState(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('10:00');
+  const [scheduleProfiles, setScheduleProfiles] = useState([]);
+  const [queueFilter, setQueueFilter] = useState('all');
+
   useEffect(() => {
     if (!project?.id) return;
     Promise.all([
@@ -58,6 +77,9 @@ export default function ProjectView({ project, setActiveView }) {
       api.get('/social/platforms').then(r => setPlatforms(r.data)).catch(() => {}),
       api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {}),
       api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {}),
+      api.get(`/feeds/${project.id}`).then(r => setFeeds(r.data)).catch(() => {}),
+      api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
+      api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [api, project?.id]);
 
@@ -146,6 +168,66 @@ export default function ProjectView({ project, setActiveView }) {
     setProjectSocials(data);
   };
 
+  // Feed functions
+  const addFeed = async () => {
+    if (!newFeedUrl.trim()) return;
+    setFeedLoading(true);
+    try {
+      const { data } = await api.post('/feeds/add', { project_id: project.id, feed_url: newFeedUrl, feed_name: newFeedName || newFeedUrl });
+      setFeeds(prev => [...prev, data]);
+      setNewFeedUrl(''); setNewFeedName('');
+      const { data: items } = await api.get(`/feeds/${project.id}/items`);
+      setFeedItems(items);
+    } catch (e) { alert('Errore aggiunta feed'); }
+    finally { setFeedLoading(false); }
+  };
+
+  const refreshFeeds = async () => {
+    setFeedLoading(true);
+    try {
+      await api.post(`/feeds/refresh/${project.id}`);
+      const { data } = await api.get(`/feeds/${project.id}/items`);
+      setFeedItems(data);
+    } catch {}
+    finally { setFeedLoading(false); }
+  };
+
+  const removeFeed = async (id) => {
+    await api.delete(`/feeds/${id}`);
+    setFeeds(prev => prev.filter(f => f.id !== id));
+    setFeedItems(prev => prev.filter(i => i.feed_id !== id));
+  };
+
+  const generateFromFeed = async (item) => {
+    setFeedGenLoading(item.id);
+    try {
+      const { data } = await api.post('/feeds/generate-content', { project_id: project.id, feed_item_title: item.title, feed_item_summary: item.summary });
+      setContents(prev => [...prev, data]);
+      openContentDetail(data);
+    } catch (e) { alert('Errore generazione: ' + (e.response?.data?.detail || e.message)); }
+    finally { setFeedGenLoading(null); }
+  };
+
+  // Queue functions
+  const scheduleContent = async (contentId) => {
+    if (!scheduleDate || scheduleProfiles.length === 0) { alert('Seleziona data e almeno un profilo social'); return; }
+    try {
+      const scheduledAt = `${scheduleDate}T${scheduleTime}:00Z`;
+      const { data } = await api.post('/publish/schedule', { content_id: contentId, project_id: project.id, social_profile_ids: scheduleProfiles, scheduled_at: scheduledAt });
+      setQueueItems(prev => [...prev, ...data.items]);
+      setShowSchedule(null); setScheduleDate(''); setScheduleProfiles([]);
+      const updatedContents = await api.get(`/contents/${project.id}`);
+      setContents(updatedContents.data);
+    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+  };
+
+  const cancelQueueItem = async (id) => {
+    await api.delete(`/publish/queue/${id}`);
+    setQueueItems(prev => prev.filter(q => q.id !== id));
+  };
+
+  const filteredQueue = queueFilter === 'all' ? queueItems : queueItems.filter(q => q.status === queueFilter);
+
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
   if (loading) return <p className="text-[var(--text-muted)] text-center py-12">Caricamento progetto...</p>;
@@ -208,20 +290,163 @@ export default function ProjectView({ project, setActiveView }) {
       {tab === 'list' && (
         <div className="space-y-3">
           {contents.map((c, i) => (
-            <motion.div key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="hook-item cursor-pointer" onClick={() => openContentDetail(c)}>
+            <motion.div key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="hook-item cursor-pointer">
               <div className="w-14 text-center"><span className="text-xs font-semibold text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span></div>
-              <div className="flex-1">
+              <div className="flex-1" onClick={() => openContentDetail(c)}>
                 <p className="text-sm font-medium mb-1">{c.hook_text}</p>
                 <p className="text-xs text-[var(--text-muted)] truncate">{(c.caption || '').slice(0, 80)}...</p>
               </div>
               <span className={`badge ${c.format === 'reel' ? 'pink' : 'blue'}`}>{c.format}</span>
-              <Eye size={16} className="text-[var(--text-muted)]" />
+              <span className={`badge ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
+              <button className="btn-ghost p-1.5 text-xs" onClick={() => { setShowSchedule(c); setScheduleProfiles([]); }}><PaperPlaneTilt size={14} /></button>
+              <button className="btn-ghost p-1.5" onClick={() => openContentDetail(c)}><Eye size={14} /></button>
             </motion.div>
           ))}
           {contents.length === 0 && (
             <div className="text-center py-12">
               <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
               <button className="btn-gradient" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Feed Tab */}
+      {tab === 'feed' && (
+        <div className="max-w-3xl">
+          <h3 className="font-semibold mb-2">Feeding Bar</h3>
+          <p className="text-sm text-[var(--text-muted)] mb-6">Aggiungi feed RSS per ispirarti e generare contenuti.</p>
+
+          {/* Add Feed */}
+          <div className="card mb-6">
+            <div className="flex gap-3 items-end flex-wrap">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">URL Feed RSS</label>
+                <input className="input-dark text-sm py-2" placeholder="https://example.com/feed.xml" value={newFeedUrl} onChange={e => setNewFeedUrl(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+              </div>
+              <div className="w-48">
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Nome</label>
+                <input className="input-dark text-sm py-2" placeholder="Nome feed" value={newFeedName} onChange={e => setNewFeedName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+              </div>
+              <button className="btn-gradient text-sm py-2" onClick={addFeed} disabled={feedLoading} data-testid="add-feed-btn">
+                <Plus size={16} /> Aggiungi
+              </button>
+            </div>
+          </div>
+
+          {/* Active Feeds */}
+          {feeds.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-6">
+              {feeds.map(f => (
+                <div key={f.id} className="flex items-center gap-2 py-1.5 px-3 rounded-lg" style={{ background: 'rgba(99,102,241,0.1)' }}>
+                  <RssSimple size={14} />
+                  <span className="text-sm">{f.feed_name}</span>
+                  <button onClick={() => removeFeed(f.id)} className="text-[var(--accent-pink)] hover:opacity-80"><X size={12} /></button>
+                </div>
+              ))}
+              <button className="btn-ghost text-xs py-1.5" onClick={refreshFeeds} disabled={feedLoading}>
+                <ArrowClockwise size={14} className={feedLoading ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
+          )}
+
+          {/* Feed Items */}
+          {feedItems.length > 0 ? (
+            <div className="space-y-3">
+              {feedItems.map(item => (
+                <div key={item.id} className="card" data-testid={`feed-item-${item.id}`}>
+                  <div className="flex gap-4">
+                    {item.image && (
+                      <img src={item.image} alt="" className="w-20 h-20 object-cover rounded-lg flex-shrink-0" onError={e => e.target.style.display = 'none'} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm mb-1 line-clamp-2">{item.title}</h4>
+                      <p className="text-xs text-[var(--text-muted)] line-clamp-2 mb-2">{item.summary?.replace(/<[^>]*>/g, '').slice(0, 150)}</p>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[10px] text-[var(--text-muted)]">{item.feed_name}</span>
+                        {item.link && <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--gradient-start)] hover:underline">Leggi</a>}
+                      </div>
+                    </div>
+                    <button
+                      className="btn-gradient text-xs py-1.5 px-3 self-start flex-shrink-0"
+                      onClick={() => generateFromFeed(item)}
+                      disabled={feedGenLoading === item.id}
+                    >
+                      {feedGenLoading === item.id ? '...' : <><Sparkle size={14} /> Genera</>}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : feeds.length > 0 ? (
+            <p className="text-center text-[var(--text-muted)] py-8">Nessun articolo trovato. Prova a refreshare.</p>
+          ) : (
+            <p className="text-center text-[var(--text-muted)] py-8">Aggiungi un feed RSS per iniziare.</p>
+          )}
+        </div>
+      )}
+
+      {/* Queue Tab */}
+      {tab === 'queue' && (
+        <div className="max-w-3xl">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="font-semibold">Publishing Queue</h3>
+              <p className="text-sm text-[var(--text-muted)] mt-1">{queueItems.length} elementi in coda</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex gap-2 mb-6 flex-wrap">
+            {['all', 'queued', 'processing', 'published', 'failed'].map(f => (
+              <button key={f} className={`preset-btn text-xs ${queueFilter === f ? 'active' : ''}`} onClick={() => setQueueFilter(f)}>
+                {f === 'all' ? 'Tutti' : f.charAt(0).toUpperCase() + f.slice(1)}
+                {f !== 'all' && <span className="ml-1 opacity-60">({queueItems.filter(q => q.status === f).length})</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Queue Items */}
+          {filteredQueue.length > 0 ? (
+            <div className="space-y-3">
+              {filteredQueue.map(item => {
+                const pi = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
+                const content = contents.find(c => c.id === item.content_id);
+                return (
+                  <div key={item.id} className="hook-item" data-testid={`queue-item-${item.id}`}>
+                    <div className="social-icon-btn" style={{ width: 36, height: 36, flexShrink: 0 }}>
+                      <pi.Icon weight="fill" size={18} color={pi.color} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{content?.hook_text || 'Contenuto'}</p>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        {item.profile_name} | {new Date(item.scheduled_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <span className={`badge ${
+                      item.status === 'queued' ? 'blue' :
+                      item.status === 'published' ? 'green' :
+                      item.status === 'failed' ? 'pink' : 'orange'
+                    }`}>
+                      {item.status === 'queued' && <Clock size={12} />}
+                      {item.status === 'published' && <CheckCircle size={12} />}
+                      {item.status === 'failed' && <XCircle size={12} />}
+                      <span className="ml-1">{item.status}</span>
+                    </span>
+                    {item.status === 'queued' && (
+                      <button className="btn-ghost p-1.5 text-xs" onClick={() => cancelQueueItem(item.id)}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Queue size={48} className="mx-auto mb-4 text-[var(--text-muted)] opacity-40" />
+              <p className="text-[var(--text-muted)] mb-2">Nessun elemento in coda</p>
+              <p className="text-xs text-[var(--text-muted)]">Vai alla lista contenuti e clicca l'icona di invio per programmare la pubblicazione.</p>
             </div>
           )}
         </div>
@@ -372,6 +597,73 @@ export default function ProjectView({ project, setActiveView }) {
           )}
         </div>
       )}
+
+      {/* ── SCHEDULE MODAL ── */}
+      <AnimatePresence>
+        {showSchedule && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)' }}
+            onClick={() => setShowSchedule(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="card w-full max-w-md"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold mb-2">Programma Pubblicazione</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-4 truncate">{showSchedule.hook_text}</p>
+
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Data</label>
+                    <input type="date" className="input-dark text-sm py-2" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+                  </div>
+                  <div className="w-28">
+                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Ora</label>
+                    <input type="time" className="input-dark text-sm py-2" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Profili social</label>
+                  {socialProfiles.length > 0 ? (
+                    <div className="space-y-2">
+                      {socialProfiles.map(sp => {
+                        const pi = PLATFORM_ICONS[sp.platform] || { Icon: Globe, color: '#fff' };
+                        const isSelected = scheduleProfiles.includes(sp.id);
+                        return (
+                          <div
+                            key={sp.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border ${isSelected ? 'border-[var(--gradient-start)]' : 'border-[var(--border-color)]'}`}
+                            style={isSelected ? { background: 'rgba(99,102,241,0.1)' } : {}}
+                            onClick={() => setScheduleProfiles(prev => isSelected ? prev.filter(id => id !== sp.id) : [...prev, sp.id])}
+                          >
+                            <pi.Icon weight="fill" size={20} color={pi.color} />
+                            <span className="text-sm flex-1">{sp.profile_name}</span>
+                            {isSelected && <CheckCircle size={18} color="var(--accent-green)" weight="fill" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)]">Nessun profilo social collegato. Vai al tab Social per aggiungerne.</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button className="btn-ghost flex-1" onClick={() => setShowSchedule(null)}>Annulla</button>
+                  <button className="btn-gradient flex-1" onClick={() => scheduleContent(showSchedule.id)} data-testid="schedule-publish-btn" disabled={!scheduleDate || scheduleProfiles.length === 0}>
+                    <PaperPlaneTilt size={16} /> Programma
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── NEW POST MODAL ── */}
       <AnimatePresence>
