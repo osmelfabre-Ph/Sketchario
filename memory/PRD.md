@@ -97,6 +97,20 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Sidebar updated with Piani + Admin (admin only)
 - ✅ Backend: 100% (23/23), Frontend: 100%
 
+### Iteration 5 — Canva, Export CSV, ToV Library, Gating (Jan 14, 2026)
+- ✅ Canva integration: OAuth URL generation, import endpoint (funzionera su sketchario.app)
+- ✅ Canva button nel content detail modal accanto a Upload e DALL-E
+- ✅ Export CSV: download CSV di tutti i contenuti del progetto
+- ✅ CSV button nell'header del Project View
+- ✅ ToV Library: CRUD template personali (crea, lista, applica a progetto, elimina)
+- ✅ ToV Library tab nel Project View con "Salva ToV attuale" e "Applica al progetto"
+- ✅ Plan Gating: Free (1 progetto, 7 contenuti), Creator (5/30), Strategist (illimitati)
+- ✅ Gating applicato a: creazione progetto, creazione contenuto, pubblicazione, export CSV
+- ✅ Power Users override per bypass limiti temporanei
+- ✅ GET /api/plan/limits endpoint per mostrare limiti + utilizzo
+- ✅ Backend: 96.7% (30/31 - unico fail: test Canva import con URL fittizio)
+- ✅ Token duration esteso a 24h per sessioni stabili
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority

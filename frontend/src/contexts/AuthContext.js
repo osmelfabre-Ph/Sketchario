@@ -51,6 +51,8 @@ export function AuthProvider({ children }) {
   }, [setToken]);
 
   useEffect(() => {
+    const t = localStorage.getItem('sk_token');
+    if (!t) { setLoading(false); return; }
     api.get('/auth/me')
       .then(({ data }) => setUser(data.user))
       .catch(() => { setUser(null); setToken(null); })
