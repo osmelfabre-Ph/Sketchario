@@ -111,6 +111,23 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Backend: 96.7% (30/31 - unico fail: test Canva import con URL fittizio)
 - ✅ Token duration esteso a 24h per sessioni stabili
 
+### Iteration 6 — Drive, Forgot PW, Notifications, Analytics, Responsive (Jan 14, 2026)
+- ✅ Google Drive import endpoint (POST /api/media/import-drive)
+- ✅ Forgot Password: token generation, reset link, password update
+- ✅ "Password dimenticata?" link nell'auth screen
+- ✅ Reset password modal con token da URL
+- ✅ In-app Notifications: campanella con badge unread, mark-read
+- ✅ Notifications view con release notes lette/non lette
+- ✅ Content Analytics Dashboard: stats per formato/pillar/stato/queue
+- ✅ Barra completamento campagna animata
+- ✅ Analytics per piattaforma nella queue
+- ✅ Full Responsive Design:
+  - Mobile (< 768px): bottom navigation, stats impilati, form full-width
+  - Tablet (< 1024px): sidebar collassata a icone, griglia 2 colonne
+  - Desktop: layout completo con sidebar espansa
+- ✅ Backend: 94.6% (35/37 - fail solo Drive/Canva con URL fittizi)
+- ✅ Frontend: 100%
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority
