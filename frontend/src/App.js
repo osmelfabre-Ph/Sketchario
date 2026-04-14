@@ -77,8 +77,18 @@ function AppContent() {
   return (
     <div className="main-layout">
       <Sidebar activeView={activeView} setActiveView={handleSetActiveView} isProjectView={isProjectView} />
-      <main className="main-content">
-        <div className={isProjectView ? '' : 'p-8'}>{renderView()}</div>
+      <main className="main-content flex flex-col">
+        <div className={`flex-1 ${isProjectView ? '' : 'p-4 md:p-8 overflow-y-auto'}`}>{renderView()}</div>
+        {!isProjectView && (
+          <footer className="flex-shrink-0 px-4 md:px-8 py-3 md:py-4 border-t border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-2" style={{ background: 'var(--bg-secondary)' }}>
+            <p className="text-[10px] md:text-[11px] text-[var(--text-muted)]">&copy; {new Date().getFullYear()} Sketchario. Tutti i diritti riservati.</p>
+            <div className="flex gap-3 md:gap-4">
+              <a href="/legal/terms" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Termini</a>
+              <a href="/legal/privacy" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Privacy</a>
+              <a href="/legal/cookies" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Cookie</a>
+            </div>
+          </footer>
+        )}
       </main>
       {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
     </div>

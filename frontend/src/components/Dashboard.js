@@ -51,13 +51,13 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-start sm:items-center justify-between mb-6 md:mb-8 gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold gradient-text" data-testid="dashboard-title">Dashboard</h1>
-          <p className="text-[var(--text-secondary)] mt-1 text-sm">Gestisci i tuoi progetti editoriali</p>
+          <h1 className="text-2xl md:text-3xl font-bold gradient-text" data-testid="dashboard-title">Dashboard</h1>
+          <p className="text-[var(--text-secondary)] mt-1 text-xs md:text-sm">Gestisci i tuoi progetti editoriali</p>
         </div>
-        <button data-testid="new-project-btn" className="btn-gradient" onClick={() => setActiveView('wizard')}>
-          <Plus weight="bold" size={18} /> Crea Progetto
+        <button data-testid="new-project-btn" className="btn-gradient text-sm" onClick={() => setActiveView('wizard')}>
+          <Plus weight="bold" size={16} /> Crea Progetto
         </button>
       </div>
 
@@ -142,9 +142,9 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
                   <span className="flex items-center gap-1"><Article size={14} /> {project.content_count || 0} contenuti</span>
                 </div>
                 <div className="flex gap-2">
-                  <button className="btn-ghost text-sm py-2 px-3 flex-1" onClick={() => openProject(project)}><Eye size={14} /> Apri</button>
-                  <button className="btn-ghost text-sm py-2 px-3" onClick={() => archiveProject(project.id, project.archived)}><Archive size={14} /></button>
-                  <button className="btn-ghost text-sm py-2 px-3" onClick={() => deleteProject(project.id)}><Trash size={14} /></button>
+                  <button className="btn-ghost text-xs md:text-sm py-2 px-3 flex-1" onClick={() => openProject(project)}><Eye size={14} /> Apri</button>
+                  <button className="btn-ghost text-xs md:text-sm py-2 px-3" onClick={() => archiveProject(project.id, project.archived)}><Archive size={14} /></button>
+                  <button className="btn-ghost text-xs md:text-sm py-2 px-3" onClick={() => deleteProject(project.id)}><Trash size={14} /></button>
                 </div>
               </motion.div>
             ))}

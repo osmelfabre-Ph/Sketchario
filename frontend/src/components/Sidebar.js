@@ -7,8 +7,19 @@ import {
 
 const LOGO = 'https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/oyv8tqit_favicon-invert.jpg';
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+}
+
 export default function Sidebar({ activeView, setActiveView, isProjectView }) {
   const { user, logout, api } = useAuth();
+  const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
   const [unread, setUnread] = useState(0);
 
@@ -16,6 +27,59 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
     api.get('/notifications/unread-count').then(r => setUnread(r.data.unread)).catch(() => {});
   }, [api]);
 
+  const isAdmin = user?.role === 'admin';
+  const w = collapsed ? 50 : 220;
+
+  // Mobile: show context-aware navigation
+  if (isMobile) {
+    const mobileItems = isProjectView
+      ? [
+          { id: 'dashboard', icon: House, label: 'Home' },
+          { id: 'project', icon: CalendarBlank, label: 'Contenuti' },
+          { id: 'personas', icon: Users, label: 'Personas' },
+          { id: 'social', icon: Globe, label: 'Social' },
+          { id: 'profile', icon: User, label: 'Profilo' },
+        ]
+      : [
+          { id: 'dashboard', icon: House, label: 'Home' },
+          { id: 'wizard', icon: MagicWand, label: 'Nuovo' },
+          { id: 'notifications', icon: Bell, label: 'Novita' },
+          ...(isAdmin ? [{ id: 'admin', icon: ShieldCheck, label: 'Admin' }] : []),
+          { id: 'profile', icon: User, label: 'Profilo' },
+        ];
+
+    return (
+      <div className="sidebar" data-testid="mobile-bottom-nav">
+        <nav>
+          {mobileItems.map(item => (
+            <div
+              key={item.id}
+              data-testid={`nav-${item.id}`}
+              className={`sidebar-nav-item relative ${activeView === item.id || (item.id === 'project' && ['project', 'calendar'].includes(activeView)) ? 'active' : ''}`}
+              onClick={() => {
+                if (item.id === 'notifications') {
+                  setActiveView('notifications');
+                  api.post('/notifications/mark-read').then(() => setUnread(0)).catch(() => {});
+                } else {
+                  setActiveView(item.id);
+                }
+              }}
+            >
+              <div className="relative">
+                <item.icon weight={activeView === item.id ? 'fill' : 'regular'} size={20} />
+                {item.id === 'notifications' && unread > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[var(--accent-pink)] text-[7px] font-bold flex items-center justify-center">{unread}</span>
+                )}
+              </div>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+
+  // Desktop sidebar
   const mainNav = [
     { id: 'dashboard', icon: House, label: 'Dashboard' },
     { id: 'wizard', icon: MagicWand, label: 'Nuovo Progetto' },
@@ -27,23 +91,22 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
     { id: 'social', icon: Globe, label: 'Social' },
   ];
 
-  const isAdmin = user?.role === 'admin';
-  const w = collapsed ? 64 : 220;
-
   return (
     <div className="sidebar flex flex-col" style={{ width: w, minWidth: w, transition: 'width 0.2s ease, min-width 0.2s ease' }}>
       {/* Logo + Collapse */}
       <div className="flex items-center gap-2 mb-6" style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
-        <img src={LOGO} alt="S" style={{ height: 32, borderRadius: 6 }} />
-        {!collapsed && <h2 className="text-base font-bold gradient-text">Sketchario</h2>}
-        <button
-          data-testid="sidebar-toggle"
-          className="ml-auto p-1 rounded hover:bg-[var(--bg-card)] transition-colors"
-          onClick={() => setCollapsed(c => !c)}
-          style={collapsed ? { marginLeft: 0 } : {}}
-        >
-          {collapsed ? <CaretRight size={14} /> : <CaretLeft size={14} />}
-        </button>
+        <img src={LOGO} alt="S" style={{ height: collapsed ? 28 : 32, borderRadius: 6 }} />
+        {!collapsed && <h2 className="text-base font-bold gradient-text flex-1">Sketchario</h2>}
+        {!collapsed && (
+          <button data-testid="sidebar-toggle" className="p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(true)}>
+            <CaretLeft size={14} />
+          </button>
+        )}
+        {collapsed && (
+          <button data-testid="sidebar-toggle" className="absolute top-3 left-1/2 -translate-x-1/2 mt-10 p-0.5 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(false)}>
+            <CaretRight size={12} />
+          </button>
+        )}
       </div>
 
       {/* Main Nav */}
@@ -63,7 +126,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
         ))}
       </nav>
 
-      {/* Project Nav — only visible in project view */}
+      {/* Project Nav */}
       {isProjectView && (
         <div className="rounded-lg p-2 mb-3 space-y-1" style={{ background: 'rgba(255,255,255,0.03)' }}>
           {!collapsed && <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase px-2 mb-1">Progetto</p>}
@@ -114,7 +177,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
         {!collapsed && <span>Novita</span>}
       </button>
 
-      {/* User Profile — clickable to open profile */}
+      {/* User Profile */}
       <div
         data-testid="nav-profile"
         className="user-profile-card cursor-pointer hover:border-[var(--gradient-start)] transition-colors mt-2"

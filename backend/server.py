@@ -1091,6 +1091,71 @@ Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script
     except Exception as e:
         raise HTTPException(500, f"Errore generazione: {str(e)}")
 
+
+@api.post("/feeds/ai-suggestions/{project_id}")
+async def get_ai_feed_suggestions(project_id: str, request: Request):
+    """Generate 5 AI-powered content suggestions based on the project theme/sector."""
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
+    if not project:
+        raise HTTPException(404, "Progetto non trovato")
+
+    # Check cache first (valid for 10 minutes)
+    cache_key = f"ai_feed_{project_id}"
+    cached = await db.ai_feed_cache.find_one({"cache_key": cache_key}, {"_id": 0})
+    if cached:
+        cached_time = datetime.fromisoformat(cached["cached_at"])
+        if (datetime.now(timezone.utc) - cached_time).total_seconds() < 600:
+            return cached["suggestions"]
+
+    sector = project.get("sector", "marketing digitale")
+    description = project.get("description", "")
+    system = "Sei un esperto di content strategy per social media. Genera idee di contenuto innovative e attuali. Rispondi SOLO con JSON array."
+    prompt = f"""Genera 5 idee di contenuto social media per il settore: {sector}
+{f'Descrizione progetto: {description}' if description else ''}
+
+Ogni idea deve essere:
+- Attuale e rilevante per il mercato italiano nel 2026
+- Originale e coinvolgente
+- Adatta a formati Reel o Carousel
+
+Restituisci un JSON array di 5 oggetti con:
+- "title": titolo breve e accattivante (max 60 caratteri)
+- "summary": breve descrizione dell'idea (max 120 caratteri)
+- "format": "reel" o "carousel"
+- "pillar": "awareness" o "education" o "monetizing"
+- "trend_tag": un tag di tendenza correlato"""
+
+    try:
+        result = await call_ai(system, prompt)
+        suggestions = extract_json(result)
+        if not isinstance(suggestions, list):
+            suggestions = [suggestions]
+        suggestions = suggestions[:5]
+        for i, s in enumerate(suggestions):
+            s["id"] = f"ai_{project_id}_{i}"
+            s["source"] = "ai"
+
+        # Cache the result
+        await db.ai_feed_cache.update_one(
+            {"cache_key": cache_key},
+            {"$set": {"cache_key": cache_key, "suggestions": suggestions, "cached_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        return suggestions
+    except Exception as e:
+        logger.error(f"AI feed suggestions error: {e}")
+        return []
+
+@api.post("/feeds/ai-suggestions/{project_id}/refresh")
+async def refresh_ai_feed_suggestions(project_id: str, request: Request):
+    """Force refresh AI feed suggestions by clearing cache."""
+    user = await get_current_user(request)
+    cache_key = f"ai_feed_{project_id}"
+    await db.ai_feed_cache.delete_one({"cache_key": cache_key})
+    return await get_ai_feed_suggestions(project_id, request)
+
+
 # ── PUBLISH QUEUE ─────────────────────────────────────
 class PublishSchedule(BaseModel):
     content_id: str

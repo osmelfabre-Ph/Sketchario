@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -6,7 +6,7 @@ import {
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
   Eye, Sparkle, Trash, Globe,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
-  BookOpen, Download, ChartBar, Article, DotsSixVertical
+  BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp
 } from '@phosphor-icons/react';
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
@@ -20,8 +20,19 @@ const PLATFORM_ICONS = {
   pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
 };
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+}
+
 export default function ProjectView({ project, setActiveView, activeTab }) {
   const { api } = useAuth();
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState(activeTab || 'list');
   const [contents, setContents] = useState([]);
   const [personas, setPersonas] = useState([]);
@@ -46,13 +57,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   // Feed
   const [feeds, setFeeds] = useState([]);
   const [feedItems, setFeedItems] = useState([]);
-  const [aiFeedItems, setAiFeedItems] = useState([]);
   const [feedLoading, setFeedLoading] = useState(false);
-  const [newFeedUrl, setNewFeedUrl] = useState('');
+  const [aiFeedItems, setAiFeedItems] = useState([]);
 
   // Queue + Analytics
   const [queueItems, setQueueItems] = useState([]);
   const [rightPanelWidth, setRightPanelWidth] = useState(280);
+  const [showRightPanel, setShowRightPanel] = useState(false);
 
   // ToV Library
   const [tovLibrary, setTovLibrary] = useState([]);
@@ -75,6 +86,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {}),
       api.get(`/feeds/${project.id}`).then(r => setFeeds(r.data)).catch(() => {}),
       api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
+      api.post(`/feeds/ai-suggestions/${project.id}`).then(r => setAiFeedItems(r.data || [])).catch(() => {}),
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {}),
       api.get('/tov-library').then(r => setTovLibrary(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
@@ -87,14 +99,24 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       api.post(`/feeds/refresh/${project.id}`).then(() => {
         api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {});
       }).catch(() => {});
+      api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {});
     }, 600000);
-    // Add default feed if none exists
+    // Auto-add default feeds if none exist
     if (feeds.length === 0 && project.sector) {
       const searchTerm = encodeURIComponent(project.sector);
-      const defaultUrl = `https://news.google.com/rss/search?q=${searchTerm}&hl=it&gl=IT&ceid=IT:it`;
-      api.post('/feeds/add', { project_id: project.id, feed_url: defaultUrl, feed_name: `News: ${project.sector}` })
-        .then(r => { setFeeds(prev => [...prev, r.data]); return api.get(`/feeds/${project.id}/items`); })
-        .then(r => setFeedItems(r.data)).catch(() => {});
+      const defaultFeeds = [
+        { url: `https://news.google.com/rss/search?q=${searchTerm}&hl=it&gl=IT&ceid=IT:it`, name: `Google News: ${project.sector}` },
+        { url: `https://www.reddit.com/search.rss?q=${searchTerm}&sort=new&limit=10`, name: `Reddit: ${project.sector}` },
+      ];
+      Promise.all(defaultFeeds.map(f =>
+        api.post('/feeds/add', { project_id: project.id, feed_url: f.url, feed_name: f.name }).catch(() => null)
+      )).then(results => {
+        const added = results.filter(Boolean);
+        if (added.length > 0) {
+          setFeeds(prev => [...prev, ...added.map(r => r.data)]);
+          api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {});
+        }
+      });
     }
     return () => clearInterval(interval);
   }, [project?.id, loading]);
@@ -130,7 +152,6 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     finally { setFeedLoading(false); }
   };
 
-  // Calendar drag & drop
   const handleDrop = async (dayOffset, e) => {
     e.preventDefault();
     if (!dragContent) return;
@@ -139,7 +160,6 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setDragContent(null);
   };
 
-  // Social functions
   const connectSocial = (platform) => { if (platform.auth_url) window.open(platform.auth_url, '_blank', 'width=600,height=700'); };
   const addManualProfile = async (platformId) => {
     if (!manualName.trim()) return;
@@ -155,7 +175,6 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setProjectSocials(data);
   };
 
-  // ToV Library
   const saveToTovLibrary = async () => {
     if (!tovSaveName.trim()) return;
     const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
@@ -177,57 +196,63 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   if (loading) return <p className="text-[var(--text-muted)] text-center py-12">Caricamento progetto...</p>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-0px)]">
+    <div className="flex flex-col h-[calc(100vh-0px)]" style={{ paddingBottom: isMobile ? 56 : 0 }}>
       {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-3 border-b border-[var(--border-color)] flex-shrink-0">
+      <div className={`flex items-center gap-3 px-4 md:px-6 py-3 border-b border-[var(--border-color)] flex-shrink-0 ${isMobile ? 'flex-wrap' : ''}`}>
         <button className="btn-ghost p-1.5" onClick={() => setActiveView('dashboard')} data-testid="back-to-dashboard"><ArrowLeft size={18} /></button>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold gradient-text" data-testid="project-title">{project.name}</h1>
-          <p className="text-xs text-[var(--text-secondary)]">{project.sector} | {contents.length} contenuti</p>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-base md:text-lg font-bold gradient-text truncate" data-testid="project-title">{project.name}</h1>
+          <p className="text-[10px] md:text-xs text-[var(--text-secondary)]">{project.sector} | {contents.length} contenuti</p>
         </div>
-        <button data-testid="new-post-btn" className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}>
-          <Plus weight="bold" size={16} /> Nuovo Post
-        </button>
-        <button className="btn-ghost text-sm" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank')} data-testid="export-csv-btn">
-          <Download size={16} /> CSV
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button data-testid="new-post-btn" className="btn-gradient text-xs md:text-sm" onClick={() => setShowNewPost(true)}>
+            <Plus weight="bold" size={14} /> <span className="hidden sm:inline">Nuovo</span> Post
+          </button>
+          <button className="btn-ghost text-xs md:text-sm" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank')} data-testid="export-csv-btn">
+            <Download size={14} /> <span className="hidden sm:inline">CSV</span>
+          </button>
+          {isMobile && (
+            <button className="btn-ghost text-xs p-1.5" onClick={() => setShowRightPanel(!showRightPanel)} data-testid="toggle-right-panel">
+              <ChartBar size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Main Area: content + right panel */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main Area */}
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Center: Tab Content + Feed Strip */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Tab Buttons — minimal */}
-          <div className="flex gap-1 px-6 pt-3 pb-2 flex-shrink-0">
+          {/* Tab Buttons */}
+          <div className="flex gap-1 px-4 md:px-6 pt-3 pb-2 flex-shrink-0 overflow-x-auto" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {[
               { id: 'list', label: 'Contenuti' },
               { id: 'calendar', label: 'Calendario' },
               { id: 'personas', label: 'Personas' },
               { id: 'social', label: 'Social' },
             ].map(t => (
-              <button key={t.id} data-testid={`tab-${t.id}`} className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${tab === t.id ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`} onClick={() => setTab(t.id)}>
+              <button key={t.id} data-testid={`tab-${t.id}`} className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${tab === t.id ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`} onClick={() => setTab(t.id)}>
                 {t.label}
               </button>
             ))}
           </div>
 
           {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto px-6 pb-4">
+          <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-4">
 
-            {/* ═══ LIST VIEW — CARDS ═══ */}
+            {/* LIST VIEW — CARDS */}
             {tab === 'list' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 pt-2">
                 {contents.map((c, i) => (
                   <motion.div key={c.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
                     className="card cursor-pointer group" onClick={() => openContentDetail(c)}>
-                    {/* Media preview */}
                     {c.media && c.media[0] && c.media[0].type === 'image' ? (
-                      <div className="-mx-6 -mt-6 mb-3 h-36 rounded-t-[0.9rem] overflow-hidden">
+                      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-28 md:h-36 rounded-t-[0.9rem] overflow-hidden">
                         <img src={`${process.env.REACT_APP_BACKEND_URL}${c.media[0].url}`} alt="" className="w-full h-full object-cover" />
                       </div>
                     ) : (
-                      <div className="-mx-6 -mt-6 mb-3 h-20 rounded-t-[0.9rem] flex items-center justify-center" style={{ background: c.format === 'reel' ? 'rgba(236,72,153,0.08)' : 'rgba(99,102,241,0.08)' }}>
-                        {c.format === 'reel' ? <Video size={28} className="text-[var(--accent-pink)] opacity-40" /> : <Image size={28} className="text-[var(--gradient-start)] opacity-40" />}
+                      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-16 md:h-20 rounded-t-[0.9rem] flex items-center justify-center" style={{ background: c.format === 'reel' ? 'rgba(236,72,153,0.08)' : 'rgba(99,102,241,0.08)' }}>
+                        {c.format === 'reel' ? <Video size={24} className="text-[var(--accent-pink)] opacity-40" /> : <Image size={24} className="text-[var(--gradient-start)] opacity-40" />}
                       </div>
                     )}
                     <div className="flex items-start gap-2 mb-2">
@@ -253,7 +278,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               </div>
             )}
 
-            {/* ═══ CALENDAR — with drag & drop ═══ */}
+            {/* CALENDAR — with drag & drop */}
             {tab === 'calendar' && (
               <div className="calendar-container mt-2">
                 <div className="calendar-grid">
@@ -286,13 +311,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               </div>
             )}
 
-            {/* ═══ PERSONAS + TOV LIBRARY ═══ */}
+            {/* PERSONAS + TOV LIBRARY */}
             {tab === 'personas' && (
               <div className="pt-2">
                 <div className="personas-grid mb-8">
                   {personas.map((p, i) => (
                     <div key={i} className="card persona-card">
-                      <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
+                      <h3 className="font-semibold text-base md:text-lg mb-1">{p.name}</h3>
                       <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
                       {p.pain_points && (
                         <div className="p-3 rounded-lg text-sm mb-2" style={{ background: 'rgba(236,72,153,0.1)' }}>
@@ -304,11 +329,10 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   ))}
                 </div>
 
-                {/* ToV Library inside Personas */}
                 <div className="border-t border-[var(--border-color)] pt-6">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <div>
-                      <h3 className="font-semibold flex items-center gap-2"><BookOpen size={18} /> Libreria Tono di Voce</h3>
+                      <h3 className="font-semibold flex items-center gap-2 text-sm md:text-base"><BookOpen size={18} /> Libreria Tono di Voce</h3>
                       <p className="text-xs text-[var(--text-muted)] mt-1">Template riutilizzabili tra progetti</p>
                     </div>
                     <button className="btn-gradient text-xs" onClick={() => setShowTovSave(true)}><Plus size={14} /> Salva ToV attuale</button>
@@ -325,8 +349,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   <div className="space-y-2">
                     {tovLibrary.map(item => (
                       <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{item.name}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
                           <p className="text-[10px] text-[var(--text-muted)]">F:{item.formality} E:{item.energy} Em:{item.empathy} H:{item.humor}</p>
                         </div>
                         <button className="btn-gradient text-[10px] py-1 px-2" onClick={() => applyTovTemplate(item.id)}>Applica</button>
@@ -338,10 +362,10 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               </div>
             )}
 
-            {/* ═══ SOCIAL ═══ */}
+            {/* SOCIAL */}
             {tab === 'social' && (
-              <div className="pt-2 max-w-3xl">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              <div className="pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-6">
                   {platforms.map(platform => {
                     const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#fff' };
                     const connected = socialProfiles.filter(p => p.platform === platform.id);
@@ -356,8 +380,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                         </div>
                         {connected.map(prof => (
                           <div key={prof.id} className="flex items-center justify-between py-1.5 px-2 rounded mb-1" style={{ background: 'rgba(34,197,94,0.1)' }}>
-                            <span className="text-xs">{prof.profile_name}</span>
-                            <div className="flex gap-1">
+                            <span className="text-xs truncate">{prof.profile_name}</span>
+                            <div className="flex gap-1 flex-shrink-0">
                               <button className="text-[10px]" onClick={() => toggleProjectLink(prof.id)}>
                                 {projectSocials.some(p => p.id === prof.id) ? <span className="badge green text-[8px]">On</span> : <span className="badge orange text-[8px]">Off</span>}
                               </button>
@@ -387,75 +411,107 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             )}
           </div>
 
-          {/* ═══ FEED STRIP — above footer ═══ */}
-          <div className="flex-shrink-0 border-t border-[var(--border-color)] px-6 py-3" style={{ background: 'var(--bg-secondary)' }}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1"><RssSimple size={12} /> Feed Ispirazione — {project.sector}</p>
-              <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1" onClick={() => { api.post(`/feeds/refresh/${project.id}`).then(() => api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data))).catch(() => {}); }}>
-                <ArrowClockwise size={10} /> Refresh
-              </button>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
-              {feedItems.slice(0, 5).map(item => (
-                <div key={item.id} className="flex-shrink-0 w-52 p-3 rounded-lg cursor-pointer hover:border-[var(--gradient-start)] transition-colors"
-                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-                  onClick={() => feedToPost(item)}>
-                  <p className="text-xs font-medium line-clamp-2 mb-1">{item.title}</p>
-                  <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.feed_name}</p>
-                </div>
-              ))}
-              {feedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Feed in caricamento...</p>}
-            </div>
-          </div>
-        </div>
-
-        {/* ═══ RIGHT PANEL — Queue + Analytics (resizable) ═══ */}
-        <div className="flex flex-shrink-0" style={{ width: rightPanelWidth }}>
-          {/* Drag handle */}
-          <div className="w-1 cursor-col-resize hover:bg-[var(--gradient-start)] transition-colors flex-shrink-0"
-            style={{ background: 'var(--border-color)' }}
-            onMouseDown={e => {
-              const startX = e.clientX;
-              const startW = rightPanelWidth;
-              const onMove = (ev) => { const diff = startX - ev.clientX; setRightPanelWidth(Math.max(200, Math.min(600, startW + diff))); };
-              const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-              window.addEventListener('mousemove', onMove);
-              window.addEventListener('mouseup', onUp);
-            }}
-          />
-          <div className="flex-1 overflow-y-auto p-4">
-            {/* Queue */}
-            <div className="mb-6">
-              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><Queue size={12} /> Publishing Queue <span className="badge blue text-[8px] ml-1">{queueItems.length}</span></p>
-              {queueItems.slice(0, 5).map(item => {
-                const pi = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
-                return (
-                  <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded mb-1" style={{ background: 'var(--bg-card)' }}>
-                    <pi.Icon weight="fill" size={12} color={pi.color} />
-                    <p className="text-[10px] flex-1 truncate">{contents.find(c => c.id === item.content_id)?.hook_text?.slice(0, 30) || '...'}</p>
-                    <span className={`text-[8px] font-semibold ${item.status === 'queued' ? 'text-[var(--accent-blue)]' : item.status === 'published' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-orange)]'}`}>{item.status}</span>
-                    {item.status === 'queued' && <button onClick={() => cancelQueueItem(item.id)}><X size={10} /></button>}
+          {/* FEED STRIPS — above footer */}
+          <div className="flex-shrink-0 border-t border-[var(--border-color)]" style={{ background: 'var(--bg-secondary)' }}>
+            {/* Strip 1: Google News / Reddit */}
+            <div className="px-4 md:px-6 pt-3 pb-2">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1 truncate"><RssSimple size={12} /> News & Reddit — {project.sector}</p>
+                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" onClick={() => { api.post(`/feeds/refresh/${project.id}`).then(() => api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data))).catch(() => {}); }}>
+                  <ArrowClockwise size={10} /> Refresh
+                </button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+                {feedItems.slice(0, 6).map(item => (
+                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--gradient-start)] transition-colors"
+                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+                    onClick={() => feedToPost(item)}>
+                    <p className="text-xs font-medium line-clamp-2 mb-1">{item.title}</p>
+                    <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.feed_name}</p>
                   </div>
-                );
-              })}
-              {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Coda vuota</p>}
+                ))}
+                {feedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Feed in caricamento...</p>}
+              </div>
             </div>
 
-            {/* Analytics */}
-            <div>
-              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> Analytics</p>
-              <Analytics project={project} compact />
+            {/* Strip 2: AI-Generated Suggestions */}
+            <div className="px-4 md:px-6 pt-1 pb-3 border-t border-[var(--border-color)]" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1 truncate"><Sparkle size={12} weight="fill" /> Idee AI — {project.sector}</p>
+                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" onClick={() => {
+                  api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {});
+                }}>
+                  <ArrowClockwise size={10} /> Rigenera
+                </button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+                {aiFeedItems.map(item => (
+                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--accent-purple)] transition-colors"
+                    style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: '1px solid rgba(99,102,241,0.15)' }}
+                    onClick={() => feedToPost({ title: item.title, summary: item.summary })}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
+                      <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase">{item.format || 'reel'}</span>
+                      {item.trend_tag && <span className="text-[9px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
+                    </div>
+                    <p className="text-xs font-medium line-clamp-2 mb-1">{item.title}</p>
+                    <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.summary}</p>
+                  </div>
+                ))}
+                {aiFeedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Generazione idee AI...</p>}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* RIGHT PANEL — Desktop: inline, Mobile: overlay */}
+        {!isMobile && (
+          <div className="flex flex-shrink-0 relative" style={{ width: rightPanelWidth, zIndex: 20, marginLeft: -(rightPanelWidth - 280) > 0 ? -(rightPanelWidth - 280) : 0 }}>
+            <div className="w-1.5 cursor-col-resize hover:bg-[var(--gradient-start)] transition-colors flex-shrink-0"
+              style={{ background: 'var(--border-color)' }}
+              onMouseDown={e => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startW = rightPanelWidth;
+                const onMove = (ev) => { const diff = startX - ev.clientX; setRightPanelWidth(Math.max(200, Math.min(700, startW + diff))); };
+                const onUp = () => { document.body.style.cursor = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                document.body.style.cursor = 'col-resize';
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+              }}
+            />
+            <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--bg-secondary)' }}>
+              <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} project={project} />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Right Panel Overlay */}
+        <AnimatePresence>
+          {isMobile && showRightPanel && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50" style={{ background: 'rgba(0,0,0,0.6)' }}
+              onClick={() => setShowRightPanel(false)}>
+              <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.25 }}
+                className="absolute right-0 top-0 bottom-0 w-[85vw] max-w-sm overflow-y-auto p-4"
+                style={{ background: 'var(--bg-secondary)' }}
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold">Queue & Analytics</h3>
+                  <button className="btn-ghost p-1.5" onClick={() => setShowRightPanel(false)}><X size={16} /></button>
+                </div>
+                <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} project={project} />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* ═══ MODALS ═══ */}
-      {/* New Post */}
+      {/* MODALS */}
       <AnimatePresence>
         {showNewPost && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => !newPostLoading && setShowNewPost(false)}>
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => !newPostLoading && setShowNewPost(false)}>
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="card w-full max-w-lg" onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-4">Nuovo Post</h3>
               <div className="space-y-4">
@@ -480,12 +536,38 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
         )}
       </AnimatePresence>
 
-      {/* Content Detail */}
       <AnimatePresence>
         {selectedContent && (
           <ContentDetail content={selectedContent} project={project} onClose={() => setSelectedContent(null)} onUpdate={handleContentUpdate} />
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* Extracted right panel content to reuse in desktop inline + mobile overlay */
+function RightPanelContent({ queueItems, contents, cancelQueueItem, project }) {
+  return (
+    <>
+      <div className="mb-6">
+        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><Queue size={12} /> Publishing Queue <span className="badge blue text-[8px] ml-1">{queueItems.length}</span></p>
+        {queueItems.slice(0, 5).map(item => {
+          const pi = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
+          return (
+            <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded mb-1" style={{ background: 'var(--bg-card)' }}>
+              <pi.Icon weight="fill" size={12} color={pi.color} />
+              <p className="text-[10px] flex-1 truncate">{contents.find(c => c.id === item.content_id)?.hook_text?.slice(0, 30) || '...'}</p>
+              <span className={`text-[8px] font-semibold ${item.status === 'queued' ? 'text-[var(--accent-blue)]' : item.status === 'published' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-orange)]'}`}>{item.status}</span>
+              {item.status === 'queued' && <button onClick={() => cancelQueueItem(item.id)}><X size={10} /></button>}
+            </div>
+          );
+        })}
+        {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Coda vuota</p>}
+      </div>
+      <div>
+        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> Analytics</p>
+        <Analytics project={project} compact />
+      </div>
+    </>
   );
 }
