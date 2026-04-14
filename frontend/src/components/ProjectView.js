@@ -795,6 +795,61 @@ export default function ProjectView({ project, setActiveView }) {
                   <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Hashtags</label>
                   <input className="input-dark" value={editHashtags} onChange={e => setEditHashtags(e.target.value)} style={{ paddingLeft: '1rem' }} />
                 </div>
+
+                {/* Media Section */}
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Media</label>
+                  {/* Existing media */}
+                  {selectedContent.media && selectedContent.media.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-3">
+                      {selectedContent.media.map(m => (
+                        <div key={m.id} className="relative group">
+                          {m.type === 'image' ? (
+                            <img src={`${process.env.REACT_APP_BACKEND_URL}${m.url}`} alt="" className="w-20 h-20 object-cover rounded-lg" />
+                          ) : (
+                            <div className="w-20 h-20 rounded-lg bg-[var(--bg-secondary)] flex items-center justify-center"><Video size={24} /></div>
+                          )}
+                          <button
+                            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[var(--accent-pink)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={async () => {
+                              await api.delete(`/media/${selectedContent.id}/${m.id}`);
+                              setSelectedContent(prev => ({...prev, media: prev.media.filter(x => x.id !== m.id)}));
+                              setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: c.media.filter(x => x.id !== m.id)} : c));
+                            }}
+                          ><X size={10} color="white" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 flex-wrap">
+                    {/* Upload */}
+                    <label className="btn-ghost text-xs py-1.5 px-3 cursor-pointer" data-testid="upload-media-btn">
+                      <Plus size={14} /> Upload
+                      <input type="file" accept="image/*,video/*" className="hidden" onChange={async (e) => {
+                        const file = e.target.files[0]; if (!file) return;
+                        const fd = new FormData(); fd.append('file', file);
+                        try {
+                          const { data } = await api.post(`/media/upload/${selectedContent.id}`, fd);
+                          setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
+                          setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
+                        } catch(err) { alert('Errore upload: ' + (err.response?.data?.detail || err.message)); }
+                      }} />
+                    </label>
+                    {/* DALL-E */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="dalle-generate-btn" onClick={async () => {
+                      const prompt = window.prompt('Descrivi l\'immagine da generare:', selectedContent.hook_text);
+                      if (!prompt) return;
+                      try {
+                        const { data } = await api.post('/media/generate-dalle', { content_id: selectedContent.id, prompt, project_id: project.id });
+                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
+                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
+                      } catch(err) { alert('Errore DALL-E: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      <Sparkle size={14} /> DALL-E
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex gap-3 justify-end">
                   <button className="btn-ghost" onClick={() => setSelectedContent(null)}>Annulla</button>
                   <button className="btn-gradient" onClick={saveContent} data-testid="save-content-btn">Salva Modifiche</button>

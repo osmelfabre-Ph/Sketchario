@@ -1,6 +1,6 @@
 import { useAuth } from '../contexts/AuthContext';
 import {
-  House, Folder, CalendarBlank, MagicWand, User, SignOut, Gear
+  House, Folder, CalendarBlank, MagicWand, User, SignOut, Gear, ShieldCheck, Bell, CreditCard
 } from '@phosphor-icons/react';
 
 const LOGO_DARK = 'https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/oyv8tqit_favicon-invert.jpg';
@@ -12,7 +12,10 @@ export default function Sidebar({ activeView, setActiveView }) {
     { id: 'dashboard', icon: House, label: 'Dashboard' },
     { id: 'wizard', icon: MagicWand, label: 'Nuovo Progetto' },
     { id: 'profile', icon: Gear, label: 'Profilo' },
+    { id: 'billing', icon: CreditCard, label: 'Piani' },
   ];
+
+  const isAdmin = user?.role === 'admin';
 
   return (
     <div className="sidebar">
@@ -36,6 +39,16 @@ export default function Sidebar({ activeView, setActiveView }) {
             {item.label}
           </div>
         ))}
+        {isAdmin && (
+          <div
+            data-testid="nav-admin"
+            className={`sidebar-nav-item relative ${activeView === 'admin' ? 'active' : ''}`}
+            onClick={() => setActiveView('admin')}
+          >
+            <ShieldCheck weight={activeView === 'admin' ? 'fill' : 'regular'} size={20} />
+            Admin
+          </div>
+        )}
       </nav>
 
       <div className="absolute bottom-6 left-6 right-6">

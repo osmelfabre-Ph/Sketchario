@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Sketchario V4 Backend API Testing - Feed/RSS and Publishing Queue
-Tests all backend APIs for the new Feed and Queue features
+Sketchario V4 Backend API Testing - Complete Feature Testing
+Tests all backend APIs including new V4 features: Media upload, DALL-E, Admin console, Stripe billing
 """
 
 import requests
 import json
 import sys
+import io
 from datetime import datetime, timedelta
 
 class SketcharioAPITester:
@@ -20,6 +21,9 @@ class SketcharioAPITester:
         self.social_profile_id = None
         self.feed_id = None
         self.queue_item_id = None
+        self.media_id = None
+        self.power_user_email = None
+        self.release_note_id = None
 
     def log(self, message):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
@@ -257,6 +261,195 @@ class SketcharioAPITester:
             return True
         return False
 
+    # ── MEDIA UPLOAD TESTS ──
+    def test_media_upload(self):
+        """Test POST /api/media/upload/{content_id}"""
+        if not self.content_id:
+            return False
+        
+        # Create a simple test image file
+        test_image_data = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\nIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82'
+        
+        url = f"{self.base_url}/api/media/upload/{self.content_id}"
+        headers = {}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        
+        files = {'file': ('test.png', io.BytesIO(test_image_data), 'image/png')}
+        
+        self.tests_run += 1
+        self.log(f"🔍 Testing Media Upload...")
+        
+        try:
+            response = requests.post(url, files=files, headers=headers, timeout=30)
+            success = response.status_code == 200
+            if success:
+                self.tests_passed += 1
+                self.log(f"✅ Media Upload - Status: {response.status_code}")
+                response_data = response.json()
+                if 'id' in response_data:
+                    self.media_id = response_data['id']
+                    self.log(f"✅ Media uploaded with ID: {self.media_id}")
+                return True, response_data
+            else:
+                self.log(f"❌ Media Upload - Expected 200, got {response.status_code}")
+                try:
+                    error_detail = response.json()
+                    self.log(f"   Error: {error_detail}")
+                except:
+                    self.log(f"   Response: {response.text[:200]}")
+                return False, {}
+        except Exception as e:
+            self.log(f"❌ Media Upload - Exception: {str(e)}")
+            return False, {}
+
+    def test_media_library(self):
+        """Test GET /api/media/library/{project_id}"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Get Media Library",
+            "GET",
+            f"media/library/{self.project_id}",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} media items in library")
+            return True
+        return False
+
+    def test_dalle_generation(self):
+        """Test POST /api/media/generate-dalle"""
+        if not self.content_id or not self.project_id:
+            return False
+        success, response = self.run_test(
+            "DALL-E Image Generation",
+            "POST",
+            "media/generate-dalle",
+            200,
+            data={
+                "content_id": self.content_id,
+                "prompt": "A simple test image for API testing",
+                "project_id": self.project_id
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ DALL-E image generated with ID: {response['id']}")
+            return True
+        return False
+
+    # ── ADMIN CONSOLE TESTS ──
+    def test_get_power_users(self):
+        """Test GET /api/admin/power-users"""
+        success, response = self.run_test(
+            "Get Power Users (Admin)",
+            "GET",
+            "admin/power-users",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} power users")
+            return True
+        return False
+
+    def test_create_power_user(self):
+        """Test POST /api/admin/power-users"""
+        test_email = f"testuser_{datetime.now().strftime('%H%M%S')}@example.com"
+        self.power_user_email = test_email
+        
+        success, response = self.run_test(
+            "Create Power User",
+            "POST",
+            "admin/power-users",
+            200,
+            data={
+                "email": test_email,
+                "plan": "strategist",
+                "days": 30,
+                "notes": "Test power user created by API test"
+            }
+        )
+        if success:
+            self.log(f"✅ Power user created: {test_email}")
+            return True
+        return False
+
+    def test_create_release_note(self):
+        """Test POST /api/admin/release-notes"""
+        success, response = self.run_test(
+            "Create Release Note",
+            "POST",
+            "admin/release-notes",
+            200,
+            data={
+                "title": "Test Release Note",
+                "body": "This is a test release note created by API testing.",
+                "version": "v4.0.0-test"
+            }
+        )
+        if success and 'id' in response:
+            self.release_note_id = response['id']
+            self.log(f"✅ Release note created with ID: {self.release_note_id}")
+            return True
+        return False
+
+    def test_get_release_notes(self):
+        """Test GET /api/release-notes"""
+        success, response = self.run_test(
+            "Get Release Notes",
+            "GET",
+            "release-notes",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} release notes")
+            return True
+        return False
+
+    # ── BILLING TESTS ──
+    def test_get_billing_plans(self):
+        """Test GET /api/billing/plans"""
+        success, response = self.run_test(
+            "Get Billing Plans",
+            "GET",
+            "billing/plans",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} billing plans")
+            # Check for expected plans
+            plan_ids = [plan['id'] for plan in response]
+            if 'creator' in plan_ids and 'strategist' in plan_ids:
+                self.log("✅ Found expected plans: creator and strategist")
+                # Check pricing
+                for plan in response:
+                    if plan['id'] == 'creator' and plan['amount'] == 19.0:
+                        self.log("✅ Creator plan pricing correct: 19 EUR")
+                    elif plan['id'] == 'strategist' and plan['amount'] == 49.0:
+                        self.log("✅ Strategist plan pricing correct: 49 EUR")
+                return True
+            else:
+                self.log(f"❌ Missing expected plans. Found: {plan_ids}")
+                return False
+        return False
+
+    def test_billing_checkout(self):
+        """Test POST /api/billing/checkout"""
+        success, response = self.run_test(
+            "Create Billing Checkout",
+            "POST",
+            "billing/checkout",
+            200,
+            data={
+                "plan_id": "creator",
+                "origin_url": "https://editorial-flow-v4.preview.emergentagent.com"
+            }
+        )
+        if success and 'url' in response and 'session_id' in response:
+            self.log(f"✅ Checkout session created with URL: {response['url'][:50]}...")
+            return True
+        return False
+
     # ── CLEANUP ──
     def test_cleanup_feed(self):
         """Clean up test feed"""
@@ -270,9 +463,33 @@ class SketcharioAPITester:
         )
         return success
 
+    def test_cleanup_power_user(self):
+        """Clean up test power user"""
+        if not self.power_user_email:
+            return True
+        success, response = self.run_test(
+            "Delete Test Power User",
+            "DELETE",
+            f"admin/power-users/{self.power_user_email}",
+            200
+        )
+        return success
+
+    def test_cleanup_release_note(self):
+        """Clean up test release note"""
+        if not self.release_note_id:
+            return True
+        success, response = self.run_test(
+            "Delete Test Release Note",
+            "DELETE",
+            f"admin/release-notes/{self.release_note_id}",
+            200
+        )
+        return success
+
     def run_all_tests(self):
         """Run all tests in sequence"""
-        self.log("🚀 Starting Sketchario V4 Feed/RSS and Queue API Tests")
+        self.log("🚀 Starting Sketchario V4 Complete API Tests")
         self.log("=" * 60)
 
         # Authentication
@@ -293,14 +510,32 @@ class SketcharioAPITester:
             self.log("❌ No social profiles found, stopping tests")
             return False
 
-        # Feed Tests
+        # Media Upload Tests
+        self.log("\n📁 Testing Media Upload APIs...")
+        self.test_media_upload()
+        self.test_media_library()
+        self.test_dalle_generation()
+
+        # Admin Console Tests
+        self.log("\n👑 Testing Admin Console APIs...")
+        self.test_get_power_users()
+        self.test_create_power_user()
+        self.test_create_release_note()
+        self.test_get_release_notes()
+
+        # Billing Tests
+        self.log("\n💳 Testing Billing APIs...")
+        self.test_get_billing_plans()
+        self.test_billing_checkout()
+
+        # Feed Tests (existing)
         self.log("\n📡 Testing Feed/RSS APIs...")
         self.test_add_feed()
         self.test_list_feeds()
         self.test_get_feed_items()
         self.test_generate_content_from_feed()
 
-        # Queue Tests
+        # Queue Tests (existing)
         self.log("\n📋 Testing Publish Queue APIs...")
         self.test_schedule_publish()
         self.test_get_publish_queue()
@@ -309,6 +544,8 @@ class SketcharioAPITester:
         # Cleanup
         self.log("\n🧹 Cleaning up...")
         self.test_cleanup_feed()
+        self.test_cleanup_power_user()
+        self.test_cleanup_release_note()
 
         # Results
         self.log("\n" + "=" * 60)

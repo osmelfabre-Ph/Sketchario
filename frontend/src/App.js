@@ -8,6 +8,8 @@ import Dashboard from './components/Dashboard';
 import Wizard from './components/Wizard';
 import ProjectView from './components/ProjectView';
 import Profile from './components/Profile';
+import AdminConsole from './components/AdminConsole';
+import Billing from './components/Billing';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -37,6 +39,10 @@ function AppContent() {
         return <ProjectView project={selectedProject} setActiveView={setActiveView} />;
       case 'profile':
         return <Profile />;
+      case 'admin':
+        return <AdminConsole />;
+      case 'billing':
+        return <Billing />;
       default:
         return <Dashboard setActiveView={setActiveView} setSelectedProject={setSelectedProject} />;
     }

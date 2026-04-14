@@ -5,13 +5,14 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os, logging, uuid, json, secrets
+import os, logging, uuid, json, secrets, base64, shutil
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 import bcrypt
 import jwt as pyjwt
 import feedparser
@@ -23,6 +24,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
+app.mount("/api/media/file", StaticFiles(directory="/app/backend/uploads"), name="uploads")
 api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
@@ -996,6 +998,236 @@ async def mark_published(content_id: str, request: Request):
     await db.contents.update_one({"id": content_id}, {"$set": {"status": "published"}})
     return {"ok": True}
 
+# ── MEDIA UPLOAD ──────────────────────────────────────
+UPLOAD_DIR = Path("/app/backend/uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+@api.post("/media/upload/{content_id}")
+async def upload_media(content_id: str, request: Request, file: UploadFile = File(...)):
+    user = await get_current_user(request)
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
+    allowed = {"jpg", "jpeg", "png", "webp", "gif", "mp4", "webm", "mov"}
+    if ext not in allowed:
+        raise HTTPException(400, f"Formato non supportato. Usa: {', '.join(allowed)}")
+    fname = f"{uuid.uuid4().hex}.{ext}"
+    fpath = UPLOAD_DIR / fname
+    with open(fpath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    media_url = f"/api/media/file/{fname}"
+    media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": file.filename, "url": media_url, "type": "image" if ext in {"jpg","jpeg","png","webp","gif"} else "video", "size": fpath.stat().st_size, "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
+    return media_doc
+
+@api.delete("/media/{content_id}/{media_id}")
+async def delete_media(content_id: str, media_id: str, request: Request):
+    await get_current_user(request)
+    content = await db.contents.find_one({"id": content_id})
+    if content:
+        media_list = content.get("media", [])
+        for m in media_list:
+            if m.get("id") == media_id:
+                fpath = UPLOAD_DIR / m.get("filename", "")
+                if fpath.exists():
+                    fpath.unlink()
+                break
+        await db.contents.update_one({"id": content_id}, {"$pull": {"media": {"id": media_id}}})
+    return {"ok": True}
+
+@api.get("/media/library/{project_id}")
+async def media_library(project_id: str, request: Request):
+    await get_current_user(request)
+    contents = await db.contents.find({"project_id": project_id, "media": {"$exists": True, "$ne": []}}, {"_id": 0, "id": 1, "hook_text": 1, "media": 1}).to_list(200)
+    all_media = []
+    for c in contents:
+        for m in c.get("media", []):
+            m["content_id"] = c["id"]
+            m["hook_text"] = c.get("hook_text", "")
+            all_media.append(m)
+    return all_media
+
+# ── DALL·E IMAGE GENERATION ───────────────────────────
+class DalleGenerateInput(BaseModel):
+    content_id: str
+    prompt: str
+    project_id: str
+
+@api.post("/media/generate-dalle")
+async def generate_dalle(inp: DalleGenerateInput, request: Request):
+    user = await get_current_user(request)
+    try:
+        from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration
+        image_gen = OpenAIImageGeneration(api_key=os.environ["EMERGENT_LLM_KEY"])
+        images = await image_gen.generate_images(prompt=inp.prompt, model="gpt-image-1", number_of_images=1)
+        if not images:
+            raise HTTPException(500, "Nessuna immagine generata")
+        fname = f"dalle_{uuid.uuid4().hex}.png"
+        fpath = UPLOAD_DIR / fname
+        with open(fpath, "wb") as f:
+            f.write(images[0])
+        media_url = f"/api/media/file/{fname}"
+        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"DALL-E: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "dalle", "size": len(images[0]), "created_at": datetime.now(timezone.utc).isoformat()}
+        await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
+        image_base64 = base64.b64encode(images[0]).decode('utf-8')
+        return {**media_doc, "image_base64": image_base64}
+    except Exception as e:
+        logger.error(f"DALL-E generation error: {e}")
+        raise HTTPException(500, f"Errore generazione immagine: {str(e)}")
+
+# ── ADMIN CONSOLE ─────────────────────────────────────
+class PowerUserInput(BaseModel):
+    email: str
+    plan: str = "strategist"
+    days: int = 30
+    notes: Optional[str] = ""
+
+class ReleaseNoteInput(BaseModel):
+    title: str
+    body: str
+    version: Optional[str] = ""
+
+@api.get("/admin/power-users")
+async def list_power_users(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    pus = await db.power_users.find({}, {"_id": 0}).to_list(100)
+    return pus
+
+@api.post("/admin/power-users")
+async def upsert_power_user(inp: PowerUserInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    email = inp.email.strip().lower()
+    expires = (datetime.now(timezone.utc) + timedelta(days=inp.days)).isoformat()
+    doc = {"email": email, "plan": inp.plan, "expires_at": expires, "notes": inp.notes, "active": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+    await db.power_users.update_one({"email": email}, {"$set": doc}, upsert=True)
+    target = await db.users.find_one({"email": email})
+    if target:
+        await db.users.update_one({"email": email}, {"$set": {"plan": inp.plan}})
+    return {"ok": True}
+
+@api.post("/admin/power-users/{email}/toggle")
+async def toggle_power_user(email: str, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    pu = await db.power_users.find_one({"email": email})
+    if pu:
+        await db.power_users.update_one({"email": email}, {"$set": {"active": not pu.get("active", True)}})
+    return {"ok": True}
+
+@api.delete("/admin/power-users/{email}")
+async def delete_power_user(email: str, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    await db.power_users.delete_one({"email": email})
+    return {"ok": True}
+
+# Release Notes
+@api.get("/release-notes")
+async def get_release_notes(request: Request):
+    await get_current_user(request)
+    notes = await db.release_notes.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return notes
+
+@api.post("/admin/release-notes")
+async def create_release_note(inp: ReleaseNoteInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    doc = {"id": str(uuid.uuid4()), "title": inp.title, "body": inp.body, "version": inp.version, "author": user.get("name", "Admin"), "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.release_notes.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/admin/release-notes/{note_id}")
+async def delete_release_note(note_id: str, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    await db.release_notes.delete_one({"id": note_id})
+    return {"ok": True}
+
+# ── STRIPE BILLING ────────────────────────────────────
+PLANS = {
+    "creator": {"name": "Creator", "amount": 19.00, "currency": "eur"},
+    "strategist": {"name": "Strategist", "amount": 49.00, "currency": "eur"},
+}
+
+class CheckoutInput(BaseModel):
+    plan_id: str
+    origin_url: str
+
+@api.post("/billing/checkout")
+async def create_checkout(inp: CheckoutInput, request: Request):
+    user = await get_current_user(request)
+    if inp.plan_id not in PLANS:
+        raise HTTPException(400, "Piano non valido")
+    plan = PLANS[inp.plan_id]
+    try:
+        from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+        api_key = os.environ.get("STRIPE_API_KEY", "")
+        webhook_url = f"{os.environ.get('FRONTEND_URL', inp.origin_url)}/api/webhook/stripe"
+        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+        success_url = f"{inp.origin_url}?billing=success&session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = f"{inp.origin_url}?billing=cancelled"
+        req = CheckoutSessionRequest(amount=plan["amount"], currency=plan["currency"], success_url=success_url, cancel_url=cancel_url, metadata={"user_id": user["_id"], "email": user.get("email", ""), "plan_id": inp.plan_id})
+        session = await stripe_checkout.create_checkout_session(req)
+        await db.payment_transactions.insert_one({
+            "session_id": session.session_id, "user_id": user["_id"], "email": user.get("email", ""),
+            "plan_id": inp.plan_id, "amount": plan["amount"], "currency": plan["currency"],
+            "payment_status": "pending", "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        return {"url": session.url, "session_id": session.session_id}
+    except Exception as e:
+        logger.error(f"Stripe checkout error: {e}")
+        raise HTTPException(500, f"Errore checkout: {str(e)}")
+
+@api.get("/billing/status/{session_id}")
+async def checkout_status(session_id: str, request: Request):
+    user = await get_current_user(request)
+    try:
+        from emergentintegrations.payments.stripe.checkout import StripeCheckout
+        api_key = os.environ.get("STRIPE_API_KEY", "")
+        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
+        status = await stripe_checkout.get_checkout_status(session_id)
+        tx = await db.payment_transactions.find_one({"session_id": session_id})
+        if tx and tx.get("payment_status") != "paid" and status.payment_status == "paid":
+            plan_id = tx.get("plan_id", "")
+            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
+            await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"plan": plan_id}})
+        elif tx and status.payment_status != "paid":
+            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": status.payment_status}})
+        return {"status": status.status, "payment_status": status.payment_status, "amount_total": status.amount_total, "currency": status.currency}
+    except Exception as e:
+        logger.error(f"Stripe status error: {e}")
+        raise HTTPException(500, f"Errore stato pagamento: {str(e)}")
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        from emergentintegrations.payments.stripe.checkout import StripeCheckout
+        api_key = os.environ.get("STRIPE_API_KEY", "")
+        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
+        event = await stripe_checkout.handle_webhook(body, sig)
+        if event.payment_status == "paid":
+            tx = await db.payment_transactions.find_one({"session_id": event.session_id})
+            if tx and tx.get("payment_status") != "paid":
+                await db.payment_transactions.update_one({"session_id": event.session_id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
+                await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return {"ok": False}
+
+@api.get("/billing/plans")
+async def get_plans(request: Request):
+    return [{"id": k, "name": v["name"], "amount": v["amount"], "currency": v["currency"]} for k, v in PLANS.items()]
+
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/json")
 async def export_json(project_id: str, request: Request):
@@ -1037,6 +1269,9 @@ async def startup():
     await db.feeds.create_index("project_id")
     await db.feed_cache.create_index("feed_id")
     await db.publish_queue.create_index([("project_id", 1), ("scheduled_at", 1)])
+    await db.power_users.create_index("email", unique=True)
+    await db.release_notes.create_index("created_at")
+    await db.payment_transactions.create_index("session_id")
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sketchario.app")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Sketchario2026!")
