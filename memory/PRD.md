@@ -24,200 +24,79 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - Tone of Voice configuration
 - Brand Kit management
 - Profile management with delete account
+- Full mobile responsiveness
+- Dual Feed Strips (RSS + AI-generated)
 
-## What's Been Implemented (Jan 14, 2026)
+## What's Been Implemented
 
-### Iteration 1 — MVP Core
-- ✅ JWT Auth (register, login, logout, me, refresh)
-- ✅ Admin seeding on startup
-- ✅ Brute force protection
+### Iteration 1-9 — Full MVP
+- ✅ JWT Auth (register, login, logout, me, refresh, forgot password)
+- ✅ Admin seeding, Brute force protection
 - ✅ Dashboard with stats + projects grid
-- ✅ Project CRUD (create, list, get, delete, archive)
+- ✅ Project CRUD + archive/unarchive + cover images
 - ✅ Wizard (5 steps: Brief → Personas → ToV → Hooks → Contents)
-- ✅ AI Personas generation (Gemini 3 Flash)
-- ✅ AI Hooks generation with objective distribution
-- ✅ AI Content generation (script + caption + hashtags)
-- ✅ Tone of Voice editor (presets + sliders + custom instructions)
-- ✅ Project View (calendar, content list, personas, ToV tabs)
-- ✅ Content detail modal with editing
-- ✅ Profile page (edit name, sector, change password, delete account)
-- ✅ Dark theme design with gradient buttons and colored stat icons
-- ✅ Official Sketchario logos integrated
-- ✅ Brand Kit save/get endpoints
-- ✅ Export JSON endpoint
-- ✅ Testing: 92% backend, 90% frontend
+- ✅ AI Generation (Personas, Hooks, Content via Gemini 3 Flash)
+- ✅ Content Detail: 3-column overlay modal (Social/Editor/Preview)
+- ✅ Content Regeneration/Conversion with Global Prompting
+- ✅ Social Profiles: OAuth + Manual + Project linking
+- ✅ Feed/RSS: Google News, auto-refresh
+- ✅ Publishing Queue with scheduling
+- ✅ Media: Upload, DALL-E, Canva, PostNitro Embed SDK, Drive, Dropbox, OneDrive
+- ✅ Stripe Billing: Free/Creator/Strategist plans
+- ✅ Admin Console + Release Notes
+- ✅ Team Collaboration (invite/accept/remove)
+- ✅ Onboarding Tour
+- ✅ Notifications system
+- ✅ Export CSV/JSON
+- ✅ ToV Library (personal templates)
+- ✅ Plan Gating
+- ✅ Email SMTP via Aruba
 
-### Backend Endpoints
-- Auth: /api/auth/{register,login,logout,me,refresh}
+### Iteration 10 — Mobile Responsiveness + Dual Feed Strips (Jan 14, 2026)
+- ✅ **Full Mobile Responsiveness**:
+  - Dashboard: Stats stack, single-column projects, responsive header
+  - ProjectView: Compact header, scrollable tabs, single-column cards, hidden right panel with drawer toggle
+  - ContentDetail: Fullscreen on mobile with tabbed interface (Editor/Social/Anteprima)
+  - Sidebar: Context-aware bottom navigation bar (dashboard items vs project items)
+  - Footer: Responsive with stacked links on mobile
+- ✅ **Dual Feed Strips**:
+  - Strip 1: Google News + Reddit RSS based on project sector (auto-added on project creation)
+  - Strip 2: 5 AI-generated content ideas with format badges and trend tags
+  - Both auto-refresh every 10 minutes
+  - Refresh/Rigenera buttons for manual refresh
+- ✅ **Backend**: POST /api/feeds/ai-suggestions/{project_id} with 10-minute cache
+- ✅ **Backend**: POST /api/feeds/ai-suggestions/{project_id}/refresh to force regeneration
+- ✅ Testing: Backend 100% (13/13), Frontend 95%
+
+### Backend Endpoints (Key)
+- Auth: /api/auth/{register,login,logout,me,refresh,forgot-password,reset-password}
 - Profile: /api/profile, /api/profile/change-password, /api/profile/delete-account
-- Projects: /api/projects CRUD + archive/unarchive
+- Projects: /api/projects CRUD + archive/unarchive + cover upload
 - Personas: /api/personas/{generate,save,get}
 - Hooks: /api/hooks/{generate,save,get,update}
-- Content: /api/content/{generate,create-post}, /api/contents/{get,update,delete}
+- Content: /api/content/{generate,create-post}, /api/contents/{get,update,delete,regenerate,convert}
 - ToV: /api/tov/{save,get}
-- Brand Kit: /api/brand-kit/{save,get}
-- Export: /api/export/{project_id}/json
-
-### Iteration 2 — Nuovo Post + Social (Jan 14, 2026)
-- ✅ "Nuovo Post" button in Project View header
-- ✅ New Post modal: hook input, Reel/Carousel format, Da zero/Con AI modes
-- ✅ Manual post creation (Da zero) creates empty post
-- ✅ AI post creation (Con AI) generates script+caption+hashtags via Gemini
-- ✅ Content delete button in detail modal
-- ✅ Social Profiles tab (5 platforms: Instagram, Facebook, LinkedIn, TikTok, Pinterest)
-- ✅ OAuth connect URLs configured for all platforms (callbacks → sketchario.app)
-- ✅ Manual profile add (name-based, no OAuth required)
-- ✅ Project-social linking (toggle link/unlink per profile)
-- ✅ All social API keys loaded from config.secrets.php
-- ✅ Auth made more robust with interceptors + auto-refresh
-- ✅ Backend: 100% tests passed (20/20)
-
-### Iteration 3 — Feed/RSS + Publishing Queue (Jan 14, 2026)
-- ✅ Feed/RSS: add RSS feeds, fetch and cache articles, display with titles/summaries
-- ✅ AI content generation from feed items (Gemini 3 Flash)
-- ✅ Feed refresh with cache invalidation
-- ✅ Publishing Queue: schedule content to social profiles with date/time
-- ✅ Queue view with status filters (queued/processing/published/failed)
-- ✅ Cancel scheduled items from queue
-- ✅ Schedule modal with social profile multi-select
-- ✅ Content status badges (draft/scheduled/published) in list view
-- ✅ Backend: 100% tests passed (12/12)
-
-### Iteration 4 — Media, DALL-E, Admin, Stripe (Jan 14, 2026)
-- ✅ Media upload: file upload to content (jpg, png, webp, gif, mp4, webm, mov)
-- ✅ Media delete from content
-- ✅ Media library: browse all media across project
-- ✅ DALL-E image generation (GPT Image 1 via Emergent LLM key)
-- ✅ Upload + DALL-E buttons in content detail modal
-- ✅ Admin Console: Power Users CRUD (add, toggle, delete)
-- ✅ Release Notes: create, list, delete (admin only)
-- ✅ Stripe Billing: checkout sessions for Creator (19EUR) and Strategist (49EUR)
-- ✅ Payment status polling + webhook handler
-- ✅ Billing page with 3 plan cards and "Popolare" badge
-- ✅ Sidebar updated with Piani + Admin (admin only)
-- ✅ Backend: 100% (23/23), Frontend: 100%
-
-### Iteration 5 — Canva, Export CSV, ToV Library, Gating (Jan 14, 2026)
-- ✅ Canva integration: OAuth URL generation, import endpoint (funzionera su sketchario.app)
-- ✅ Canva button nel content detail modal accanto a Upload e DALL-E
-- ✅ Export CSV: download CSV di tutti i contenuti del progetto
-- ✅ CSV button nell'header del Project View
-- ✅ ToV Library: CRUD template personali (crea, lista, applica a progetto, elimina)
-- ✅ ToV Library tab nel Project View con "Salva ToV attuale" e "Applica al progetto"
-- ✅ Plan Gating: Free (1 progetto, 7 contenuti), Creator (5/30), Strategist (illimitati)
-- ✅ Gating applicato a: creazione progetto, creazione contenuto, pubblicazione, export CSV
-- ✅ Power Users override per bypass limiti temporanei
-- ✅ GET /api/plan/limits endpoint per mostrare limiti + utilizzo
-- ✅ Backend: 96.7% (30/31 - unico fail: test Canva import con URL fittizio)
-- ✅ Token duration esteso a 24h per sessioni stabili
-
-### Iteration 6 — Drive, Forgot PW, Notifications, Analytics, Responsive (Jan 14, 2026)
-- ✅ Google Drive import endpoint (POST /api/media/import-drive)
-- ✅ Forgot Password: token generation, reset link, password update
-- ✅ "Password dimenticata?" link nell'auth screen
-- ✅ Reset password modal con token da URL
-- ✅ In-app Notifications: campanella con badge unread, mark-read
-- ✅ Notifications view con release notes lette/non lette
-- ✅ Content Analytics Dashboard: stats per formato/pillar/stato/queue
-- ✅ Barra completamento campagna animata
-- ✅ Analytics per piattaforma nella queue
-- ✅ Full Responsive Design:
-  - Mobile (< 768px): bottom navigation, stats impilati, form full-width
-  - Tablet (< 1024px): sidebar collassata a icone, griglia 2 colonne
-  - Desktop: layout completo con sidebar espansa
-- ✅ Backend: 94.6% (35/37 - fail solo Drive/Canva con URL fittizi)
-- ✅ Frontend: 100%
-
-### Iteration 7 — Onboarding, Team, Dropbox/OneDrive, PostNitro (Jan 14, 2026)
-- ✅ Onboarding Tour: 5-step guided wizard per nuovi utenti con progress dots e skip
-- ✅ Mostra solo per utenti che non hanno completato l'onboarding
-- ✅ Team Collaboration: invita editor/viewer ai progetti, accetta inviti, rimuovi membri
-- ✅ Owner badge, ruoli editor/viewer con icone
-- ✅ TeamPanel integrato nel tab Social del Project View
-- ✅ GET /api/team/my-invites per inviti ricevuti (fix route ordering)
-- ✅ Dropbox import endpoint (POST /api/media/import-cloud source=dropbox)
-- ✅ OneDrive import endpoint (POST /api/media/import-cloud source=onedrive)
-- ✅ PostNitro stub: endpoint status con "In arrivo"
-- ✅ Content detail: 6 bottoni media (Upload, DALL-E, Canva, Drive, Dropbox, OneDrive)
-- ✅ Backend: 42/47 (import test fail con URL fittizi = comportamento atteso)
-
-### Iteration 8 — PostNitro Integration (Jan 14, 2026)
-- ✅ PostNitro Embed API fully integrated (AI generation + manual import)
-- ✅ Backend: /api/postnitro/generate (AI text mode + import slide mode)
-- ✅ Backend: /api/postnitro/status/{id} (poll job status)
-- ✅ Backend: /api/postnitro/output/{id} (download slide PNGs + auto-attach to content)
-- ✅ Frontend: PostNitro button in content detail modal (7th media option)
-- ✅ Smart UX: checks config status first, shows setup instructions if templateId missing
-- ✅ Polling mechanism: auto-checks status and imports slides when complete
-- ✅ Config: requires POSTNITRO_TEMPLATE_ID and POSTNITRO_BRAND_ID from user's PostNitro account
-- ✅ API key configured: pn-a0hccp9db8wjaecxqgcfbg99
-
-### NOTA PostNitro — Configurazione Finale:
-- ✅ API Key: pn-a0hccp9db8wjaecxqgcfbg99
-- ✅ Brand ID: 24513e35-95ee-46ed-b8e6-f8608a51d9ab
-- ✅ Embed SDK (@postnitro/embed) installato e integrato
-- ✅ Editor visuale si apre al click del pulsante PostNitro
-- ✅ Slide esportate vengono auto-importate nel contenuto
-- Backend API endpoints mantenuti per future generazioni automatiche (serve presetId + templateId)
-
-### Iteration 9 — Project Cover, Content Regen/Convert, Email SMTP, Global Prompting (Jan 14, 2026)
-- ✅ Project cover image upload: ogni card progetto ha "Aggiungi copertina" + sostituzione
-- ✅ Cover visualizzata nella card con overlay per cambiarla
-- ✅ Content Regeneration: bottone "Rigenera" nel content detail riscrive script/caption/hashtag con AI
-- ✅ Content Conversion: bottone "→ Carousel" o "→ Reel" converte formato con slide numerate
-- ✅ Global Prompting integrato in TUTTE le generazioni AI (hook rules, carousel structure, reel structure)
-- ✅ Email SMTP via Aruba (smtps.aruba.it:465) per forgot password con template HTML branded
-- ✅ Email sent: True confermato nei test
-- ✅ Backend: 90% (45/50 - fail solo su PostNitro preset e cloud imports con URL fittizi)
-
-### Iteration 10 — Content Detail Redesign, Project Covers (Jan 14, 2026)
-- ✅ Content Detail completamente ridisegnato come pagina full-screen a 3 colonne:
-  - Sinistra: social collegati al progetto
-  - Centro: editor (script, caption, hashtag come pill, area media upload/attach)
-  - Destra: anteprima post per piattaforma con filtro
-  - Bottom bar: Stato, Salva bozza, Pubblica, Programma
-- ✅ Bottoni Copia tutto, Converti in Carousel/Reel, Rigenera + icone editor (DALL-E, Canva, PostNitro)
-- ✅ Programmazione inline con selezione data/ora/profili social
-- ✅ Pubblicazione diretta con un click
-- ✅ Calendario mostra solo contenuti scheduled/published (non bozze)
-- ✅ Project covers: upload immagine locale per personalizzare ogni card progetto
-- ✅ Fix bug editHashtags.split per valori non-stringa
-
-### Iteration 11 — Major UI Restructure (Jan 14, 2026)
-- ✅ Sidebar collassabile con freccia toggle
-- ✅ Sidebar: rimosso Piani e Ingranaggio, profilo cliccabile in basso
-- ✅ Sezione PROGETTO nella sidebar (sfondo più chiaro) con Calendario, Personas, Social
-- ✅ ToV Library integrata dentro tab Personas
-- ✅ Vista "Tutti" a CARDS (griglia 3 colonne) con media preview, badge formato/stato
-- ✅ Feed strip orizzontale sopra footer con 5 card RSS in tema col progetto + auto-refresh 10 min
-- ✅ Right panel con Queue + Analytics, divisore trascinabile per allargare/restringere
-- ✅ Calendario drag & drop per riordinare contenuti
-- ✅ Fix eliminazione progetto (error handling migliorato)
-- ✅ Fix sidebar da position:fixed a flex layout
+- ToV Library: /api/tov-library CRUD + apply
+- Feed: /api/feeds/{add,list,items,refresh,generate-content,ai-suggestions}
+- Publish: /api/publish/{schedule,mark-published,queue}
+- Media: /api/media/{upload,delete,generate-dalle,import-drive,import-cloud}
+- Social: /api/social/{platforms,profiles,project/link}
+- Billing: /api/billing/{plans,checkout,status}
+- Admin: /api/admin/{power-users,release-notes}
+- Analytics: /api/analytics/{project_id}
+- Export: /api/export/{project_id}/{json,csv}
 
 ## Prioritized Backlog
 
 ### P0 — Next Priority
-- Manual post creation (Da zero + Con AI) in Project View
-- Content CSV export
-- RSS/Feed integration for content inspiration
+- Deploy to sketchario.app (unblocks Social OAuth callbacks)
+- Integrate Legal Pages (user to provide ../legal/ documents)
 
 ### P1 — Phase 2
-- Media upload and gallery
-- Social OAuth connections (Instagram, Facebook, LinkedIn, TikTok, Pinterest)
-- Publishing queue and scheduling
-- Stripe billing integration
+- Refactor server.py into modular routers (auth, projects, social, media, billing)
+- PostNitro automated API generation (awaiting presetId from user)
 
 ### P2 — Phase 3
-- Canva integration
-- DALL-E image generation
-- Google Drive import
-- Admin console + Release notes
-- ToV Library (personal templates)
-- RSS/Feed auto-refresh
-
-## Next Tasks
-1. Add "Nuovo Post" button in Project View
-2. Implement CSV export
-3. Add social OAuth integration (requires user API keys)
-4. Add Stripe billing
+- Advanced analytics with engagement metrics
+- Content A/B testing
+- Multi-language support
