@@ -11,11 +11,21 @@ import Profile from './components/Profile';
 import AdminConsole from './components/AdminConsole';
 import Billing from './components/Billing';
 import Notifications from './components/Notifications';
+import OnboardingTour from './components/OnboardingTour';
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, api } = useAuth();
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedProject, setSelectedProject] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useState(() => {
+    if (user && api) {
+      api.get('/onboarding/status').then(r => {
+        if (!r.data.completed) setShowOnboarding(true);
+      }).catch(() => {});
+    }
+  });
 
   if (loading) {
     return (
@@ -55,6 +65,7 @@ function AppContent() {
     <div className="main-layout">
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
       <main className="main-content">{renderView()}</main>
+      {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
     </div>
   );
 }

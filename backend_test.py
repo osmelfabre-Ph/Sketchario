@@ -573,6 +573,163 @@ class SketcharioAPITester:
             return True
         return False
 
+    # ── ITERATION 7 NEW FEATURES ──
+    def test_onboarding_status(self):
+        """Test GET /api/onboarding/status"""
+        success, response = self.run_test(
+            "Get Onboarding Status",
+            "GET",
+            "onboarding/status",
+            200
+        )
+        if success and 'completed' in response and 'current_step' in response:
+            self.log(f"✅ Onboarding status - Completed: {response['completed']}, Step: {response['current_step']}")
+            return True
+        return False
+
+    def test_onboarding_complete_step(self):
+        """Test POST /api/onboarding/complete-step"""
+        success, response = self.run_test(
+            "Complete Onboarding Step",
+            "POST",
+            "onboarding/complete-step",
+            200,
+            data={"step": 1}
+        )
+        if success and response.get('ok'):
+            self.log("✅ Onboarding step completed successfully")
+            return True
+        return False
+
+    def test_onboarding_skip(self):
+        """Test POST /api/onboarding/skip"""
+        success, response = self.run_test(
+            "Skip Onboarding",
+            "POST",
+            "onboarding/skip",
+            200
+        )
+        if success and response.get('ok'):
+            self.log("✅ Onboarding skipped successfully")
+            return True
+        return False
+
+    def test_team_invite(self):
+        """Test POST /api/team/invite"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Invite Team Member",
+            "POST",
+            "team/invite",
+            200,
+            data={
+                "project_id": self.project_id,
+                "email": "mario@test.com",
+                "role": "editor"
+            }
+        )
+        if success and response.get('ok'):
+            self.log("✅ Team member invited successfully")
+            return True
+        return False
+
+    def test_team_list(self):
+        """Test GET /api/team/{project_id}"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "List Team Members",
+            "GET",
+            f"team/{self.project_id}",
+            200
+        )
+        if success and 'owner' in response and 'members' in response:
+            self.log(f"✅ Team data - Owner: {response['owner']}, Members: {len(response['members'])}")
+            return True
+        return False
+
+    def test_team_my_invites(self):
+        """Test GET /api/team/my-invites"""
+        success, response = self.run_test(
+            "Get My Team Invites",
+            "GET",
+            "team/my-invites",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} pending invites")
+            return True
+        return False
+
+    def test_team_remove_member(self):
+        """Test DELETE /api/team/{project_id}/{email}"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Remove Team Member",
+            "DELETE",
+            f"team/{self.project_id}/mario@test.com",
+            200
+        )
+        if success and response.get('ok'):
+            self.log("✅ Team member removed successfully")
+            return True
+        return False
+
+    def test_media_import_cloud_dropbox(self):
+        """Test POST /api/media/import-cloud for Dropbox"""
+        if not self.content_id:
+            return False
+        success, response = self.run_test(
+            "Import from Dropbox",
+            "POST",
+            "media/import-cloud",
+            200,
+            data={
+                "content_id": self.content_id,
+                "file_url": "https://via.placeholder.com/300x300.png",
+                "source": "dropbox"
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ Dropbox file imported with ID: {response['id']}")
+            return True
+        return False
+
+    def test_media_import_cloud_onedrive(self):
+        """Test POST /api/media/import-cloud for OneDrive"""
+        if not self.content_id:
+            return False
+        success, response = self.run_test(
+            "Import from OneDrive",
+            "POST",
+            "media/import-cloud",
+            200,
+            data={
+                "content_id": self.content_id,
+                "file_url": "https://via.placeholder.com/300x300.png",
+                "source": "onedrive"
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ OneDrive file imported with ID: {response['id']}")
+            return True
+        return False
+
+    def test_postnitro_status(self):
+        """Test GET /api/postnitro/status"""
+        success, response = self.run_test(
+            "Get PostNitro Status",
+            "GET",
+            "postnitro/status",
+            200
+        )
+        if success and 'available' in response and 'message' in response:
+            self.log(f"✅ PostNitro status - Available: {response['available']}, Message: {response['message']}")
+            return True
+        return False
+
     # ── ITERATION 6 NEW FEATURES ──
     def test_forgot_password(self):
         """Test POST /api/auth/forgot-password"""
@@ -765,7 +922,14 @@ class SketcharioAPITester:
             self.log("❌ Authentication failed, stopping tests")
             return False
 
-        # Test Iteration 6 New Features First
+        # Test Iteration 7 New Features First
+        self.log("\n🆕 Testing Iteration 7 New Features...")
+        self.test_onboarding_status()
+        self.test_onboarding_complete_step()
+        self.test_onboarding_skip()
+        self.test_postnitro_status()
+
+        # Test Iteration 6 New Features
         self.log("\n🆕 Testing Iteration 6 New Features...")
         self.test_forgot_password()
         self.test_reset_password()
@@ -788,6 +952,18 @@ class SketcharioAPITester:
         # Test analytics and Google Drive import (need project/content IDs)
         self.test_analytics_endpoint()
         self.test_google_drive_import()
+
+        # Test Iteration 7 Team Collaboration (need project ID)
+        self.log("\n👥 Testing Team Collaboration APIs...")
+        self.test_team_invite()
+        self.test_team_list()
+        self.test_team_my_invites()
+        self.test_team_remove_member()
+
+        # Test Iteration 7 Cloud Import (need content ID)
+        self.log("\n☁️ Testing Cloud Import APIs...")
+        self.test_media_import_cloud_dropbox()
+        self.test_media_import_cloud_onedrive()
 
         # Media Upload Tests
         self.log("\n📁 Testing Media Upload APIs...")

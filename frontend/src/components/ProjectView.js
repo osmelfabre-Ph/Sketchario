@@ -9,6 +9,7 @@ import {
   BookOpen, Download, CanvaLogo, ChartBar
 } from '@phosphor-icons/react';
 import Analytics from './Analytics';
+import TeamPanel from './TeamPanel';
 
 const TABS = [
   { id: 'calendar', label: 'Calendario', icon: CalendarBlank },
@@ -705,6 +706,11 @@ export default function ProjectView({ project, setActiveView }) {
               </div>
             </div>
           )}
+
+          {/* Team Collaboration */}
+          <div className="card mt-6">
+            <TeamPanel projectId={project.id} />
+          </div>
         </div>
       )}
 
@@ -960,6 +966,42 @@ export default function ProjectView({ project, setActiveView }) {
                     {/* Canva */}
                     <button className="btn-ghost text-xs py-1.5 px-3" onClick={openCanva} data-testid="canva-btn">
                       <Palette size={14} /> Canva
+                    </button>
+                    {/* Google Drive */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={async () => {
+                      const url = window.prompt('URL diretto del file da Google Drive:');
+                      if (!url) return;
+                      try {
+                        const { data } = await api.post('/media/import-drive', { content_id: selectedContent.id, file_url: url });
+                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
+                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
+                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      <Download size={14} /> Drive
+                    </button>
+                    {/* Dropbox */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={async () => {
+                      const url = window.prompt('URL diretto del file da Dropbox:');
+                      if (!url) return;
+                      try {
+                        const { data } = await api.post('/media/import-cloud', { content_id: selectedContent.id, file_url: url, source: 'dropbox' });
+                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
+                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
+                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      <Download size={14} /> Dropbox
+                    </button>
+                    {/* OneDrive */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={async () => {
+                      const url = window.prompt('URL diretto del file da OneDrive:');
+                      if (!url) return;
+                      try {
+                        const { data } = await api.post('/media/import-cloud', { content_id: selectedContent.id, file_url: url, source: 'onedrive' });
+                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
+                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
+                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      <Download size={14} /> OneDrive
                     </button>
                   </div>
                 </div>

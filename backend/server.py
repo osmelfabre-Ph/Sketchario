@@ -1524,6 +1524,154 @@ async def global_analytics(request: Request):
     queued = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "queued"})
     return {"projects": projects, "total_contents": contents, "published": published, "queued": queued}
 
+# ── ONBOARDING ────────────────────────────────────────
+@api.get("/onboarding/status")
+async def onboarding_status(request: Request):
+    user = await get_current_user(request)
+    ob = await db.onboarding.find_one({"user_id": user["_id"]}, {"_id": 0})
+    if not ob:
+        return {"completed": False, "current_step": 0, "steps_done": []}
+    return ob
+
+@api.post("/onboarding/complete-step")
+async def complete_onboarding_step(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    step = body.get("step", 0)
+    ob = await db.onboarding.find_one({"user_id": user["_id"]})
+    steps_done = ob.get("steps_done", []) if ob else []
+    if step not in steps_done:
+        steps_done.append(step)
+    completed = len(steps_done) >= 5
+    await db.onboarding.update_one(
+        {"user_id": user["_id"]},
+        {"$set": {"user_id": user["_id"], "current_step": step + 1, "steps_done": steps_done, "completed": completed, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"current_step": step + 1, "steps_done": steps_done, "completed": completed}
+
+@api.post("/onboarding/skip")
+async def skip_onboarding(request: Request):
+    user = await get_current_user(request)
+    await db.onboarding.update_one(
+        {"user_id": user["_id"]},
+        {"$set": {"user_id": user["_id"], "completed": True, "skipped": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"ok": True}
+
+# ── TEAM COLLABORATION ────────────────────────────────
+class TeamInviteInput(BaseModel):
+    project_id: str
+    email: str
+    role: str = "editor"
+
+@api.get("/team/{project_id}")
+async def list_team(project_id: str, request: Request):
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(404, "Progetto non trovato")
+    if project["user_id"] != user["_id"]:
+        collab = await db.team_members.find_one({"project_id": project_id, "email": user.get("email")})
+        if not collab:
+            raise HTTPException(403, "Accesso negato")
+    members = await db.team_members.find({"project_id": project_id}, {"_id": 0}).to_list(50)
+    owner = await db.users.find_one({"_id": ObjectId(project["user_id"])}, {"_id": 0, "password_hash": 0})
+    if owner:
+        owner["_id"] = str(owner.get("_id", ""))
+    return {"owner": user_response(owner) if owner else None, "members": members}
+
+@api.post("/team/invite")
+async def invite_team_member(inp: TeamInviteInput, request: Request):
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
+    if not project:
+        raise HTTPException(403, "Solo il proprietario puo invitare")
+    if inp.role not in ("editor", "viewer"):
+        raise HTTPException(400, "Ruolo non valido. Usa 'editor' o 'viewer'")
+    existing = await db.team_members.find_one({"project_id": inp.project_id, "email": inp.email.lower()})
+    if existing:
+        await db.team_members.update_one({"project_id": inp.project_id, "email": inp.email.lower()}, {"$set": {"role": inp.role}})
+        return {"ok": True, "updated": True}
+    doc = {
+        "id": str(uuid.uuid4()), "project_id": inp.project_id, "email": inp.email.strip().lower(),
+        "role": inp.role, "status": "pending", "invited_by": user["_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.team_members.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.post("/team/accept/{invite_id}")
+async def accept_invite(invite_id: str, request: Request):
+    user = await get_current_user(request)
+    invite = await db.team_members.find_one({"id": invite_id, "email": user.get("email", "").lower()})
+    if not invite:
+        raise HTTPException(404, "Invito non trovato")
+    await db.team_members.update_one({"id": invite_id}, {"$set": {"status": "accepted", "user_id": user["_id"]}})
+    return {"ok": True}
+
+@api.delete("/team/{project_id}/{member_email}")
+async def remove_team_member(project_id: str, member_email: str, request: Request):
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
+    if not project:
+        raise HTTPException(403, "Solo il proprietario puo rimuovere")
+    await db.team_members.delete_one({"project_id": project_id, "email": member_email.lower()})
+    return {"ok": True}
+
+@api.get("/team/my-invites")
+async def my_invites(request: Request):
+    user = await get_current_user(request)
+    invites = await db.team_members.find({"email": user.get("email", "").lower(), "status": "pending"}, {"_id": 0}).to_list(20)
+    for inv in invites:
+        project = await db.projects.find_one({"_id": ObjectId(inv["project_id"])}, {"_id": 0, "name": 1, "sector": 1})
+        inv["project_name"] = project.get("name", "") if project else ""
+    return invites
+
+# ── DROPBOX / ONEDRIVE IMPORT ─────────────────────────
+class CloudImportInput(BaseModel):
+    content_id: str
+    file_url: str
+    source: str = "dropbox"
+
+@api.post("/media/import-cloud")
+async def import_from_cloud(inp: CloudImportInput, request: Request):
+    user = await get_current_user(request)
+    if inp.source not in ("dropbox", "onedrive"):
+        raise HTTPException(400, "Source non supportato. Usa 'dropbox' o 'onedrive'")
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
+            resp = await hc.get(inp.file_url)
+            if resp.status_code != 200:
+                raise HTTPException(400, f"Impossibile scaricare da {inp.source}")
+            ct = resp.headers.get("content-type", "")
+            ext = "jpg"
+            if "png" in ct: ext = "png"
+            elif "webp" in ct: ext = "webp"
+            elif "gif" in ct: ext = "gif"
+            elif "mp4" in ct or "video" in ct: ext = "mp4"
+            fname = f"{inp.source}_{uuid.uuid4().hex}.{ext}"
+            fpath = UPLOAD_DIR / fname
+            with open(fpath, "wb") as f:
+                f.write(resp.content)
+            media_url = f"/api/media/file/{fname}"
+            ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
+            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"{inp.source.title()} Import", "url": media_url, "type": ftype, "source": inp.source, "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
+            await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
+            return media_doc
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore import {inp.source}: {str(e)}")
+
+# ── POSTNITRO (STUB) ─────────────────────────────────
+@api.get("/postnitro/status")
+async def postnitro_status(request: Request):
+    await get_current_user(request)
+    return {"available": False, "message": "PostNitro integration in arrivo. SDK in fase di stabilizzazione."}
+
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/csv")
 async def export_csv(project_id: str, request: Request):
@@ -1585,6 +1733,8 @@ async def startup():
     await db.password_reset_tokens.create_index("token")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.release_note_reads.create_index([("user_id", 1), ("note_id", 1)])
+    await db.onboarding.create_index("user_id", unique=True)
+    await db.team_members.create_index([("project_id", 1), ("email", 1)])
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sketchario.app")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Sketchario2026!")
