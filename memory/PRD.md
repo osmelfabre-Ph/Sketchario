@@ -141,6 +141,23 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Content detail: 6 bottoni media (Upload, DALL-E, Canva, Drive, Dropbox, OneDrive)
 - ✅ Backend: 42/47 (import test fail con URL fittizi = comportamento atteso)
 
+### Iteration 8 — PostNitro Integration (Jan 14, 2026)
+- ✅ PostNitro Embed API fully integrated (AI generation + manual import)
+- ✅ Backend: /api/postnitro/generate (AI text mode + import slide mode)
+- ✅ Backend: /api/postnitro/status/{id} (poll job status)
+- ✅ Backend: /api/postnitro/output/{id} (download slide PNGs + auto-attach to content)
+- ✅ Frontend: PostNitro button in content detail modal (7th media option)
+- ✅ Smart UX: checks config status first, shows setup instructions if templateId missing
+- ✅ Polling mechanism: auto-checks status and imports slides when complete
+- ✅ Config: requires POSTNITRO_TEMPLATE_ID and POSTNITRO_BRAND_ID from user's PostNitro account
+- ✅ API key configured: pn-a0hccp9db8wjaecxqgcfbg99
+
+### NOTA: Per attivare PostNitro completamente:
+1. Accedi a PostNitro.ai
+2. Vai nella sezione Embed
+3. Copia Template ID e Brand ID
+4. Inserisci in backend/.env: POSTNITRO_TEMPLATE_ID="..." e POSTNITRO_BRAND_ID="..."
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority

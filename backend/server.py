@@ -1672,6 +1672,8 @@ async def import_from_cloud(inp: CloudImportInput, request: Request):
 # ── POSTNITRO INTEGRATION ─────────────────────────────
 POSTNITRO_API_URL = "https://embed-api.postnitro.ai"
 POSTNITRO_API_KEY = os.environ.get("POSTNITRO_API_KEY", "")
+POSTNITRO_TEMPLATE_ID = os.environ.get("POSTNITRO_TEMPLATE_ID", "")
+POSTNITRO_BRAND_ID = os.environ.get("POSTNITRO_BRAND_ID", "")
 
 class PostNitroGenerateInput(BaseModel):
     content_id: str
@@ -1682,13 +1684,17 @@ class PostNitroGenerateInput(BaseModel):
 @api.get("/postnitro/status")
 async def postnitro_status(request: Request):
     await get_current_user(request)
-    return {"available": bool(POSTNITRO_API_KEY), "configured": bool(POSTNITRO_API_KEY)}
+    configured = bool(POSTNITRO_API_KEY)
+    ready = configured and bool(POSTNITRO_TEMPLATE_ID)
+    return {"available": configured, "configured": configured, "ready": ready, "needs_template": configured and not POSTNITRO_TEMPLATE_ID, "message": "Inserisci POSTNITRO_TEMPLATE_ID e POSTNITRO_BRAND_ID nel backend .env" if not ready and configured else ""}
 
 @api.post("/postnitro/generate")
 async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
     user = await get_current_user(request)
     if not POSTNITRO_API_KEY:
         raise HTTPException(400, "PostNitro non configurato")
+    if not POSTNITRO_TEMPLATE_ID:
+        raise HTTPException(400, "PostNitro templateId non configurato. Accedi al tuo account PostNitro, copia il Template ID dalla sezione Embed, e inseriscilo come POSTNITRO_TEMPLATE_ID nel backend .env")
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
@@ -1699,8 +1705,10 @@ async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
             context_text = f"{content.get('hook_text', '')}. {content.get('script', '')}. {content.get('caption', '')}"
             payload = {
                 "postType": "CAROUSEL",
+                "responseType": "PNG",
+                "templateId": POSTNITRO_TEMPLATE_ID,
                 "aiGeneration": {
-                    "type": "topic",
+                    "type": "text",
                     "context": context_text[:2000]
                 }
             }
@@ -1716,8 +1724,12 @@ async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
                     slide_contents.append(slide)
             payload = {
                 "postType": "CAROUSEL",
+                "responseType": "PNG",
+                "templateId": POSTNITRO_TEMPLATE_ID,
                 "slideContents": slide_contents
             }
+        if POSTNITRO_BRAND_ID:
+            payload["brandId"] = POSTNITRO_BRAND_ID
         async with httpx.AsyncClient(timeout=30) as hc:
             resp = await hc.post(f"{POSTNITRO_API_URL}/post/initiate/{'generate' if inp.mode == 'ai' else 'import'}", headers=headers, json=payload)
             if resp.status_code != 200:
