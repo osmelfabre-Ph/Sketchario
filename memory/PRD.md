@@ -160,6 +160,16 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Slide esportate vengono auto-importate nel contenuto
 - Backend API endpoints mantenuti per future generazioni automatiche (serve presetId + templateId)
 
+### Iteration 9 — Project Cover, Content Regen/Convert, Email SMTP, Global Prompting (Jan 14, 2026)
+- ✅ Project cover image upload: ogni card progetto ha "Aggiungi copertina" + sostituzione
+- ✅ Cover visualizzata nella card con overlay per cambiarla
+- ✅ Content Regeneration: bottone "Rigenera" nel content detail riscrive script/caption/hashtag con AI
+- ✅ Content Conversion: bottone "→ Carousel" o "→ Reel" converte formato con slide numerate
+- ✅ Global Prompting integrato in TUTTE le generazioni AI (hook rules, carousel structure, reel structure)
+- ✅ Email SMTP via Aruba (smtps.aruba.it:465) per forgot password con template HTML branded
+- ✅ Email sent: True confermato nei test
+- ✅ Backend: 90% (45/50 - fail solo su PostNitro preset e cloud imports con URL fittizi)
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority
