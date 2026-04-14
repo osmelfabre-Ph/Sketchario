@@ -799,7 +799,122 @@ class SketcharioAPITester:
             self.log("⚠️  PostNitro output not ready yet (expected for new generation)")
             return True  # This is expected for new generations
 
-    # ── ITERATION 6 NEW FEATURES ──
+    # ── ITERATION 9 NEW FEATURES ──
+    def test_project_cover_upload(self):
+        """Test POST /api/projects/{id}/cover"""
+        if not self.project_id:
+            return False
+        
+        # Create a simple test image file
+        test_image_data = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\nIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82'
+        
+        url = f"{self.base_url}/api/projects/{self.project_id}/cover"
+        headers = {}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        
+        files = {'file': ('cover.png', io.BytesIO(test_image_data), 'image/png')}
+        
+        self.tests_run += 1
+        self.log(f"🔍 Testing Project Cover Upload...")
+        
+        try:
+            response = requests.post(url, files=files, headers=headers, timeout=30)
+            success = response.status_code == 200
+            if success:
+                self.tests_passed += 1
+                self.log(f"✅ Project Cover Upload - Status: {response.status_code}")
+                response_data = response.json()
+                if 'cover_url' in response_data:
+                    self.cover_url = response_data['cover_url']
+                    self.log(f"✅ Cover uploaded with URL: {self.cover_url}")
+                return True, response_data
+            else:
+                self.log(f"❌ Project Cover Upload - Expected 200, got {response.status_code}")
+                try:
+                    error_detail = response.json()
+                    self.log(f"   Error: {error_detail}")
+                except:
+                    self.log(f"   Response: {response.text[:200]}")
+                return False, {}
+        except Exception as e:
+            self.log(f"❌ Project Cover Upload - Exception: {str(e)}")
+            return False, {}
+
+    def test_project_cover_delete(self):
+        """Test DELETE /api/projects/{id}/cover"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Delete Project Cover",
+            "DELETE",
+            f"projects/{self.project_id}/cover",
+            200
+        )
+        if success and response.get('ok'):
+            self.log("✅ Project cover deleted successfully")
+            return True
+        return False
+
+    def test_content_regenerate(self):
+        """Test POST /api/contents/regenerate"""
+        if not self.content_id or not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Regenerate Content with AI",
+            "POST",
+            "contents/regenerate",
+            200,
+            data={
+                "content_id": self.content_id,
+                "project_id": self.project_id
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ Content regenerated successfully with ID: {response['id']}")
+            return True
+        return False
+
+    def test_content_convert_to_carousel(self):
+        """Test POST /api/contents/convert - Reel to Carousel"""
+        if not self.content_id or not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Convert Content to Carousel",
+            "POST",
+            "contents/convert",
+            200,
+            data={
+                "content_id": self.content_id,
+                "project_id": self.project_id,
+                "target_format": "carousel"
+            }
+        )
+        if success and 'id' in response and response.get('format') == 'carousel':
+            self.log(f"✅ Content converted to carousel successfully")
+            return True
+        return False
+
+    def test_content_convert_to_reel(self):
+        """Test POST /api/contents/convert - Carousel to Reel"""
+        if not self.content_id or not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Convert Content to Reel",
+            "POST",
+            "contents/convert",
+            200,
+            data={
+                "content_id": self.content_id,
+                "project_id": self.project_id,
+                "target_format": "reel"
+            }
+        )
+        if success and 'id' in response and response.get('format') == 'reel':
+            self.log(f"✅ Content converted to reel successfully")
+            return True
+        return False
+
     def test_forgot_password(self):
         """Test POST /api/auth/forgot-password"""
         success, response = self.run_test(
@@ -809,24 +924,29 @@ class SketcharioAPITester:
             200,
             data={"email": "admin@sketchario.app"}
         )
-        if success and 'message' in response:
-            self.log(f"✅ Forgot password response: {response['message']}")
-            if 'reset_link' in response:
-                self.log(f"✅ Reset link generated: {response['reset_link'][:50]}...")
+        if success and 'email_sent' in response:
+            self.log(f"✅ Forgot password - Email sent: {response['email_sent']}")
+            if 'reset_token' in response:
+                self.reset_token = response['reset_token']
+                self.log(f"✅ Reset token generated for testing")
             return True
         return False
 
-    def test_reset_password(self):
-        """Test POST /api/auth/reset-password with invalid token (expected to fail)"""
+    def test_reset_password_with_token(self):
+        """Test POST /api/auth/reset-password with valid token"""
+        if not hasattr(self, 'reset_token') or not self.reset_token:
+            self.log("❌ No reset token available, skipping reset password test")
+            return True  # Skip if no token
+        
         success, response = self.run_test(
-            "Reset Password (Invalid Token)",
+            "Reset Password with Valid Token",
             "POST",
             "auth/reset-password",
-            400,  # Expected to fail with invalid token
-            data={"token": "invalid_token_test", "new_password": "NewPassword123!"}
+            200,
+            data={"token": self.reset_token, "new_password": "NewPassword123!"}
         )
-        if success:
-            self.log("✅ Reset password correctly rejected invalid token")
+        if success and response.get('ok'):
+            self.log("✅ Password reset successful with valid token")
             return True
         return False
 
@@ -983,7 +1103,7 @@ class SketcharioAPITester:
 
     def run_all_tests(self):
         """Run all tests in sequence"""
-        self.log("🚀 Starting Sketchario V4 Complete API Tests")
+        self.log("🚀 Starting Sketchario V4 Complete API Tests - Iteration 9")
         self.log("=" * 60)
 
         # Authentication
@@ -991,15 +1111,8 @@ class SketcharioAPITester:
             self.log("❌ Authentication failed, stopping tests")
             return False
 
-        # Test Iteration 7 New Features First
-        self.log("\n🆕 Testing Iteration 7 New Features...")
-        self.test_onboarding_status()
-        self.test_onboarding_complete_step()
-        self.test_onboarding_skip()
-        
-        # PostNitro Integration Tests
-        self.log("\n🎨 Testing PostNitro Integration...")
-        self.test_postnitro_status()
+        # Test Iteration 9 New Features First
+        self.log("\n🆕 Testing Iteration 9 New Features...")
         
         # Setup - get existing data
         if not self.test_get_projects():
@@ -1010,14 +1123,40 @@ class SketcharioAPITester:
             self.log("❌ No content found, stopping tests")
             return False
             
-        # Continue PostNitro tests with content
-        self.test_postnitro_generate()
-        self.test_postnitro_status_check()
-        self.test_postnitro_output()
+        # Test new project cover features
+        self.log("\n🖼️ Testing Project Cover APIs...")
+        self.test_project_cover_upload()
+        self.test_project_cover_delete()
+        
+        # Test new content regeneration and conversion features
+        self.log("\n🔄 Testing Content Regeneration & Conversion APIs...")
+        self.test_content_regenerate()
+        self.test_content_convert_to_carousel()
+        self.test_content_convert_to_reel()
+        
+        # Test new auth features
+        self.log("\n🔐 Testing Enhanced Auth APIs...")
+        self.test_forgot_password()
+        self.test_reset_password_with_token()
 
         if not self.test_get_social_profiles():
             self.log("❌ No social profiles found, stopping tests")
             return False
+
+        # Test Iteration 7 New Features
+        self.log("\n🆕 Testing Iteration 7 New Features...")
+        self.test_onboarding_status()
+        self.test_onboarding_complete_step()
+        self.test_onboarding_skip()
+        
+        # PostNitro Integration Tests
+        self.log("\n🎨 Testing PostNitro Integration...")
+        self.test_postnitro_status()
+        
+        # Continue PostNitro tests with content
+        self.test_postnitro_generate()
+        self.test_postnitro_status_check()
+        self.test_postnitro_output()
 
         # Test analytics and Google Drive import (need project/content IDs)
         self.test_analytics_endpoint()

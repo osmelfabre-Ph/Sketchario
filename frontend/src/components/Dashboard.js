@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Plus, Eye, PencilSimple, Trash, Lightning, ChartLineUp, Target, Clock, Article, MagnifyingGlass, Archive
+  Plus, Eye, PencilSimple, Trash, Lightning, ChartLineUp, Target, Clock, Article, MagnifyingGlass, Archive, ImageSquare
 } from '@phosphor-icons/react';
 
 export default function Dashboard({ setActiveView, setSelectedProject }) {
@@ -92,6 +92,33 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
                 data-testid={`project-card-${project.id}`}
                 className="card project-card"
               >
+                {/* Cover Image */}
+                {project.cover_url ? (
+                  <div className="relative -mx-6 -mt-6 mb-4 h-32 rounded-t-[0.9rem] overflow-hidden">
+                    <img src={`${process.env.REACT_APP_BACKEND_URL}${project.cover_url}`} alt="" className="w-full h-full object-cover" />
+                    <label className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center cursor-pointer hover:bg-black/70 transition-colors">
+                      <ImageSquare size={14} color="white" />
+                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                        const file = e.target.files[0]; if (!file) return;
+                        const fd = new FormData(); fd.append('file', file);
+                        const { data } = await api.post(`/projects/${project.id}/cover`, fd);
+                        setProjects(prev => prev.map(p => p.id === project.id ? { ...p, cover_url: data.cover_url } : p));
+                      }} />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="-mx-6 -mt-6 mb-4 h-24 rounded-t-[0.9rem] flex items-center justify-center cursor-pointer border-b border-[var(--border-color)]" style={{ background: 'var(--bg-secondary)' }}>
+                    <div className="flex items-center gap-2 text-[var(--text-muted)] text-xs">
+                      <ImageSquare size={16} /> Aggiungi copertina
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                      const file = e.target.files[0]; if (!file) return;
+                      const fd = new FormData(); fd.append('file', file);
+                      const { data } = await api.post(`/projects/${project.id}/cover`, fd);
+                      setProjects(prev => prev.map(p => p.id === project.id ? { ...p, cover_url: data.cover_url } : p));
+                    }} />
+                  </label>
+                )}
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="font-semibold mb-1">{project.name}</h3>

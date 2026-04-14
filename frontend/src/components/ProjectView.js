@@ -1026,9 +1026,38 @@ export default function ProjectView({ project, setActiveView }) {
                   </div>
                 </div>
 
-                <div className="flex gap-3 justify-end">
-                  <button className="btn-ghost" onClick={() => setSelectedContent(null)}>Annulla</button>
-                  <button className="btn-gradient" onClick={saveContent} data-testid="save-content-btn">Salva Modifiche</button>
+                <div className="flex gap-2 flex-wrap justify-between items-center">
+                  <div className="flex gap-2">
+                    {/* Rigenera */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="regenerate-btn" onClick={async () => {
+                      if (!window.confirm('Rigenerare questo contenuto? Script, caption e hashtag saranno riscritti dall\'AI.')) return;
+                      try {
+                        const { data } = await api.post('/contents/regenerate', { content_id: selectedContent.id, project_id: project.id });
+                        setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(data.hashtags || '');
+                        setSelectedContent(data);
+                        setContents(prev => prev.map(c => c.id === data.id ? data : c));
+                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      <ArrowClockwise size={14} /> Rigenera
+                    </button>
+                    {/* Converti */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="convert-btn" onClick={async () => {
+                      const target = selectedContent.format === 'reel' ? 'carousel' : 'reel';
+                      if (!window.confirm(`Convertire da ${selectedContent.format} a ${target}?`)) return;
+                      try {
+                        const { data } = await api.post('/contents/convert', { content_id: selectedContent.id, project_id: project.id, target_format: target });
+                        setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(data.hashtags || '');
+                        setSelectedContent(data);
+                        setContents(prev => prev.map(c => c.id === data.id ? data : c));
+                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      {selectedContent.format === 'reel' ? <><Image size={14} /> → Carousel</> : <><Video size={14} /> → Reel</>}
+                    </button>
+                  </div>
+                  <div className="flex gap-3">
+                    <button className="btn-ghost" onClick={() => setSelectedContent(null)}>Annulla</button>
+                    <button className="btn-gradient" onClick={saveContent} data-testid="save-content-btn">Salva Modifiche</button>
+                  </div>
                 </div>
               </div>
             </motion.div>

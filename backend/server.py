@@ -17,6 +17,9 @@ import bcrypt
 import jwt as pyjwt
 import feedparser
 import httpx
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -29,6 +32,51 @@ api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
+
+# ── SMTP EMAIL ───────────────────────────────────────
+async def send_email_smtp(to: str, subject: str, html_body: str):
+    smtp_host = os.environ.get("SMTP_HOST", "smtps.aruba.it")
+    smtp_port = int(os.environ.get("SMTP_PORT", "465"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASSWORD", "")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if not smtp_user or not smtp_pass:
+        logger.warning("SMTP not configured, email not sent")
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"Sketchario <{smtp_from}>"
+        msg["To"] = to
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, to, msg.as_string())
+        logger.info(f"Email sent to {to}")
+        return True
+    except Exception as e:
+        logger.error(f"SMTP email error: {e}")
+        return False
+
+# ── GLOBAL PROMPTING ─────────────────────────────────
+GLOBAL_CONTENT_PROMPT = """GLOBAL RULES FOR SOCIAL CONTENT GENERATION:
+Every content must: Stop the scroll. Keep attention. Deliver concrete value. Trigger emotion. Push toward action.
+Avoid: bland, generic, overly safe, forgettable content. Prefer: specificity, tension, clarity, usefulness.
+
+HOOKS: Max 5 words. Bold, negative, challenging, or curiosity-driven. Create tension, urgency, emotional reaction.
+
+REEL STRUCTURE: HOOK (max 5 words, bold, emotionally charged) → SETUP (why it matters) → VALUE (practical, concrete, actionable) → CTA (clear next action)
+
+CAROUSEL STRUCTURE: SLIDE 1: bold hook | SLIDE 2: real problem/tension | SLIDES 3-6: practical steps/insights | FINAL SLIDE: direct CTA
+Each slide must be clearly numbered and self-contained.
+
+SINGLE POST: TITLE (clear promise) → VALUE (strong central idea) → CTA (one clear action)
+
+CAPTION: FIRST LINE HOOK (attention-grabbing) → BODY (real value, short paragraphs, strong rhythm) → CTA (comment, save, share)
+Use strategic emojis. Line breaks for readability.
+
+WRITING STYLE: Direct. Clear. Concise. No fluff. No cliches. No generic AI tone. No vague motivational filler.
+QUALITY: Every piece must be specific, tension-filled, clear, and useful."""
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -369,6 +417,39 @@ async def unarchive_project(project_id: str, request: Request):
     await db.projects.update_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"$set": {"archived": False}})
     return {"ok": True}
 
+# ── PROJECT COVER ─────────────────────────────────────
+@api.post("/projects/{project_id}/cover")
+async def upload_project_cover(project_id: str, request: Request, file: UploadFile = File(...)):
+    user = await get_current_user(request)
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        raise HTTPException(400, "Formato non supportato. Usa jpg, png, webp o gif.")
+    fname = f"cover_{project_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    fpath = UPLOAD_DIR / fname
+    with open(fpath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    cover_url = f"/api/media/file/{fname}"
+    old = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
+    if old and old.get("cover_url"):
+        old_fname = old["cover_url"].split("/")[-1]
+        old_fpath = UPLOAD_DIR / old_fname
+        if old_fpath.exists():
+            old_fpath.unlink()
+    await db.projects.update_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"$set": {"cover_url": cover_url}})
+    return {"cover_url": cover_url}
+
+@api.delete("/projects/{project_id}/cover")
+async def remove_project_cover(project_id: str, request: Request):
+    user = await get_current_user(request)
+    p = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
+    if p and p.get("cover_url"):
+        fname = p["cover_url"].split("/")[-1]
+        fpath = UPLOAD_DIR / fname
+        if fpath.exists():
+            fpath.unlink()
+    await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"cover_url": ""}})
+    return {"ok": True}
+
 # ── AI GENERATION ────────────────────────────────────
 async def call_ai(system_prompt: str, user_prompt: str) -> str:
     from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -533,7 +614,7 @@ async def generate_content(inp: GenerateContentInput, request: Request):
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. Istruzioni: {tov.get('custom_instructions','')}"
     generated = []
     for hook in hooks:
-        system = "Sei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
+        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
         prompt = f"""Genera un contenuto social completo per questo hook:
 Hook: {hook.get('hook_text','')}
 Formato: {hook.get('format','reel')}
@@ -639,6 +720,99 @@ async def delete_content(content_id: str, request: Request):
         await db.contents.delete_one({"id": content_id})
         await db.projects.update_one({"_id": ObjectId(result["project_id"])}, {"$inc": {"content_count": -1}})
     return {"ok": True}
+
+# ── CONTENT REGENERATION / CONVERSION ─────────────────
+class ContentRegenerateInput(BaseModel):
+    content_id: str
+    project_id: str
+
+class ContentConvertInput(BaseModel):
+    content_id: str
+    project_id: str
+    target_format: str
+
+@api.post("/contents/regenerate")
+async def regenerate_content(inp: ContentRegenerateInput, request: Request):
+    user = await get_current_user(request)
+    content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
+    tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
+    tov_desc = ""
+    if tov:
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
+    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Rigenera questo contenuto migliorandolo. Rispondi SOLO con JSON valido. Scrivi in italiano."
+    prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
+Hook originale: {content.get('hook_text','')}
+Formato: {content.get('format','reel')}
+Settore: {project.get('sector','')}
+{tov_desc}
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (array di stringhe per carousel, vuoto per reel)"""
+    try:
+        result = await call_ai(system, prompt)
+        data = extract_json(result)
+        updates = {}
+        for k in ["hook_text", "script", "caption", "hashtags", "slides"]:
+            if k in data:
+                updates[k] = data[k]
+        if updates:
+            await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
+        updated = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
+        return updated
+    except Exception as e:
+        raise HTTPException(500, f"Errore rigenerazione: {str(e)}")
+
+@api.post("/contents/convert")
+async def convert_content(inp: ContentConvertInput, request: Request):
+    user = await get_current_user(request)
+    content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    if inp.target_format not in ("reel", "carousel"):
+        raise HTTPException(400, "target_format deve essere 'reel' o 'carousel'")
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
+    tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
+    tov_desc = ""
+    if tov:
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10. {tov.get('custom_instructions','')}"
+    if inp.target_format == "carousel":
+        system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Reel in un Carousel con slide numerate. Rispondi SOLO con JSON valido. Scrivi in italiano."""
+        prompt = f"""Converti questo Reel in un Carousel strutturato.
+Hook: {content.get('hook_text','')}
+Script Reel: {content.get('script','')}
+Settore: {project.get('sector','')}
+{tov_desc}
+
+Crea un carousel con:
+- SLIDE 1: hook bold
+- SLIDE 2: problema reale
+- SLIDES 3-6: passi pratici/insights
+- SLIDE FINALE: CTA diretto
+
+Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di stringhe, una per slide, numerate)"""
+    else:
+        system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
+        prompt = f"""Converti questo Carousel in un Reel script parlato.
+Hook: {content.get('hook_text','')}
+Slides: {json.dumps(content.get('slides',[]))}
+Settore: {project.get('sector','')}
+{tov_desc}
+
+Crea un Reel con: HOOK (max 5 parole) → SETUP → VALUE → CTA
+Restituisci JSON con: hook_text, script (script parlato completo), caption, hashtags, slides (array vuoto)"""
+    try:
+        result = await call_ai(system, prompt)
+        data = extract_json(result)
+        updates = {"format": inp.target_format}
+        for k in ["hook_text", "script", "caption", "hashtags", "slides"]:
+            if k in data:
+                updates[k] = data[k]
+        await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
+        updated = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
+        return updated
+    except Exception as e:
+        raise HTTPException(500, f"Errore conversione: {str(e)}")
 
 # ── TOV ROUTES ───────────────────────────────────────
 @api.post("/tov/save")
@@ -1397,7 +1571,18 @@ async def forgot_password(inp: ForgotPasswordInput):
     frontend_url = os.environ.get("FRONTEND_URL", "")
     reset_link = f"{frontend_url}?reset_token={token}"
     logger.info(f"Password reset link for {email}: {reset_link}")
-    return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset.", "reset_link": reset_link}
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:30px;background:#0f1629;color:#fff;border-radius:12px;">
+        <h2 style="color:#a5b4fc;">Sketchario - Reset Password</h2>
+        <p>Hai richiesto il reset della password per il tuo account Sketchario.</p>
+        <p>Clicca il pulsante qui sotto per impostare una nuova password:</p>
+        <a href="{reset_link}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#6366f1,#ec4899);color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;margin:20px 0;">Reimposta Password</a>
+        <p style="font-size:12px;color:#8b95a5;margin-top:20px;">Il link scade tra 1 ora. Se non hai richiesto il reset, ignora questa email.</p>
+        <hr style="border:1px solid #1a2540;margin:20px 0;">
+        <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
+    </div>"""
+    email_sent = await send_email_smtp(email, "Sketchario - Reset Password", html)
+    return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset.", "email_sent": email_sent}
 
 @api.post("/auth/reset-password")
 async def reset_password(inp: ResetPasswordInput):
