@@ -1007,8 +1007,9 @@ export default function ProjectView({ project, setActiveView }) {
                     <button className="btn-ghost text-xs py-1.5 px-3" data-testid="postnitro-btn" onClick={async () => {
                       try {
                         const { data: pnStatus } = await api.get('/postnitro/status');
-                        if (pnStatus.needs_template) {
-                          alert('PostNitro richiede configurazione:\n\n1. Accedi al tuo account PostNitro.ai\n2. Vai nella sezione Embed\n3. Copia il Template ID e Brand ID\n4. Inseriscili nel backend .env come:\n   POSTNITRO_TEMPLATE_ID="..."\n   POSTNITRO_BRAND_ID="..."');
+                        if (!pnStatus.ready) {
+                          const missing = pnStatus.missing_config?.join(', ') || 'configurazione';
+                          alert(`PostNitro richiede configurazione:\n\nCampi mancanti: ${missing}\n\n1. Accedi a postnitro.ai/app/embed\n2. Copia Preset ID (e Template ID se disponibile)\n3. Inseriscili nel backend .env`);
                           return;
                         }
                         const mode = window.confirm('Generare carousel con AI dal contenuto?\n\nOK = AI automatico\nAnnulla = Importa slide manuali') ? 'ai' : 'import';
