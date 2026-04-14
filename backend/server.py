@@ -1566,6 +1566,18 @@ class TeamInviteInput(BaseModel):
     email: str
     role: str = "editor"
 
+@api.get("/team/my-invites")
+async def my_invites(request: Request):
+    user = await get_current_user(request)
+    invites = await db.team_members.find({"email": user.get("email", "").lower(), "status": "pending"}, {"_id": 0}).to_list(20)
+    for inv in invites:
+        try:
+            project = await db.projects.find_one({"_id": ObjectId(inv["project_id"])}, {"_id": 0, "name": 1, "sector": 1})
+            inv["project_name"] = project.get("name", "") if project else ""
+        except Exception:
+            inv["project_name"] = ""
+    return invites
+
 @api.get("/team/{project_id}")
 async def list_team(project_id: str, request: Request):
     user = await get_current_user(request)
@@ -1620,15 +1632,6 @@ async def remove_team_member(project_id: str, member_email: str, request: Reques
         raise HTTPException(403, "Solo il proprietario puo rimuovere")
     await db.team_members.delete_one({"project_id": project_id, "email": member_email.lower()})
     return {"ok": True}
-
-@api.get("/team/my-invites")
-async def my_invites(request: Request):
-    user = await get_current_user(request)
-    invites = await db.team_members.find({"email": user.get("email", "").lower(), "status": "pending"}, {"_id": 0}).to_list(20)
-    for inv in invites:
-        project = await db.projects.find_one({"_id": ObjectId(inv["project_id"])}, {"_id": 0, "name": 1, "sector": 1})
-        inv["project_name"] = project.get("name", "") if project else ""
-    return invites
 
 # ── DROPBOX / ONEDRIVE IMPORT ─────────────────────────
 class CloudImportInput(BaseModel):

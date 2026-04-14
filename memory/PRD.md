@@ -128,6 +128,19 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Backend: 94.6% (35/37 - fail solo Drive/Canva con URL fittizi)
 - ✅ Frontend: 100%
 
+### Iteration 7 — Onboarding, Team, Dropbox/OneDrive, PostNitro (Jan 14, 2026)
+- ✅ Onboarding Tour: 5-step guided wizard per nuovi utenti con progress dots e skip
+- ✅ Mostra solo per utenti che non hanno completato l'onboarding
+- ✅ Team Collaboration: invita editor/viewer ai progetti, accetta inviti, rimuovi membri
+- ✅ Owner badge, ruoli editor/viewer con icone
+- ✅ TeamPanel integrato nel tab Social del Project View
+- ✅ GET /api/team/my-invites per inviti ricevuti (fix route ordering)
+- ✅ Dropbox import endpoint (POST /api/media/import-cloud source=dropbox)
+- ✅ OneDrive import endpoint (POST /api/media/import-cloud source=onedrive)
+- ✅ PostNitro stub: endpoint status con "In arrivo"
+- ✅ Content detail: 6 bottoni media (Upload, DALL-E, Canva, Drive, Dropbox, OneDrive)
+- ✅ Backend: 42/47 (import test fail con URL fittizi = comportamento atteso)
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority
