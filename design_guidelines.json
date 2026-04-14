@@ -1,0 +1,104 @@
+{
+  "theme": "LIGHT",
+  "archetype": "3 (Pastel & Soft) with Neo-Brutalist Twist",
+  "reasoning": "Moving away from the 'Studio Mono Dark' template, this neo-brutalist approach uses stark contrast (black borders + pastel fills) to feel highly creative, energetic, and distinct. It appeals directly to creators and marketing teams by offering a workspace that feels like a physical, structured canvas.",
+  "colors": {
+    "background": "#FDFCF8",
+    "surface": "#FFFFFF",
+    "primary": "#C1A3FF",
+    "secondary": "#FFD275",
+    "accent": "#FFAAA5",
+    "text_primary": "#000000",
+    "text_secondary": "#4A4A4A",
+    "border": "#000000",
+    "success": "#A8E6CF",
+    "error": "#FF8B94",
+    "social_ig": "#FFC5E3",
+    "social_li": "#BCE3FF",
+    "social_fb": "#C0D4FF",
+    "social_tt": "#E2E2E2"
+  },
+  "typography": {
+    "heading_font": "Cabinet Grotesk",
+    "body_font": "Figtree",
+    "h1": "text-5xl lg:text-6xl font-black tracking-tight",
+    "h2": "text-3xl lg:text-4xl font-bold tracking-tight",
+    "h3": "text-2xl font-bold",
+    "body": "text-base font-medium leading-relaxed",
+    "small": "text-sm font-semibold tracking-wide uppercase",
+    "instruction": "Use Cabinet Grotesk for all headers, maintaining tight tracking. Figtree for all readable UI elements. Never use Inter or Space Grotesk."
+  },
+  "layout_and_spacing": {
+    "general": "Use generous padding (p-6 to p-12). Implement 'The Control Room' grid for the dashboard with gap-6. Keep containers structured.",
+    "borders": "border-2 border-black",
+    "radius": "rounded-xl",
+    "shadows": {
+      "default": "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+      "hover": "shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]",
+      "active": "shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
+    },
+    "transitions": "transition-all duration-200 ease-in-out"
+  },
+  "components": {
+    "button": "bg-primary text-black border-2 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-[4px] active:translate-x-[4px] active:shadow-none font-bold px-6 py-3",
+    "card": "bg-white border-2 border-black rounded-xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden",
+    "input": "bg-white border-2 border-black rounded-xl px-4 py-3 focus:outline-none focus:ring-0 focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-base font-medium",
+    "wizard_step": "flex items-center gap-4 border-2 border-black p-4 rounded-xl bg-white",
+    "wizard_step_active": "bg-secondary shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-x-[-2px] translate-y-[-2px]",
+    "calendar_grid": "border-collapse border-2 border-black",
+    "calendar_cell": "border border-black p-2 min-h-[120px] bg-white relative hover:bg-gray-50",
+    "tone_slider": "appearance-none w-full h-4 bg-white border-2 border-black rounded-full outline-none",
+    "badge": "inline-flex px-3 py-1 border-2 border-black rounded-full font-bold text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+  },
+  "specific_views": {
+    "auth": "Split screen. Left: Abstract creative geometric image filling the pane with a 2px black border separating it from the right. Right: Clean, centered login/register form with social buttons (thick borders).",
+    "dashboard": "Bento grid of projects. Header with thick bottom border. 'Create Project' button acts as the massive primary CTA.",
+    "wizard": "4 massive steps (Personas, Tone, Hook, Content). Top progress bar is a literal thick black track. Each step form uses oversized inputs and bold labels. Tone of Voice editor uses playful, large custom sliders.",
+    "project_view": "Left sidebar (border-r-2 border-black). Main view splits between a monthly/weekly calendar grid (thick lines) and a right-side drawer/feed for AI suggestions and media queue. Content cards on the calendar are brightly colored based on platform."
+  },
+  "media_and_icons": {
+    "icon_library": "@phosphor-icons/react",
+    "icon_style": "Duotone or Bold weight to match the thick borders.",
+    "images": [
+      {
+        "category": "auth_background",
+        "url": "https://images.pexels.com/photos/4834952/pexels-photo-4834952.jpeg",
+        "description": "Colorful geometric abstract art for the auth screen background"
+      },
+      {
+        "category": "auth_background_alt",
+        "url": "https://images.unsplash.com/photo-1770520213599-7bbfb10b57ef?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2ODl8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlcyUyMGNvbG9yZnVsfGVufDB8fHx8MTc3NjE3NjgyNXww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract mosaic of colorful geometric shapes"
+      },
+      {
+        "category": "user_avatar_1",
+        "url": "https://images.unsplash.com/photo-1682827814857-827f37ec55da?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHx0cmVuZHklMjBwb3J0cmFpdCUyMHBlcnNvbiUyMGNsZWFuJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzYxNzY4MzB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar placeholder for users/team members"
+      },
+      {
+        "category": "user_avatar_2",
+        "url": "https://images.pexels.com/photos/15093015/pexels-photo-15093015.jpeg",
+        "description": "Avatar placeholder for users/team members"
+      },
+      {
+        "category": "empty_state_illustration",
+        "url": "https://images.unsplash.com/photo-1765917921173-e43f86bf9c0f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwxfHxsYXB0b3AlMjBtb2NrdXAlMjBjbGVhbiUyMGRlc2slMjBwYXN0ZWx8ZW58MHx8fHwxNzc2MTc2ODMwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Mockup/creative tools for empty states in dashboard or media library"
+      }
+    ]
+  },
+  "accessibility_and_interactions": {
+    "focus_states": "focus:ring-0 focus:outline-none focus:border-black focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+    "animations": "Use framer-motion for page transitions and card mounting. Keep animations snappy, not overly smooth. E.g., spring with high stiffness.",
+    "testing": "All actionable elements must have descriptive data-testid attributes (e.g., data-testid='create-project-btn')."
+  },
+  "instructions_to_main_agent": [
+    "Execute a complete restyling away from the dark/gold theme.",
+    "Install and use Cabinet Grotesk for headings and Figtree for body.",
+    "Install @phosphor-icons/react for icons, use Bold or Duotone variants.",
+    "Implement the strict 'neo-brutalist' card style: white bg, 2px solid black border, and 4px solid black offset shadow. Do NOT use soft drop shadows anywhere.",
+    "Build the dashboard using a 'Bento' grid structure.",
+    "For the Project Wizard, ensure each step feels physically distinct, using the secondary (yellow) and primary (lavender) colors to indicate progress.",
+    "Use Shadcn UI but aggressively override the default Vercel aesthetic with the specified classes (thick borders, offset shadows)."
+  ]
+}
