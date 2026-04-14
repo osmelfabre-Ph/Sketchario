@@ -1374,6 +1374,156 @@ async def apply_tov_library_item(item_id: str, project_id: str, request: Request
     await db.tov_profiles.update_one({"project_id": project_id}, {"$set": tov_data}, upsert=True)
     return {"ok": True}
 
+# ── FORGOT / RESET PASSWORD ───────────────────────────
+class ForgotPasswordInput(BaseModel):
+    email: str
+
+class ResetPasswordInput(BaseModel):
+    token: str
+    new_password: str
+
+@api.post("/auth/forgot-password")
+async def forgot_password(inp: ForgotPasswordInput):
+    email = inp.email.strip().lower()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset."}
+    token = secrets.token_urlsafe(32)
+    await db.password_reset_tokens.insert_one({
+        "token": token, "email": email, "used": False,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    frontend_url = os.environ.get("FRONTEND_URL", "")
+    reset_link = f"{frontend_url}?reset_token={token}"
+    logger.info(f"Password reset link for {email}: {reset_link}")
+    return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset.", "reset_link": reset_link}
+
+@api.post("/auth/reset-password")
+async def reset_password(inp: ResetPasswordInput):
+    if len(inp.new_password) < 8:
+        raise HTTPException(400, "La password deve avere almeno 8 caratteri")
+    token_doc = await db.password_reset_tokens.find_one({"token": inp.token, "used": False})
+    if not token_doc:
+        raise HTTPException(400, "Token non valido o scaduto")
+    if datetime.now(timezone.utc) > datetime.fromisoformat(token_doc["expires_at"]):
+        raise HTTPException(400, "Token scaduto")
+    await db.users.update_one({"email": token_doc["email"]}, {"$set": {"password_hash": hash_password(inp.new_password)}})
+    await db.password_reset_tokens.update_one({"token": inp.token}, {"$set": {"used": True}})
+    return {"ok": True, "message": "Password aggiornata con successo"}
+
+# ── GOOGLE DRIVE IMPORT ───────────────────────────────
+class DriveImportInput(BaseModel):
+    content_id: str
+    file_url: str
+
+@api.post("/media/import-drive")
+async def import_from_drive(inp: DriveImportInput, request: Request):
+    user = await get_current_user(request)
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
+            resp = await hc.get(inp.file_url)
+            if resp.status_code != 200:
+                raise HTTPException(400, "Impossibile scaricare il file da Google Drive")
+            ct = resp.headers.get("content-type", "")
+            ext = "jpg"
+            if "png" in ct: ext = "png"
+            elif "webp" in ct: ext = "webp"
+            elif "gif" in ct: ext = "gif"
+            elif "mp4" in ct: ext = "mp4"
+            elif "video" in ct: ext = "mp4"
+            fname = f"drive_{uuid.uuid4().hex}.{ext}"
+            fpath = UPLOAD_DIR / fname
+            with open(fpath, "wb") as f:
+                f.write(resp.content)
+            media_url = f"/api/media/file/{fname}"
+            ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
+            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"Google Drive Import", "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
+            await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
+            return media_doc
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore import Drive: {str(e)}")
+
+# ── NOTIFICATIONS (Release Note Reads) ────────────────
+@api.get("/notifications/unread-count")
+async def unread_count(request: Request):
+    user = await get_current_user(request)
+    total = await db.release_notes.count_documents({})
+    reads = await db.release_note_reads.find({"user_id": user["_id"]}, {"note_id": 1}).to_list(500)
+    read_ids = {r["note_id"] for r in reads}
+    all_notes = await db.release_notes.find({}, {"_id": 0, "id": 1}).to_list(500)
+    unread = sum(1 for n in all_notes if n["id"] not in read_ids)
+    return {"unread": unread, "total": total}
+
+@api.post("/notifications/mark-read")
+async def mark_notes_read(request: Request):
+    user = await get_current_user(request)
+    notes = await db.release_notes.find({}, {"_id": 0, "id": 1}).to_list(500)
+    for n in notes:
+        await db.release_note_reads.update_one(
+            {"user_id": user["_id"], "note_id": n["id"]},
+            {"$set": {"user_id": user["_id"], "note_id": n["id"], "read_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+    return {"ok": True}
+
+@api.get("/notifications/release-notes")
+async def get_release_notes_with_read(request: Request):
+    user = await get_current_user(request)
+    notes = await db.release_notes.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    reads = await db.release_note_reads.find({"user_id": user["_id"]}, {"note_id": 1}).to_list(500)
+    read_ids = {r["note_id"] for r in reads}
+    for n in notes:
+        n["read"] = n["id"] in read_ids
+    return notes
+
+# ── ANALYTICS ─────────────────────────────────────────
+@api.get("/analytics/{project_id}")
+async def get_analytics(project_id: str, request: Request):
+    user = await get_current_user(request)
+    contents = await db.contents.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+    total = len(contents)
+    by_format = {}
+    by_pillar = {}
+    by_status = {}
+    for c in contents:
+        fmt = c.get("format", "unknown")
+        by_format[fmt] = by_format.get(fmt, 0) + 1
+        pillar = c.get("pillar", "unknown") or "unknown"
+        by_pillar[pillar] = by_pillar.get(pillar, 0) + 1
+        status = c.get("status", "draft")
+        by_status[status] = by_status.get(status, 0) + 1
+    queue_items = await db.publish_queue.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+    queue_by_status = {}
+    for q in queue_items:
+        qs = q.get("status", "unknown")
+        queue_by_status[qs] = queue_by_status.get(qs, 0) + 1
+    queue_by_platform = {}
+    for q in queue_items:
+        plt = q.get("platform", "unknown")
+        queue_by_platform[plt] = queue_by_platform.get(plt, 0) + 1
+    media_count = sum(len(c.get("media", [])) for c in contents)
+    project = await db.projects.find_one({"_id": ObjectId(project_id)}, {"_id": 0})
+    target = (project.get("duration_weeks", 1) or 1) * 7
+    completion = min(round((total / target) * 100, 1), 100) if target > 0 else 0
+    return {
+        "total_contents": total, "target_contents": target, "completion_pct": completion,
+        "by_format": by_format, "by_pillar": by_pillar, "by_status": by_status,
+        "media_count": media_count, "queue_total": len(queue_items),
+        "queue_by_status": queue_by_status, "queue_by_platform": queue_by_platform
+    }
+
+@api.get("/analytics/global/summary")
+async def global_analytics(request: Request):
+    user = await get_current_user(request)
+    projects = await db.projects.count_documents({"user_id": user["_id"]})
+    contents = await db.contents.count_documents({})
+    published = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "published"})
+    queued = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "queued"})
+    return {"projects": projects, "total_contents": contents, "published": published, "queued": queued}
+
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/csv")
 async def export_csv(project_id: str, request: Request):
@@ -1432,6 +1582,9 @@ async def startup():
     await db.release_notes.create_index("created_at")
     await db.payment_transactions.create_index("session_id")
     await db.tov_library.create_index("user_id")
+    await db.password_reset_tokens.create_index("token")
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.release_note_reads.create_index([("user_id", 1), ("note_id", 1)])
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sketchario.app")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Sketchario2026!")

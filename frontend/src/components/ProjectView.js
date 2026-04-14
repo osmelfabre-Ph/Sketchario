@@ -6,12 +6,14 @@ import {
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
   Eye, Sparkle, Link as LinkIcon, Trash, WifiHigh, Globe,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
-  BookOpen, Download, CanvaLogo
+  BookOpen, Download, CanvaLogo, ChartBar
 } from '@phosphor-icons/react';
+import Analytics from './Analytics';
 
 const TABS = [
   { id: 'calendar', label: 'Calendario', icon: CalendarBlank },
   { id: 'list', label: 'Tutti', icon: List },
+  { id: 'analytics', label: 'Analytics', icon: ChartBar },
   { id: 'feed', label: 'Feed', icon: RssSimple },
   { id: 'queue', label: 'Queue', icon: Queue },
   { id: 'personas', label: 'Personas', icon: UsersIcon },
@@ -355,6 +357,9 @@ export default function ProjectView({ project, setActiveView }) {
           )}
         </div>
       )}
+
+      {/* Analytics Tab */}
+      {tab === 'analytics' && <Analytics project={project} />}
 
       {/* Feed Tab */}
       {tab === 'feed' && (

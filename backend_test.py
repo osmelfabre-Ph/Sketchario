@@ -573,6 +573,107 @@ class SketcharioAPITester:
             return True
         return False
 
+    # ── ITERATION 6 NEW FEATURES ──
+    def test_forgot_password(self):
+        """Test POST /api/auth/forgot-password"""
+        success, response = self.run_test(
+            "Forgot Password",
+            "POST",
+            "auth/forgot-password",
+            200,
+            data={"email": "admin@sketchario.app"}
+        )
+        if success and 'message' in response:
+            self.log(f"✅ Forgot password response: {response['message']}")
+            if 'reset_link' in response:
+                self.log(f"✅ Reset link generated: {response['reset_link'][:50]}...")
+            return True
+        return False
+
+    def test_reset_password(self):
+        """Test POST /api/auth/reset-password with invalid token (expected to fail)"""
+        success, response = self.run_test(
+            "Reset Password (Invalid Token)",
+            "POST",
+            "auth/reset-password",
+            400,  # Expected to fail with invalid token
+            data={"token": "invalid_token_test", "new_password": "NewPassword123!"}
+        )
+        if success:
+            self.log("✅ Reset password correctly rejected invalid token")
+            return True
+        return False
+
+    def test_notifications_unread_count(self):
+        """Test GET /api/notifications/unread-count"""
+        success, response = self.run_test(
+            "Get Notifications Unread Count",
+            "GET",
+            "notifications/unread-count",
+            200
+        )
+        if success and 'unread' in response and 'total' in response:
+            self.log(f"✅ Unread notifications: {response['unread']}, Total: {response['total']}")
+            return True
+        return False
+
+    def test_notifications_mark_read(self):
+        """Test POST /api/notifications/mark-read"""
+        success, response = self.run_test(
+            "Mark Notifications as Read",
+            "POST",
+            "notifications/mark-read",
+            200
+        )
+        if success and response.get('ok'):
+            self.log("✅ Notifications marked as read successfully")
+            return True
+        return False
+
+    def test_analytics_endpoint(self):
+        """Test GET /api/analytics/{project_id}"""
+        if not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Get Project Analytics",
+            "GET",
+            f"analytics/{self.project_id}",
+            200
+        )
+        if success:
+            required_fields = ['total_contents', 'by_format', 'by_pillar', 'by_status', 'completion_pct']
+            missing_fields = [field for field in required_fields if field not in response]
+            if not missing_fields:
+                self.log(f"✅ Analytics data complete - Total contents: {response['total_contents']}")
+                self.log(f"✅ By format: {response['by_format']}")
+                self.log(f"✅ By pillar: {response['by_pillar']}")
+                self.log(f"✅ By status: {response['by_status']}")
+                self.log(f"✅ Completion: {response['completion_pct']}%")
+                return True
+            else:
+                self.log(f"❌ Missing analytics fields: {missing_fields}")
+                return False
+        return False
+
+    def test_google_drive_import(self):
+        """Test POST /api/media/import-drive"""
+        if not self.content_id:
+            return False
+        success, response = self.run_test(
+            "Google Drive Import",
+            "POST",
+            "media/import-drive",
+            200,
+            data={
+                "content_id": self.content_id,
+                "file_url": "https://via.placeholder.com/300x300.png"
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ Google Drive file imported with ID: {response['id']}")
+            return True
+        return False
+
     # ── BILLING TESTS ──
     def test_get_billing_plans(self):
         """Test GET /api/billing/plans"""
@@ -664,6 +765,13 @@ class SketcharioAPITester:
             self.log("❌ Authentication failed, stopping tests")
             return False
 
+        # Test Iteration 6 New Features First
+        self.log("\n🆕 Testing Iteration 6 New Features...")
+        self.test_forgot_password()
+        self.test_reset_password()
+        self.test_notifications_unread_count()
+        self.test_notifications_mark_read()
+
         # Setup - get existing data
         if not self.test_get_projects():
             self.log("❌ No projects found, stopping tests")
@@ -676,6 +784,10 @@ class SketcharioAPITester:
         if not self.test_get_social_profiles():
             self.log("❌ No social profiles found, stopping tests")
             return False
+
+        # Test analytics and Google Drive import (need project/content IDs)
+        self.test_analytics_endpoint()
+        self.test_google_drive_import()
 
         # Media Upload Tests
         self.log("\n📁 Testing Media Upload APIs...")
