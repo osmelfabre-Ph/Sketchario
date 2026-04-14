@@ -1669,11 +1669,125 @@ async def import_from_cloud(inp: CloudImportInput, request: Request):
     except Exception as e:
         raise HTTPException(500, f"Errore import {inp.source}: {str(e)}")
 
-# ── POSTNITRO (STUB) ─────────────────────────────────
+# ── POSTNITRO INTEGRATION ─────────────────────────────
+POSTNITRO_API_URL = "https://embed-api.postnitro.ai"
+POSTNITRO_API_KEY = os.environ.get("POSTNITRO_API_KEY", "")
+
+class PostNitroGenerateInput(BaseModel):
+    content_id: str
+    project_id: str
+    mode: str = "ai"
+    slides: Optional[list] = None
+
 @api.get("/postnitro/status")
 async def postnitro_status(request: Request):
     await get_current_user(request)
-    return {"available": False, "message": "PostNitro integration in arrivo. SDK in fase di stabilizzazione."}
+    return {"available": bool(POSTNITRO_API_KEY), "configured": bool(POSTNITRO_API_KEY)}
+
+@api.post("/postnitro/generate")
+async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
+    user = await get_current_user(request)
+    if not POSTNITRO_API_KEY:
+        raise HTTPException(400, "PostNitro non configurato")
+    content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
+    headers = {"Content-Type": "application/json", "embed-api-key": POSTNITRO_API_KEY}
+    try:
+        if inp.mode == "ai":
+            context_text = f"{content.get('hook_text', '')}. {content.get('script', '')}. {content.get('caption', '')}"
+            payload = {
+                "postType": "CAROUSEL",
+                "aiGeneration": {
+                    "type": "topic",
+                    "context": context_text[:2000]
+                }
+            }
+        else:
+            slides_data = inp.slides or content.get("slides", [])
+            if not slides_data:
+                slides_data = [s.strip() for s in content.get("script", "").split("---") if s.strip()]
+            slide_contents = []
+            for i, slide in enumerate(slides_data):
+                if isinstance(slide, str):
+                    slide_contents.append({"heading": f"Slide {i+1}", "description": slide})
+                elif isinstance(slide, dict):
+                    slide_contents.append(slide)
+            payload = {
+                "postType": "CAROUSEL",
+                "slideContents": slide_contents
+            }
+        async with httpx.AsyncClient(timeout=30) as hc:
+            resp = await hc.post(f"{POSTNITRO_API_URL}/post/initiate/{'generate' if inp.mode == 'ai' else 'import'}", headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise HTTPException(resp.status_code, f"PostNitro errore: {resp.text}")
+            data = resp.json()
+            embed_post_id = data.get("embedPostId", "")
+            await db.postnitro_jobs.insert_one({
+                "embed_post_id": embed_post_id, "content_id": inp.content_id,
+                "project_id": inp.project_id, "user_id": user["_id"],
+                "status": "processing", "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            return {"embed_post_id": embed_post_id, "status": "processing"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PostNitro generation error: {e}")
+        raise HTTPException(500, f"Errore PostNitro: {str(e)}")
+
+@api.get("/postnitro/status/{embed_post_id}")
+async def postnitro_job_status(embed_post_id: str, request: Request):
+    await get_current_user(request)
+    if not POSTNITRO_API_KEY:
+        raise HTTPException(400, "PostNitro non configurato")
+    headers = {"embed-api-key": POSTNITRO_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            resp = await hc.get(f"{POSTNITRO_API_URL}/post/status/{embed_post_id}", headers=headers)
+            if resp.status_code != 200:
+                return {"status": "error", "message": resp.text}
+            data = resp.json()
+            status = data.get("status", "processing")
+            await db.postnitro_jobs.update_one({"embed_post_id": embed_post_id}, {"$set": {"status": status}})
+            return {"status": status, "data": data}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@api.get("/postnitro/output/{embed_post_id}")
+async def postnitro_output(embed_post_id: str, request: Request):
+    user = await get_current_user(request)
+    if not POSTNITRO_API_KEY:
+        raise HTTPException(400, "PostNitro non configurato")
+    headers = {"embed-api-key": POSTNITRO_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            resp = await hc.get(f"{POSTNITRO_API_URL}/post/output/{embed_post_id}", headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(resp.status_code, f"PostNitro output error: {resp.text}")
+            data = resp.json()
+            slide_urls = data.get("slideImageUrls", [])
+            job = await db.postnitro_jobs.find_one({"embed_post_id": embed_post_id}, {"_id": 0})
+            if job and slide_urls:
+                for i, url in enumerate(slide_urls):
+                    try:
+                        img_resp = await hc.get(url)
+                        if img_resp.status_code == 200:
+                            fname = f"postnitro_{uuid.uuid4().hex}_{i}.png"
+                            fpath = UPLOAD_DIR / fname
+                            with open(fpath, "wb") as f:
+                                f.write(img_resp.content)
+                            media_url = f"/api/media/file/{fname}"
+                            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"PostNitro Slide {i+1}", "url": media_url, "type": "image", "source": "postnitro", "size": len(img_resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
+                            await db.contents.update_one({"id": job["content_id"]}, {"$push": {"media": media_doc}})
+                    except Exception as e:
+                        logger.error(f"PostNitro slide download error: {e}")
+                await db.postnitro_jobs.update_one({"embed_post_id": embed_post_id}, {"$set": {"status": "completed"}})
+            return {"slide_urls": slide_urls, "pdf_url": data.get("pdfUrl", ""), "status": "completed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore output PostNitro: {str(e)}")
 
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/csv")

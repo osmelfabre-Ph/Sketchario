@@ -1003,6 +1003,34 @@ export default function ProjectView({ project, setActiveView }) {
                     }}>
                       <Download size={14} /> OneDrive
                     </button>
+                    {/* PostNitro */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="postnitro-btn" onClick={async () => {
+                      const mode = window.confirm('Generare carousel con AI dal contenuto?\n\nOK = AI automatico\nAnnulla = Importa slide manuali') ? 'ai' : 'import';
+                      try {
+                        const { data } = await api.post('/postnitro/generate', { content_id: selectedContent.id, project_id: project.id, mode });
+                        if (data.embed_post_id) {
+                          alert(`Carousel in generazione! ID: ${data.embed_post_id}\nControlla lo stato nel tab Queue o riapri questo contenuto tra qualche secondo.`);
+                          const poll = async (attempts = 0) => {
+                            if (attempts > 10) return;
+                            const { data: status } = await api.get(`/postnitro/status/${data.embed_post_id}`);
+                            if (status.status === 'COMPLETED' || status.status === 'completed') {
+                              const { data: output } = await api.get(`/postnitro/output/${data.embed_post_id}`);
+                              if (output.slide_urls?.length) {
+                                const updatedContent = await api.get(`/contents/${project.id}`);
+                                const updated = updatedContent.data.find(c => c.id === selectedContent.id);
+                                if (updated) { setSelectedContent(updated); setContents(updatedContent.data); }
+                                alert(`Carousel completato! ${output.slide_urls.length} slide importate.`);
+                              }
+                            } else if (status.status !== 'error') {
+                              setTimeout(() => poll(attempts + 1), 3000);
+                            }
+                          };
+                          setTimeout(() => poll(), 3000);
+                        }
+                      } catch(err) { alert('Errore PostNitro: ' + (err.response?.data?.detail || err.message)); }
+                    }}>
+                      <Image size={14} /> PostNitro
+                    </button>
                   </div>
                 </div>
 
