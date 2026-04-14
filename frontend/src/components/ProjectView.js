@@ -1,48 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  CalendarBlank, List, Users as UsersIcon, Palette, Video, Image, PencilSimple, X,
+  CalendarBlank, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
-  Eye, Sparkle, Link as LinkIcon, Trash, WifiHigh, Globe,
+  Eye, Sparkle, Trash, Globe,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
-  BookOpen, Download, CanvaLogo, ChartBar
+  BookOpen, Download, ChartBar, Article, DotsSixVertical
 } from '@phosphor-icons/react';
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
-import usePostNitro from './usePostNitro';
 import ContentDetail from './ContentDetail';
 
-const TABS = [
-  { id: 'calendar', label: 'Calendario', icon: CalendarBlank },
-  { id: 'list', label: 'Tutti', icon: List },
-  { id: 'analytics', label: 'Analytics', icon: ChartBar },
-  { id: 'feed', label: 'Feed', icon: RssSimple },
-  { id: 'queue', label: 'Queue', icon: Queue },
-  { id: 'personas', label: 'Personas', icon: UsersIcon },
-  { id: 'tov', label: 'Tono', icon: Palette },
-  { id: 'tov-library', label: 'ToV Library', icon: BookOpen },
-  { id: 'social', label: 'Social', icon: Globe },
-];
-
 const PLATFORM_ICONS = {
-  instagram: { Icon: InstagramLogo, color: '#E4405F' },
-  facebook: { Icon: FacebookLogo, color: '#1877F2' },
-  linkedin: { Icon: LinkedinLogo, color: '#0A66C2' },
-  tiktok: { Icon: TiktokLogo, color: '#ffffff' },
-  pinterest: { Icon: PinterestLogo, color: '#E60023' },
+  instagram: { Icon: InstagramLogo, color: '#E4405F', name: 'Instagram' },
+  facebook: { Icon: FacebookLogo, color: '#1877F2', name: 'Facebook' },
+  linkedin: { Icon: LinkedinLogo, color: '#0A66C2', name: 'LinkedIn' },
+  tiktok: { Icon: TiktokLogo, color: '#ffffff', name: 'TikTok' },
+  pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
 };
 
-export default function ProjectView({ project, setActiveView }) {
+export default function ProjectView({ project, setActiveView, activeTab }) {
   const { api } = useAuth();
-  const [tab, setTab] = useState('calendar');
+  const [tab, setTab] = useState(activeTab || 'list');
   const [contents, setContents] = useState([]);
   const [personas, setPersonas] = useState([]);
   const [tov, setTov] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedContent, setSelectedContent] = useState(null);
 
-  // New Post modal
+  // New Post
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostHook, setNewPostHook] = useState('');
   const [newPostFormat, setNewPostFormat] = useState('reel');
@@ -50,38 +37,32 @@ export default function ProjectView({ project, setActiveView }) {
   const [newPostLoading, setNewPostLoading] = useState(false);
 
   // Social
-  const [platforms, setPlatforms] = useState([]);
   const [socialProfiles, setSocialProfiles] = useState([]);
   const [projectSocials, setProjectSocials] = useState([]);
   const [showAddManual, setShowAddManual] = useState(null);
   const [manualName, setManualName] = useState('');
+  const [platforms, setPlatforms] = useState([]);
 
   // Feed
   const [feeds, setFeeds] = useState([]);
   const [feedItems, setFeedItems] = useState([]);
-  const [newFeedUrl, setNewFeedUrl] = useState('');
-  const [newFeedName, setNewFeedName] = useState('');
+  const [aiFeedItems, setAiFeedItems] = useState([]);
   const [feedLoading, setFeedLoading] = useState(false);
-  const [feedGenLoading, setFeedGenLoading] = useState(null);
+  const [newFeedUrl, setNewFeedUrl] = useState('');
 
-  // Publish Queue
+  // Queue + Analytics
   const [queueItems, setQueueItems] = useState([]);
-  const [showSchedule, setShowSchedule] = useState(null);
-  const [scheduleDate, setScheduleDate] = useState('');
-  const [scheduleTime, setScheduleTime] = useState('10:00');
-  const [scheduleProfiles, setScheduleProfiles] = useState([]);
-  const [queueFilter, setQueueFilter] = useState('all');
+  const [rightPanelWidth, setRightPanelWidth] = useState(280);
 
   // ToV Library
   const [tovLibrary, setTovLibrary] = useState([]);
   const [showTovSave, setShowTovSave] = useState(false);
   const [tovSaveName, setTovSaveName] = useState('');
 
-  // Plan limits
-  const [planLimits, setPlanLimits] = useState(null);
+  // Drag state for calendar
+  const [dragContent, setDragContent] = useState(null);
 
-  // PostNitro
-  const { openEditor: openPostNitro } = usePostNitro();
+  useEffect(() => { if (activeTab) setTab(activeTab); }, [activeTab]);
 
   useEffect(() => {
     if (!project?.id) return;
@@ -96,145 +77,94 @@ export default function ProjectView({ project, setActiveView }) {
       api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {}),
       api.get('/tov-library').then(r => setTovLibrary(r.data)).catch(() => {}),
-      api.get('/plan/limits').then(r => setPlanLimits(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [api, project?.id]);
 
-  const openContentDetail = (c) => {
-    setSelectedContent(c);
-  };
+  // Auto-refresh feeds every 10 min
+  useEffect(() => {
+    if (!project?.id || loading) return;
+    const interval = setInterval(() => {
+      api.post(`/feeds/refresh/${project.id}`).then(() => {
+        api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {});
+      }).catch(() => {});
+    }, 600000);
+    // Add default feed if none exists
+    if (feeds.length === 0 && project.sector) {
+      const searchTerm = encodeURIComponent(project.sector);
+      const defaultUrl = `https://news.google.com/rss/search?q=${searchTerm}&hl=it&gl=IT&ceid=IT:it`;
+      api.post('/feeds/add', { project_id: project.id, feed_url: defaultUrl, feed_name: `News: ${project.sector}` })
+        .then(r => { setFeeds(prev => [...prev, r.data]); return api.get(`/feeds/${project.id}/items`); })
+        .then(r => setFeedItems(r.data)).catch(() => {});
+    }
+    return () => clearInterval(interval);
+  }, [project?.id, loading]);
 
-  const saveContent = async () => {
-    // Handled by ContentDetail
-  };
-
-  const handleContentUpdate = (updated) => {
-    setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
-  };
+  const openContentDetail = (c) => setSelectedContent(c);
+  const handleContentUpdate = (updated) => setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
 
   const deleteContent = async (id) => {
-    if (!window.confirm('Eliminare questo contenuto?')) return;
+    if (!window.confirm('Eliminare?')) return;
     await api.delete(`/contents/${id}`);
     setContents(prev => prev.filter(c => c.id !== id));
-    setSelectedContent(null);
   };
 
-  // New Post
   const createNewPost = async () => {
     if (!newPostHook.trim()) return;
     setNewPostLoading(true);
     try {
-      const { data } = await api.post('/content/create-post', {
-        project_id: project.id,
-        hook_text: newPostHook,
-        format: newPostFormat,
-        use_ai: newPostUseAi
-      });
+      const { data } = await api.post('/content/create-post', { project_id: project.id, hook_text: newPostHook, format: newPostFormat, use_ai: newPostUseAi });
       setContents(prev => [...prev, data]);
-      setShowNewPost(false);
-      setNewPostHook('');
-      setNewPostFormat('reel');
-      setNewPostUseAi(false);
+      setShowNewPost(false); setNewPostHook('');
       if (data.caption || data.script) openContentDetail(data);
-    } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setNewPostLoading(false);
-    }
+    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+    finally { setNewPostLoading(false); }
   };
 
-  // Social
-  const connectSocial = (platform) => {
-    if (platform.auth_url) {
-      window.open(platform.auth_url, '_blank', 'width=600,height=700');
-    }
+  const feedToPost = async (item) => {
+    setFeedLoading(true);
+    try {
+      const { data } = await api.post('/feeds/generate-content', { project_id: project.id, feed_item_title: item.title, feed_item_summary: item.summary });
+      setContents(prev => [...prev, data]);
+      openContentDetail(data);
+    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+    finally { setFeedLoading(false); }
   };
 
+  // Calendar drag & drop
+  const handleDrop = async (dayOffset, e) => {
+    e.preventDefault();
+    if (!dragContent) return;
+    await api.put(`/contents/${dragContent.id}`, { ...dragContent, day_offset: dayOffset });
+    setContents(prev => prev.map(c => c.id === dragContent.id ? { ...c, day_offset: dayOffset } : c));
+    setDragContent(null);
+  };
+
+  // Social functions
+  const connectSocial = (platform) => { if (platform.auth_url) window.open(platform.auth_url, '_blank', 'width=600,height=700'); };
   const addManualProfile = async (platformId) => {
     if (!manualName.trim()) return;
-    try {
-      const { data } = await api.post('/social/profiles', {
-        platform: platformId,
-        profile_name: manualName,
-        connection_mode: 'manual'
-      });
-      setSocialProfiles(prev => [...prev, data]);
-      setShowAddManual(null);
-      setManualName('');
-    } catch (e) {
-      alert('Errore');
-    }
+    const { data } = await api.post('/social/profiles', { platform: platformId, profile_name: manualName, connection_mode: 'manual' });
+    setSocialProfiles(prev => [...prev, data]); setShowAddManual(null); setManualName('');
   };
-
-  const removeSocialProfile = async (id) => {
-    await api.delete(`/social/profiles/${id}`);
-    setSocialProfiles(prev => prev.filter(p => p.id !== id));
-  };
-
+  const removeSocialProfile = async (id) => { await api.delete(`/social/profiles/${id}`); setSocialProfiles(prev => prev.filter(p => p.id !== id)); };
   const toggleProjectLink = async (profileId) => {
     const isLinked = projectSocials.some(p => p.id === profileId);
-    let newIds;
-    if (isLinked) {
-      newIds = projectSocials.filter(p => p.id !== profileId).map(p => p.id);
-    } else {
-      newIds = [...projectSocials.map(p => p.id), profileId];
-    }
+    const newIds = isLinked ? projectSocials.filter(p => p.id !== profileId).map(p => p.id) : [...projectSocials.map(p => p.id), profileId];
     await api.post('/social/project/link', { project_id: project.id, social_profile_ids: newIds });
     const { data } = await api.get(`/social/project/${project.id}`);
     setProjectSocials(data);
   };
 
-  // Feed functions
-  const addFeed = async () => {
-    if (!newFeedUrl.trim()) return;
-    setFeedLoading(true);
-    try {
-      const { data } = await api.post('/feeds/add', { project_id: project.id, feed_url: newFeedUrl, feed_name: newFeedName || newFeedUrl });
-      setFeeds(prev => [...prev, data]);
-      setNewFeedUrl(''); setNewFeedName('');
-      const { data: items } = await api.get(`/feeds/${project.id}/items`);
-      setFeedItems(items);
-    } catch (e) { alert('Errore aggiunta feed'); }
-    finally { setFeedLoading(false); }
+  // ToV Library
+  const saveToTovLibrary = async () => {
+    if (!tovSaveName.trim()) return;
+    const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
+    setTovLibrary(prev => [...prev, data]); setShowTovSave(false); setTovSaveName('');
   };
-
-  const refreshFeeds = async () => {
-    setFeedLoading(true);
-    try {
-      await api.post(`/feeds/refresh/${project.id}`);
-      const { data } = await api.get(`/feeds/${project.id}/items`);
-      setFeedItems(data);
-    } catch {}
-    finally { setFeedLoading(false); }
-  };
-
-  const removeFeed = async (id) => {
-    await api.delete(`/feeds/${id}`);
-    setFeeds(prev => prev.filter(f => f.id !== id));
-    setFeedItems(prev => prev.filter(i => i.feed_id !== id));
-  };
-
-  const generateFromFeed = async (item) => {
-    setFeedGenLoading(item.id);
-    try {
-      const { data } = await api.post('/feeds/generate-content', { project_id: project.id, feed_item_title: item.title, feed_item_summary: item.summary });
-      setContents(prev => [...prev, data]);
-      openContentDetail(data);
-    } catch (e) { alert('Errore generazione: ' + (e.response?.data?.detail || e.message)); }
-    finally { setFeedGenLoading(null); }
-  };
-
-  // Queue functions
-  const scheduleContent = async (contentId) => {
-    if (!scheduleDate || scheduleProfiles.length === 0) { alert('Seleziona data e almeno un profilo social'); return; }
-    try {
-      const scheduledAt = `${scheduleDate}T${scheduleTime}:00Z`;
-      const { data } = await api.post('/publish/schedule', { content_id: contentId, project_id: project.id, social_profile_ids: scheduleProfiles, scheduled_at: scheduledAt });
-      setQueueItems(prev => [...prev, ...data.items]);
-      setShowSchedule(null); setScheduleDate(''); setScheduleProfiles([]);
-      const updatedContents = await api.get(`/contents/${project.id}`);
-      setContents(updatedContents.data);
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+  const applyTovTemplate = async (itemId) => {
+    await api.post(`/tov-library/${itemId}/apply/${project.id}`);
+    const { data } = await api.get(`/tov/${project.id}`);
+    setTov(data || {});
   };
 
   const cancelQueueItem = async (id) => {
@@ -242,629 +172,306 @@ export default function ProjectView({ project, setActiveView }) {
     setQueueItems(prev => prev.filter(q => q.id !== id));
   };
 
-  const filteredQueue = queueFilter === 'all' ? queueItems : queueItems.filter(q => q.status === queueFilter);
-
-  // ToV Library functions
-  const saveToTovLibrary = async () => {
-    if (!tovSaveName.trim() || !tov) return;
-    const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
-    setTovLibrary(prev => [...prev, data]);
-    setShowTovSave(false); setTovSaveName('');
-  };
-
-  const applyTovTemplate = async (itemId) => {
-    await api.post(`/tov-library/${itemId}/apply/${project.id}`);
-    const { data } = await api.get(`/tov/${project.id}`);
-    setTov(data || {});
-  };
-
-  const deleteTovItem = async (id) => {
-    await api.delete(`/tov-library/${id}`);
-    setTovLibrary(prev => prev.filter(t => t.id !== id));
-  };
-
-  const exportCSV = () => {
-    window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank');
-  };
-
-  const openCanva = async () => {
-    try {
-      const { data } = await api.get('/canva/auth-url');
-      if (data.auth_url) window.open(data.auth_url, '_blank', 'width=800,height=600');
-    } catch (e) { alert('Canva non disponibile'); }
-  };
-
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
   if (loading) return <p className="text-[var(--text-muted)] text-center py-12">Caricamento progetto...</p>;
 
   return (
-    <div>
+    <div className="flex flex-col h-[calc(100vh-0px)]">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <button className="btn-ghost" onClick={() => setActiveView('dashboard')} data-testid="back-to-dashboard">
-          <ArrowLeft size={18} />
-        </button>
+      <div className="flex items-center gap-4 px-6 py-3 border-b border-[var(--border-color)] flex-shrink-0">
+        <button className="btn-ghost p-1.5" onClick={() => setActiveView('dashboard')} data-testid="back-to-dashboard"><ArrowLeft size={18} /></button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold gradient-text" data-testid="project-title">{project.name}</h1>
-          <p className="text-sm text-[var(--text-secondary)]">{project.sector} | {contents.length} contenuti</p>
+          <h1 className="text-lg font-bold gradient-text" data-testid="project-title">{project.name}</h1>
+          <p className="text-xs text-[var(--text-secondary)]">{project.sector} | {contents.length} contenuti</p>
         </div>
-        <button data-testid="new-post-btn" className="btn-gradient" onClick={() => setShowNewPost(true)}>
-          <Plus weight="bold" size={18} /> Nuovo Post
+        <button data-testid="new-post-btn" className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}>
+          <Plus weight="bold" size={16} /> Nuovo Post
         </button>
-        <button className="btn-ghost" onClick={exportCSV} data-testid="export-csv-btn">
-          <Download size={18} /> CSV
+        <button className="btn-ghost text-sm" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank')} data-testid="export-csv-btn">
+          <Download size={16} /> CSV
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {TABS.map(t => (
-          <button key={t.id} data-testid={`tab-${t.id}`} className={`preset-btn ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-            <t.icon size={16} /> {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Calendar View */}
-      {tab === 'calendar' && (
-        <div className="calendar-container">
-          <div className="calendar-grid">
-            {days.map(d => <div key={d} className="calendar-header">{d}</div>)}
-            {Array.from({ length: 35 }, (_, i) => {
-              const dayNum = i - 5 + 1;
-              const dayContents = contents.filter(c => (c.day_offset || 0) === dayNum - 1 && (c.status === 'scheduled' || c.status === 'published'));
-              const isMonth = dayNum > 0 && dayNum <= 31;
-              return (
-                <div key={i} className={`calendar-cell ${!isMonth ? 'opacity-30' : ''}`}>
-                  {isMonth && (
-                    <>
-                      <span className="text-sm font-medium text-[var(--text-secondary)]">{dayNum}</span>
-                      {dayContents.map(c => (
-                        <div key={c.id} className={`content-chip ${c.format}`} onClick={() => openContentDetail(c)}>
-                          {c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
-                          <span className="ml-1 truncate">{(c.hook_text || '').slice(0, 25)}</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* List View */}
-      {tab === 'list' && (
-        <div className="space-y-3">
-          {contents.map((c, i) => (
-            <motion.div key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="hook-item cursor-pointer">
-              <div className="w-14 text-center"><span className="text-xs font-semibold text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span></div>
-              <div className="flex-1" onClick={() => openContentDetail(c)}>
-                <p className="text-sm font-medium mb-1">{c.hook_text}</p>
-                <p className="text-xs text-[var(--text-muted)] truncate">{(c.caption || '').slice(0, 80)}...</p>
-              </div>
-              <span className={`badge ${c.format === 'reel' ? 'pink' : 'blue'}`}>{c.format}</span>
-              <span className={`badge ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
-              <button className="btn-ghost p-1.5 text-xs" onClick={() => { setShowSchedule(c); setScheduleProfiles([]); }}><PaperPlaneTilt size={14} /></button>
-              <button className="btn-ghost p-1.5" onClick={() => openContentDetail(c)}><Eye size={14} /></button>
-            </motion.div>
-          ))}
-          {contents.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
-              <button className="btn-gradient" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Analytics Tab */}
-      {tab === 'analytics' && <Analytics project={project} />}
-
-      {/* Feed Tab */}
-      {tab === 'feed' && (
-        <div className="max-w-3xl">
-          <h3 className="font-semibold mb-2">Feeding Bar</h3>
-          <p className="text-sm text-[var(--text-muted)] mb-6">Aggiungi feed RSS per ispirarti e generare contenuti.</p>
-
-          {/* Add Feed */}
-          <div className="card mb-6">
-            <div className="flex gap-3 items-end flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">URL Feed RSS</label>
-                <input className="input-dark text-sm py-2" placeholder="https://example.com/feed.xml" value={newFeedUrl} onChange={e => setNewFeedUrl(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
-              </div>
-              <div className="w-48">
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Nome</label>
-                <input className="input-dark text-sm py-2" placeholder="Nome feed" value={newFeedName} onChange={e => setNewFeedName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
-              </div>
-              <button className="btn-gradient text-sm py-2" onClick={addFeed} disabled={feedLoading} data-testid="add-feed-btn">
-                <Plus size={16} /> Aggiungi
-              </button>
-            </div>
-          </div>
-
-          {/* Active Feeds */}
-          {feeds.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-6">
-              {feeds.map(f => (
-                <div key={f.id} className="flex items-center gap-2 py-1.5 px-3 rounded-lg" style={{ background: 'rgba(99,102,241,0.1)' }}>
-                  <RssSimple size={14} />
-                  <span className="text-sm">{f.feed_name}</span>
-                  <button onClick={() => removeFeed(f.id)} className="text-[var(--accent-pink)] hover:opacity-80"><X size={12} /></button>
-                </div>
-              ))}
-              <button className="btn-ghost text-xs py-1.5" onClick={refreshFeeds} disabled={feedLoading}>
-                <ArrowClockwise size={14} className={feedLoading ? 'animate-spin' : ''} /> Refresh
-              </button>
-            </div>
-          )}
-
-          {/* Feed Items */}
-          {feedItems.length > 0 ? (
-            <div className="space-y-3">
-              {feedItems.map(item => (
-                <div key={item.id} className="card" data-testid={`feed-item-${item.id}`}>
-                  <div className="flex gap-4">
-                    {item.image && (
-                      <img src={item.image} alt="" className="w-20 h-20 object-cover rounded-lg flex-shrink-0" onError={e => e.target.style.display = 'none'} />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm mb-1 line-clamp-2">{item.title}</h4>
-                      <p className="text-xs text-[var(--text-muted)] line-clamp-2 mb-2">{item.summary?.replace(/<[^>]*>/g, '').slice(0, 150)}</p>
-                      <div className="flex gap-2 items-center">
-                        <span className="text-[10px] text-[var(--text-muted)]">{item.feed_name}</span>
-                        {item.link && <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--gradient-start)] hover:underline">Leggi</a>}
-                      </div>
-                    </div>
-                    <button
-                      className="btn-gradient text-xs py-1.5 px-3 self-start flex-shrink-0"
-                      onClick={() => generateFromFeed(item)}
-                      disabled={feedGenLoading === item.id}
-                    >
-                      {feedGenLoading === item.id ? '...' : <><Sparkle size={14} /> Genera</>}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : feeds.length > 0 ? (
-            <p className="text-center text-[var(--text-muted)] py-8">Nessun articolo trovato. Prova a refreshare.</p>
-          ) : (
-            <p className="text-center text-[var(--text-muted)] py-8">Aggiungi un feed RSS per iniziare.</p>
-          )}
-        </div>
-      )}
-
-      {/* Queue Tab */}
-      {tab === 'queue' && (
-        <div className="max-w-3xl">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-semibold">Publishing Queue</h3>
-              <p className="text-sm text-[var(--text-muted)] mt-1">{queueItems.length} elementi in coda</p>
-            </div>
-          </div>
-
-          {/* Filters */}
-          <div className="flex gap-2 mb-6 flex-wrap">
-            {['all', 'queued', 'processing', 'published', 'failed'].map(f => (
-              <button key={f} className={`preset-btn text-xs ${queueFilter === f ? 'active' : ''}`} onClick={() => setQueueFilter(f)}>
-                {f === 'all' ? 'Tutti' : f.charAt(0).toUpperCase() + f.slice(1)}
-                {f !== 'all' && <span className="ml-1 opacity-60">({queueItems.filter(q => q.status === f).length})</span>}
+      {/* Main Area: content + right panel */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Center: Tab Content + Feed Strip */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Tab Buttons — minimal */}
+          <div className="flex gap-1 px-6 pt-3 pb-2 flex-shrink-0">
+            {[
+              { id: 'list', label: 'Contenuti' },
+              { id: 'calendar', label: 'Calendario' },
+              { id: 'personas', label: 'Personas' },
+              { id: 'social', label: 'Social' },
+            ].map(t => (
+              <button key={t.id} data-testid={`tab-${t.id}`} className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${tab === t.id ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`} onClick={() => setTab(t.id)}>
+                {t.label}
               </button>
             ))}
           </div>
 
-          {/* Queue Items */}
-          {filteredQueue.length > 0 ? (
-            <div className="space-y-3">
-              {filteredQueue.map(item => {
-                const pi = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
-                const content = contents.find(c => c.id === item.content_id);
-                return (
-                  <div key={item.id} className="hook-item" data-testid={`queue-item-${item.id}`}>
-                    <div className="social-icon-btn" style={{ width: 36, height: 36, flexShrink: 0 }}>
-                      <pi.Icon weight="fill" size={18} color={pi.color} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{content?.hook_text || 'Contenuto'}</p>
-                      <p className="text-xs text-[var(--text-muted)]">
-                        {item.profile_name} | {new Date(item.scheduled_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                    <span className={`badge ${
-                      item.status === 'queued' ? 'blue' :
-                      item.status === 'published' ? 'green' :
-                      item.status === 'failed' ? 'pink' : 'orange'
-                    }`}>
-                      {item.status === 'queued' && <Clock size={12} />}
-                      {item.status === 'published' && <CheckCircle size={12} />}
-                      {item.status === 'failed' && <XCircle size={12} />}
-                      <span className="ml-1">{item.status}</span>
-                    </span>
-                    {item.status === 'queued' && (
-                      <button className="btn-ghost p-1.5 text-xs" onClick={() => cancelQueueItem(item.id)}>
-                        <X size={14} />
-                      </button>
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto px-6 pb-4">
+
+            {/* ═══ LIST VIEW — CARDS ═══ */}
+            {tab === 'list' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+                {contents.map((c, i) => (
+                  <motion.div key={c.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
+                    className="card cursor-pointer group" onClick={() => openContentDetail(c)}>
+                    {/* Media preview */}
+                    {c.media && c.media[0] && c.media[0].type === 'image' ? (
+                      <div className="-mx-6 -mt-6 mb-3 h-36 rounded-t-[0.9rem] overflow-hidden">
+                        <img src={`${process.env.REACT_APP_BACKEND_URL}${c.media[0].url}`} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="-mx-6 -mt-6 mb-3 h-20 rounded-t-[0.9rem] flex items-center justify-center" style={{ background: c.format === 'reel' ? 'rgba(236,72,153,0.08)' : 'rgba(99,102,241,0.08)' }}>
+                        {c.format === 'reel' ? <Video size={28} className="text-[var(--accent-pink)] opacity-40" /> : <Image size={28} className="text-[var(--gradient-start)] opacity-40" />}
+                      </div>
                     )}
+                    <div className="flex items-start gap-2 mb-2">
+                      <span className={`badge text-[9px] ${c.format === 'reel' ? 'pink' : 'blue'}`}>{c.format}</span>
+                      <span className={`badge text-[9px] ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
+                    </div>
+                    <h4 className="text-sm font-semibold mb-1 line-clamp-2">{c.hook_text}</h4>
+                    <p className="text-xs text-[var(--text-muted)] line-clamp-2">{(c.caption || '').slice(0, 100)}</p>
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
+                      <span className="text-[10px] text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="p-1 rounded hover:bg-[var(--bg-secondary)]" onClick={e => { e.stopPropagation(); deleteContent(c.id); }}><Trash size={12} /></button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+                {contents.length === 0 && (
+                  <div className="col-span-full text-center py-12">
+                    <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
+                    <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══ CALENDAR — with drag & drop ═══ */}
+            {tab === 'calendar' && (
+              <div className="calendar-container mt-2">
+                <div className="calendar-grid">
+                  {days.map(d => <div key={d} className="calendar-header">{d}</div>)}
+                  {Array.from({ length: 35 }, (_, i) => {
+                    const dayNum = i - 5 + 1;
+                    const dayContents = contents.filter(c => (c.day_offset || 0) === dayNum - 1 && (c.status === 'scheduled' || c.status === 'published'));
+                    const isMonth = dayNum > 0 && dayNum <= 31;
+                    return (
+                      <div key={i} className={`calendar-cell ${!isMonth ? 'opacity-30' : ''}`}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                        onDragLeave={e => { e.currentTarget.style.background = ''; }}
+                        onDrop={e => { e.currentTarget.style.background = ''; handleDrop(dayNum - 1, e); }}>
+                        {isMonth && (
+                          <>
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">{dayNum}</span>
+                            {dayContents.map(c => (
+                              <div key={c.id} className={`content-chip ${c.format}`} draggable
+                                onDragStart={() => setDragContent(c)} onClick={() => openContentDetail(c)}>
+                                {c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
+                                <span className="ml-1 truncate">{(c.hook_text || '').slice(0, 20)}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ═══ PERSONAS + TOV LIBRARY ═══ */}
+            {tab === 'personas' && (
+              <div className="pt-2">
+                <div className="personas-grid mb-8">
+                  {personas.map((p, i) => (
+                    <div key={i} className="card persona-card">
+                      <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
+                      <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
+                      {p.pain_points && (
+                        <div className="p-3 rounded-lg text-sm mb-2" style={{ background: 'rgba(236,72,153,0.1)' }}>
+                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">Pain Points</span>
+                          {(Array.isArray(p.pain_points) ? p.pain_points : [p.pain_points]).map((pp, j) => <p key={j} className="text-sm mt-1">- {pp}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* ToV Library inside Personas */}
+                <div className="border-t border-[var(--border-color)] pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="font-semibold flex items-center gap-2"><BookOpen size={18} /> Libreria Tono di Voce</h3>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">Template riutilizzabili tra progetti</p>
+                    </div>
+                    <button className="btn-gradient text-xs" onClick={() => setShowTovSave(true)}><Plus size={14} /> Salva ToV attuale</button>
+                  </div>
+                  {showTovSave && (
+                    <div className="card mb-4 p-4">
+                      <div className="flex gap-2 items-end">
+                        <input className="input-dark text-sm py-2 flex-1" placeholder="Nome template" value={tovSaveName} onChange={e => setTovSaveName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+                        <button className="btn-gradient text-xs py-2" onClick={saveToTovLibrary}>Salva</button>
+                        <button className="btn-ghost text-xs py-2" onClick={() => setShowTovSave(false)}>X</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {tovLibrary.map(item => (
+                      <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{item.name}</p>
+                          <p className="text-[10px] text-[var(--text-muted)]">F:{item.formality} E:{item.energy} Em:{item.empathy} H:{item.humor}</p>
+                        </div>
+                        <button className="btn-gradient text-[10px] py-1 px-2" onClick={() => applyTovTemplate(item.id)}>Applica</button>
+                        <button className="text-[var(--accent-pink)]" onClick={() => { api.delete(`/tov-library/${item.id}`); setTovLibrary(prev => prev.filter(t => t.id !== item.id)); }}><Trash size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ═══ SOCIAL ═══ */}
+            {tab === 'social' && (
+              <div className="pt-2 max-w-3xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  {platforms.map(platform => {
+                    const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#fff' };
+                    const connected = socialProfiles.filter(p => p.platform === platform.id);
+                    return (
+                      <div key={platform.id} className="card" data-testid={`social-platform-${platform.id}`}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <pi.Icon weight="fill" size={22} color={pi.color} />
+                          <div>
+                            <p className="font-semibold text-sm">{platform.name}</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">{connected.length} collegati</p>
+                          </div>
+                        </div>
+                        {connected.map(prof => (
+                          <div key={prof.id} className="flex items-center justify-between py-1.5 px-2 rounded mb-1" style={{ background: 'rgba(34,197,94,0.1)' }}>
+                            <span className="text-xs">{prof.profile_name}</span>
+                            <div className="flex gap-1">
+                              <button className="text-[10px]" onClick={() => toggleProjectLink(prof.id)}>
+                                {projectSocials.some(p => p.id === prof.id) ? <span className="badge green text-[8px]">On</span> : <span className="badge orange text-[8px]">Off</span>}
+                              </button>
+                              <button className="text-[var(--accent-pink)]" onClick={() => removeSocialProfile(prof.id)}><Trash size={10} /></button>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex gap-1 mt-2">
+                          {platform.configured && <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => connectSocial(platform)}>OAuth</button>}
+                          <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => { setShowAddManual(platform.id); setManualName(''); }}><Plus size={10} /> Manuale</button>
+                        </div>
+                        {showAddManual === platform.id && (
+                          <div className="mt-2 p-2 rounded" style={{ background: 'var(--bg-secondary)' }}>
+                            <input className="input-dark text-xs py-1.5 mb-1" placeholder="@nome" value={manualName} onChange={e => setManualName(e.target.value)} style={{ paddingLeft: '0.5rem' }} />
+                            <div className="flex gap-1">
+                              <button className="btn-ghost text-[10px] py-1 flex-1" onClick={() => setShowAddManual(null)}>X</button>
+                              <button className="btn-gradient text-[10px] py-1 flex-1" onClick={() => addManualProfile(platform.id)}>Ok</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="card"><TeamPanel projectId={project.id} /></div>
+              </div>
+            )}
+          </div>
+
+          {/* ═══ FEED STRIP — above footer ═══ */}
+          <div className="flex-shrink-0 border-t border-[var(--border-color)] px-6 py-3" style={{ background: 'var(--bg-secondary)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1"><RssSimple size={12} /> Feed Ispirazione — {project.sector}</p>
+              <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1" onClick={() => { api.post(`/feeds/refresh/${project.id}`).then(() => api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data))).catch(() => {}); }}>
+                <ArrowClockwise size={10} /> Refresh
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
+              {feedItems.slice(0, 5).map(item => (
+                <div key={item.id} className="flex-shrink-0 w-52 p-3 rounded-lg cursor-pointer hover:border-[var(--gradient-start)] transition-colors"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+                  onClick={() => feedToPost(item)}>
+                  <p className="text-xs font-medium line-clamp-2 mb-1">{item.title}</p>
+                  <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.feed_name}</p>
+                </div>
+              ))}
+              {feedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Feed in caricamento...</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* ═══ RIGHT PANEL — Queue + Analytics (resizable) ═══ */}
+        <div className="flex flex-shrink-0" style={{ width: rightPanelWidth }}>
+          {/* Drag handle */}
+          <div className="w-1 cursor-col-resize hover:bg-[var(--gradient-start)] transition-colors flex-shrink-0"
+            style={{ background: 'var(--border-color)' }}
+            onMouseDown={e => {
+              const startX = e.clientX;
+              const startW = rightPanelWidth;
+              const onMove = (ev) => { const diff = startX - ev.clientX; setRightPanelWidth(Math.max(200, Math.min(600, startW + diff))); };
+              const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            }}
+          />
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Queue */}
+            <div className="mb-6">
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><Queue size={12} /> Publishing Queue <span className="badge blue text-[8px] ml-1">{queueItems.length}</span></p>
+              {queueItems.slice(0, 5).map(item => {
+                const pi = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
+                return (
+                  <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded mb-1" style={{ background: 'var(--bg-card)' }}>
+                    <pi.Icon weight="fill" size={12} color={pi.color} />
+                    <p className="text-[10px] flex-1 truncate">{contents.find(c => c.id === item.content_id)?.hook_text?.slice(0, 30) || '...'}</p>
+                    <span className={`text-[8px] font-semibold ${item.status === 'queued' ? 'text-[var(--accent-blue)]' : item.status === 'published' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-orange)]'}`}>{item.status}</span>
+                    {item.status === 'queued' && <button onClick={() => cancelQueueItem(item.id)}><X size={10} /></button>}
                   </div>
                 );
               })}
+              {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Coda vuota</p>}
             </div>
-          ) : (
-            <div className="text-center py-12">
-              <Queue size={48} className="mx-auto mb-4 text-[var(--text-muted)] opacity-40" />
-              <p className="text-[var(--text-muted)] mb-2">Nessun elemento in coda</p>
-              <p className="text-xs text-[var(--text-muted)]">Vai alla lista contenuti e clicca l'icona di invio per programmare la pubblicazione.</p>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Personas */}
-      {tab === 'personas' && (
-        <div className="personas-grid">
-          {personas.map((p, i) => (
-            <div key={i} className="card persona-card">
-              <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
-              <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
-              {p.pain_points && (
-                <div className="p-3 rounded-lg text-sm" style={{ background: 'rgba(236,72,153,0.1)' }}>
-                  {(Array.isArray(p.pain_points) ? p.pain_points : [p.pain_points]).map((pp, j) => <p key={j} className="text-sm mt-1">- {pp}</p>)}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ToV */}
-      {tab === 'tov' && (
-        <div className="card max-w-xl">
-          <h3 className="font-semibold mb-4">Tono di Voce</h3>
-          {['formality', 'energy', 'empathy', 'humor', 'storytelling'].map(k => (
-            <div key={k} className="flex justify-between items-center py-2 border-b border-[var(--border-color)]">
-              <span className="text-sm capitalize">{k}</span>
-              <div className="flex items-center gap-2">
-                <div className="w-32 h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[var(--gradient-start)] to-[var(--gradient-end)]" style={{ width: `${(tov[k] || 5) * 10}%` }} />
-                </div>
-                <span className="text-sm font-semibold w-6 text-right">{tov[k] || 5}</span>
-              </div>
-            </div>
-          ))}
-          {tov.custom_instructions && (
-            <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(99,102,241,0.1)' }}>
-              <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-1">Istruzioni</p>
-              <p>{tov.custom_instructions}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ToV Library Tab */}
-      {tab === 'tov-library' && (
-        <div className="max-w-3xl">
-          <div className="flex items-center justify-between mb-6">
+            {/* Analytics */}
             <div>
-              <h3 className="font-semibold">Libreria Tono di Voce</h3>
-              <p className="text-sm text-[var(--text-muted)] mt-1">Template personali riutilizzabili tra progetti.</p>
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> Analytics</p>
+              <Analytics project={project} compact />
             </div>
-            <button className="btn-gradient text-sm" onClick={() => setShowTovSave(true)} data-testid="save-tov-template-btn">
-              <Plus size={16} /> Salva ToV attuale
-            </button>
-          </div>
-
-          {showTovSave && (
-            <div className="card mb-6">
-              <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Nome template</label>
-                  <input className="input-dark text-sm py-2" placeholder="Es. Professionale Standard" value={tovSaveName} onChange={e => setTovSaveName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
-                </div>
-                <button className="btn-gradient text-sm py-2" onClick={saveToTovLibrary}>Salva</button>
-                <button className="btn-ghost text-sm py-2" onClick={() => setShowTovSave(false)}>Annulla</button>
-              </div>
-            </div>
-          )}
-
-          {tovLibrary.length > 0 ? (
-            <div className="space-y-3">
-              {tovLibrary.map(item => (
-                <div key={item.id} className="card">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">{item.name}</h4>
-                    <div className="flex gap-2">
-                      <button className="btn-gradient text-xs py-1.5 px-3" onClick={() => applyTovTemplate(item.id)}>
-                        Applica al progetto
-                      </button>
-                      <button className="btn-ghost p-1.5" onClick={() => deleteTovItem(item.id)}><Trash size={14} /></button>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 flex-wrap text-sm text-[var(--text-secondary)]">
-                    <span>Formalita: {item.formality}</span>
-                    <span>Energia: {item.energy}</span>
-                    <span>Empatia: {item.empathy}</span>
-                    <span>Humor: {item.humor}</span>
-                    <span>Story: {item.storytelling}</span>
-                  </div>
-                  {item.custom_instructions && <p className="text-xs text-[var(--text-muted)] mt-2">{item.custom_instructions}</p>}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <BookOpen size={48} className="mx-auto mb-4 text-[var(--text-muted)] opacity-40" />
-              <p className="text-[var(--text-muted)] mb-2">Nessun template salvato</p>
-              <p className="text-xs text-[var(--text-muted)]">Configura il Tono di Voce nel tab "Tono", poi salvalo qui come template riutilizzabile.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Social Tab */}
-      {tab === 'social' && (
-        <div className="max-w-3xl">
-          <h3 className="font-semibold mb-2">Piattaforme disponibili</h3>
-          <p className="text-sm text-[var(--text-muted)] mb-6">
-            Collega i tuoi profili social. L'OAuth richiede il dominio <strong>sketchario.app</strong> per i callback.
-          </p>
-
-          {/* Platform Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            {platforms.map(platform => {
-              const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#fff' };
-              const connected = socialProfiles.filter(p => p.platform === platform.id);
-              return (
-                <div key={platform.id} className="card" data-testid={`social-platform-${platform.id}`}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="social-icon-btn" style={{ width: 44, height: 44 }}>
-                      <pi.Icon weight="fill" size={22} color={pi.color} />
-                    </div>
-                    <div>
-                      <p className="font-semibold">{platform.name}</p>
-                      <p className="text-xs text-[var(--text-muted)]">{connected.length} profili collegati</p>
-                    </div>
-                  </div>
-
-                  {/* Connected profiles */}
-                  {connected.map(prof => (
-                    <div key={prof.id} className="flex items-center justify-between py-2 px-3 rounded-lg mb-2" style={{ background: 'rgba(34,197,94,0.1)' }}>
-                      <div className="flex items-center gap-2">
-                        <WifiHigh size={14} color="var(--accent-green)" />
-                        <span className="text-sm font-medium">{prof.profile_name}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className="text-xs text-[var(--text-muted)] hover:text-white"
-                          onClick={() => toggleProjectLink(prof.id)}
-                        >
-                          {projectSocials.some(p => p.id === prof.id) ?
-                            <span className="badge green text-[10px]">Collegato</span> :
-                            <span className="badge orange text-[10px]">Collega</span>
-                          }
-                        </button>
-                        <button className="text-[var(--accent-pink)] hover:opacity-80" onClick={() => removeSocialProfile(prof.id)}>
-                          <Trash size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Actions */}
-                  <div className="flex gap-2 mt-3">
-                    {platform.configured && (
-                      <button className="btn-ghost text-xs py-1.5 px-3 flex-1" onClick={() => connectSocial(platform)}>
-                        <LinkIcon size={14} /> OAuth
-                      </button>
-                    )}
-                    <button
-                      className="btn-ghost text-xs py-1.5 px-3 flex-1"
-                      onClick={() => { setShowAddManual(platform.id); setManualName(''); }}
-                    >
-                      <Plus size={14} /> Manuale
-                    </button>
-                  </div>
-
-                  {/* Manual add form */}
-                  {showAddManual === platform.id && (
-                    <div className="mt-3 p-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
-                      <input
-                        className="input-dark text-sm py-2 mb-2"
-                        placeholder="Nome profilo (es. @mio_brand)"
-                        value={manualName}
-                        onChange={e => setManualName(e.target.value)}
-                        style={{ paddingLeft: '0.75rem' }}
-                      />
-                      <div className="flex gap-2">
-                        <button className="btn-ghost text-xs py-1.5 flex-1" onClick={() => setShowAddManual(null)}>Annulla</button>
-                        <button className="btn-gradient text-xs py-1.5 flex-1" onClick={() => addManualProfile(platform.id)}>Aggiungi</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Project linked socials summary */}
-          {projectSocials.length > 0 && (
-            <div className="card">
-              <h4 className="font-semibold mb-3">Social collegati a questo progetto</h4>
-              <div className="flex gap-3 flex-wrap">
-                {projectSocials.map(prof => {
-                  const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#fff' };
-                  return (
-                    <div key={prof.id} className="flex items-center gap-2 py-2 px-3 rounded-lg" style={{ background: 'rgba(34,197,94,0.1)' }}>
-                      <pi.Icon weight="fill" size={16} color={pi.color} />
-                      <span className="text-sm">{prof.profile_name}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Team Collaboration */}
-          <div className="card mt-6">
-            <TeamPanel projectId={project.id} />
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ── SCHEDULE MODAL ── */}
-      <AnimatePresence>
-        {showSchedule && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.7)' }}
-            onClick={() => setShowSchedule(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-              className="card w-full max-w-md"
-              onClick={e => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-semibold mb-2">Programma Pubblicazione</h3>
-              <p className="text-sm text-[var(--text-muted)] mb-4 truncate">{showSchedule.hook_text}</p>
-
-              <div className="space-y-4">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Data</label>
-                    <input type="date" className="input-dark text-sm py-2" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
-                  </div>
-                  <div className="w-28">
-                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Ora</label>
-                    <input type="time" className="input-dark text-sm py-2" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Profili social</label>
-                  {socialProfiles.length > 0 ? (
-                    <div className="space-y-2">
-                      {socialProfiles.map(sp => {
-                        const pi = PLATFORM_ICONS[sp.platform] || { Icon: Globe, color: '#fff' };
-                        const isSelected = scheduleProfiles.includes(sp.id);
-                        return (
-                          <div
-                            key={sp.id}
-                            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border ${isSelected ? 'border-[var(--gradient-start)]' : 'border-[var(--border-color)]'}`}
-                            style={isSelected ? { background: 'rgba(99,102,241,0.1)' } : {}}
-                            onClick={() => setScheduleProfiles(prev => isSelected ? prev.filter(id => id !== sp.id) : [...prev, sp.id])}
-                          >
-                            <pi.Icon weight="fill" size={20} color={pi.color} />
-                            <span className="text-sm flex-1">{sp.profile_name}</span>
-                            {isSelected && <CheckCircle size={18} color="var(--accent-green)" weight="fill" />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-[var(--text-muted)]">Nessun profilo social collegato. Vai al tab Social per aggiungerne.</p>
-                  )}
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button className="btn-ghost flex-1" onClick={() => setShowSchedule(null)}>Annulla</button>
-                  <button className="btn-gradient flex-1" onClick={() => scheduleContent(showSchedule.id)} data-testid="schedule-publish-btn" disabled={!scheduleDate || scheduleProfiles.length === 0}>
-                    <PaperPlaneTilt size={16} /> Programma
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── NEW POST MODAL ── */}
+      {/* ═══ MODALS ═══ */}
+      {/* New Post */}
       <AnimatePresence>
         {showNewPost && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.7)' }}
-            onClick={() => !newPostLoading && setShowNewPost(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="card w-full max-w-lg"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold">Nuovo Post</h3>
-                <button onClick={() => setShowNewPost(false)} className="btn-ghost p-2" disabled={newPostLoading}><X size={20} /></button>
-              </div>
-
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => !newPostLoading && setShowNewPost(false)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="card w-full max-w-lg" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-4">Nuovo Post</h3>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Idea / Hook del post *</label>
-                  <textarea
-                    data-testid="new-post-hook"
-                    className="input-dark"
-                    rows={3}
-                    placeholder="Es. 3 errori che fanno tutti i fotografi alle prime armi"
-                    value={newPostHook}
-                    onChange={e => setNewPostHook(e.target.value)}
-                    style={{ paddingLeft: '1rem' }}
-                  />
+                <textarea data-testid="new-post-hook" className="input-dark" rows={3} placeholder="Hook/idea del post..." value={newPostHook} onChange={e => setNewPostHook(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <div className="flex gap-2">
+                  <button className={`preset-btn flex-1 ${newPostFormat === 'reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('reel')}><Video size={14} /> Reel</button>
+                  <button className={`preset-btn flex-1 ${newPostFormat === 'carousel' ? 'active' : ''}`} onClick={() => setNewPostFormat('carousel')}><Image size={14} /> Carousel</button>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Formato</label>
-                  <div className="flex gap-2">
-                    <button
-                      className={`preset-btn flex-1 ${newPostFormat === 'reel' ? 'active' : ''}`}
-                      onClick={() => setNewPostFormat('reel')}
-                    >
-                      <Video size={16} /> Reel
-                    </button>
-                    <button
-                      className={`preset-btn flex-1 ${newPostFormat === 'carousel' ? 'active' : ''}`}
-                      onClick={() => setNewPostFormat('carousel')}
-                    >
-                      <Image size={16} /> Carousel
-                    </button>
-                  </div>
+                <div className="flex gap-2">
+                  <button className={`preset-btn flex-1 ${!newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(false)}>Da zero</button>
+                  <button className={`preset-btn flex-1 ${newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(true)}><Sparkle size={14} /> Con AI</button>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Modalita</label>
-                  <div className="flex gap-2">
-                    <button
-                      data-testid="new-post-mode-manual"
-                      className={`preset-btn flex-1 ${!newPostUseAi ? 'active' : ''}`}
-                      onClick={() => setNewPostUseAi(false)}
-                    >
-                      <PencilSimple size={16} /> Da zero
-                    </button>
-                    <button
-                      data-testid="new-post-mode-ai"
-                      className={`preset-btn flex-1 ${newPostUseAi ? 'active' : ''}`}
-                      onClick={() => setNewPostUseAi(true)}
-                    >
-                      <Sparkle size={16} /> Con AI
-                    </button>
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)] mt-2">
-                    {newPostUseAi ? "L'AI generera script, caption e hashtag basati sul tuo hook e ToV." : "Creerai un post vuoto da compilare manualmente."}
-                  </p>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button className="btn-ghost flex-1" onClick={() => setShowNewPost(false)} disabled={newPostLoading}>Annulla</button>
-                  <button
-                    data-testid="create-post-btn"
-                    className="btn-gradient flex-1"
-                    onClick={createNewPost}
-                    disabled={newPostLoading || !newPostHook.trim()}
-                  >
-                    {newPostLoading ? 'Creazione...' : newPostUseAi ? 'Genera con AI' : 'Crea Post'}
+                <div className="flex gap-3">
+                  <button className="btn-ghost flex-1" onClick={() => setShowNewPost(false)}>Annulla</button>
+                  <button data-testid="create-post-btn" className="btn-gradient flex-1" onClick={createNewPost} disabled={newPostLoading || !newPostHook.trim()}>
+                    {newPostLoading ? '...' : 'Crea'}
                   </button>
                 </div>
               </div>
@@ -873,15 +480,10 @@ export default function ProjectView({ project, setActiveView }) {
         )}
       </AnimatePresence>
 
-      {/* ── CONTENT DETAIL (Full Screen) ── */}
+      {/* Content Detail */}
       <AnimatePresence>
         {selectedContent && (
-          <ContentDetail
-            content={selectedContent}
-            project={project}
-            onClose={() => setSelectedContent(null)}
-            onUpdate={handleContentUpdate}
-          />
+          <ContentDetail content={selectedContent} project={project} onClose={() => setSelectedContent(null)} onUpdate={handleContentUpdate} />
         )}
       </AnimatePresence>
     </div>

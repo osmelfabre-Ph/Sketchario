@@ -27,7 +27,7 @@ function StatBar({ label, value, total, color }) {
   );
 }
 
-export default function Analytics({ project }) {
+export default function Analytics({ project, compact }) {
   const { api } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -37,8 +37,25 @@ export default function Analytics({ project }) {
     api.get(`/analytics/${project.id}`).then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
   }, [api, project?.id]);
 
-  if (loading) return <p className="text-[var(--text-muted)] text-center py-12">Caricamento analytics...</p>;
-  if (!data) return <p className="text-[var(--text-muted)] text-center py-12">Errore caricamento dati.</p>;
+  if (loading) return <p className="text-[var(--text-muted)] text-center py-4 text-xs">Caricamento...</p>;
+  if (!data) return <p className="text-[var(--text-muted)] text-center py-4 text-xs">--</p>;
+
+  if (compact) {
+    return (
+      <div>
+        <div className="flex justify-between text-xs mb-2"><span>Contenuti</span><span className="font-bold">{data.total_contents}/{data.target_contents}</span></div>
+        <div className="w-full h-2 rounded-full bg-[var(--bg-card)] overflow-hidden mb-3">
+          <div className="h-full rounded-full" style={{ width: `${data.completion_pct}%`, background: 'linear-gradient(90deg, var(--gradient-start), var(--gradient-end))' }} />
+        </div>
+        {Object.entries(data.by_format).map(([k, v]) => (
+          <StatBar key={k} label={k} value={v} total={data.total_contents} color={COLORS[k] || '#6b7280'} />
+        ))}
+        {Object.entries(data.by_status).map(([k, v]) => (
+          <StatBar key={k} label={k} value={v} total={data.total_contents} color={COLORS[k] || '#6b7280'} />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl">

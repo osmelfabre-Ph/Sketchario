@@ -183,6 +183,18 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Project covers: upload immagine locale per personalizzare ogni card progetto
 - ✅ Fix bug editHashtags.split per valori non-stringa
 
+### Iteration 11 — Major UI Restructure (Jan 14, 2026)
+- ✅ Sidebar collassabile con freccia toggle
+- ✅ Sidebar: rimosso Piani e Ingranaggio, profilo cliccabile in basso
+- ✅ Sezione PROGETTO nella sidebar (sfondo più chiaro) con Calendario, Personas, Social
+- ✅ ToV Library integrata dentro tab Personas
+- ✅ Vista "Tutti" a CARDS (griglia 3 colonne) con media preview, badge formato/stato
+- ✅ Feed strip orizzontale sopra footer con 5 card RSS in tema col progetto + auto-refresh 10 min
+- ✅ Right panel con Queue + Analytics, divisore trascinabile per allargare/restringere
+- ✅ Calendario drag & drop per riordinare contenuti
+- ✅ Fix eliminazione progetto (error handling migliorato)
+- ✅ Fix sidebar da position:fixed a flex layout
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority

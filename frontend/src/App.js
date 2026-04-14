@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -19,13 +19,13 @@ function AppContent() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     if (user && api) {
       api.get('/onboarding/status').then(r => {
         if (!r.data.completed) setShowOnboarding(true);
       }).catch(() => {});
     }
-  });
+  }, [user, api]);
 
   if (loading) {
     return (
@@ -40,6 +40,16 @@ function AppContent() {
 
   if (!user) return <AuthScreen />;
 
+  const isProjectView = ['project', 'calendar', 'personas', 'social'].includes(activeView);
+
+  const handleSetActiveView = (view) => {
+    // If switching to project sub-views, keep the project context
+    if (['calendar', 'personas', 'social'].includes(view) && !selectedProject) {
+      return; // Can't navigate to project sub-views without a project
+    }
+    setActiveView(view);
+  };
+
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
@@ -47,7 +57,10 @@ function AppContent() {
       case 'wizard':
         return <Wizard setActiveView={setActiveView} setSelectedProject={setSelectedProject} />;
       case 'project':
-        return <ProjectView project={selectedProject} setActiveView={setActiveView} />;
+      case 'calendar':
+      case 'personas':
+      case 'social':
+        return <ProjectView project={selectedProject} setActiveView={setActiveView} activeTab={activeView === 'project' ? 'list' : activeView} />;
       case 'profile':
         return <Profile />;
       case 'admin':
@@ -63,8 +76,10 @@ function AppContent() {
 
   return (
     <div className="main-layout">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} />
-      <main className="main-content">{renderView()}</main>
+      <Sidebar activeView={activeView} setActiveView={handleSetActiveView} isProjectView={isProjectView} />
+      <main className="main-content">
+        <div className={isProjectView ? '' : 'p-8'}>{renderView()}</div>
+      </main>
       {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
     </div>
   );

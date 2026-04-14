@@ -15,9 +15,13 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
   }, [api]);
 
   const deleteProject = async (id) => {
-    if (!window.confirm('Eliminare questo progetto?')) return;
-    await api.delete(`/projects/${id}`);
-    setProjects(prev => prev.filter(p => p.id !== id));
+    if (!window.confirm('Eliminare questo progetto e tutti i suoi contenuti?')) return;
+    try {
+      await api.delete(`/projects/${id}`);
+      setProjects(prev => prev.filter(p => p.id !== id));
+    } catch (e) {
+      alert('Errore eliminazione: ' + (e.response?.data?.detail || e.message));
+    }
   };
 
   const archiveProject = async (id, archived) => {
@@ -25,9 +29,15 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, archived: !archived } : p));
   };
 
-  const openProject = (project) => {
-    setSelectedProject(project);
-    setActiveView('project');
+  const openProject = async (project) => {
+    try {
+      const { data } = await api.get(`/projects/${project.id}`);
+      setSelectedProject(data);
+      setActiveView('project');
+    } catch {
+      setSelectedProject(project);
+      setActiveView('project');
+    }
   };
 
   const stats = [
