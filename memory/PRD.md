@@ -170,6 +170,19 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Email sent: True confermato nei test
 - ✅ Backend: 90% (45/50 - fail solo su PostNitro preset e cloud imports con URL fittizi)
 
+### Iteration 10 — Content Detail Redesign, Project Covers (Jan 14, 2026)
+- ✅ Content Detail completamente ridisegnato come pagina full-screen a 3 colonne:
+  - Sinistra: social collegati al progetto
+  - Centro: editor (script, caption, hashtag come pill, area media upload/attach)
+  - Destra: anteprima post per piattaforma con filtro
+  - Bottom bar: Stato, Salva bozza, Pubblica, Programma
+- ✅ Bottoni Copia tutto, Converti in Carousel/Reel, Rigenera + icone editor (DALL-E, Canva, PostNitro)
+- ✅ Programmazione inline con selezione data/ora/profili social
+- ✅ Pubblicazione diretta con un click
+- ✅ Calendario mostra solo contenuti scheduled/published (non bozze)
+- ✅ Project covers: upload immagine locale per personalizzare ogni card progetto
+- ✅ Fix bug editHashtags.split per valori non-stringa
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority

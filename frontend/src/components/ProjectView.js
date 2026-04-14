@@ -11,6 +11,7 @@ import {
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
 import usePostNitro from './usePostNitro';
+import ContentDetail from './ContentDetail';
 
 const TABS = [
   { id: 'calendar', label: 'Calendario', icon: CalendarBlank },
@@ -40,9 +41,6 @@ export default function ProjectView({ project, setActiveView }) {
   const [tov, setTov] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedContent, setSelectedContent] = useState(null);
-  const [editCaption, setEditCaption] = useState('');
-  const [editScript, setEditScript] = useState('');
-  const [editHashtags, setEditHashtags] = useState('');
 
   // New Post modal
   const [showNewPost, setShowNewPost] = useState(false);
@@ -104,15 +102,14 @@ export default function ProjectView({ project, setActiveView }) {
 
   const openContentDetail = (c) => {
     setSelectedContent(c);
-    setEditCaption(c.caption || '');
-    setEditScript(c.script || '');
-    setEditHashtags(c.hashtags || '');
   };
 
   const saveContent = async () => {
-    await api.put(`/contents/${selectedContent.id}`, { caption: editCaption, script: editScript, hashtags: editHashtags });
-    setContents(prev => prev.map(c => c.id === selectedContent.id ? { ...c, caption: editCaption, script: editScript, hashtags: editHashtags } : c));
-    setSelectedContent(null);
+    // Handled by ContentDetail
+  };
+
+  const handleContentUpdate = (updated) => {
+    setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
   };
 
   const deleteContent = async (id) => {
@@ -316,7 +313,7 @@ export default function ProjectView({ project, setActiveView }) {
             {days.map(d => <div key={d} className="calendar-header">{d}</div>)}
             {Array.from({ length: 35 }, (_, i) => {
               const dayNum = i - 5 + 1;
-              const dayContents = contents.filter(c => (c.day_offset || 0) === dayNum - 1);
+              const dayContents = contents.filter(c => (c.day_offset || 0) === dayNum - 1 && (c.status === 'scheduled' || c.status === 'published'));
               const isMonth = dayNum > 0 && dayNum <= 31;
               return (
                 <div key={i} className={`calendar-cell ${!isMonth ? 'opacity-30' : ''}`}>
@@ -876,192 +873,15 @@ export default function ProjectView({ project, setActiveView }) {
         )}
       </AnimatePresence>
 
-      {/* ── CONTENT DETAIL MODAL ── */}
+      {/* ── CONTENT DETAIL (Full Screen) ── */}
       <AnimatePresence>
         {selectedContent && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.7)' }}
-            onClick={() => setSelectedContent(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="card w-full max-w-2xl max-h-[80vh] overflow-y-auto"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <span className={`badge ${selectedContent.format === 'reel' ? 'pink' : 'blue'} mb-2`}>{selectedContent.format}</span>
-                  <h3 className="font-semibold text-lg">{selectedContent.hook_text}</h3>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => deleteContent(selectedContent.id)} className="btn-ghost p-2" style={{ borderColor: 'var(--accent-pink)' }}>
-                    <Trash size={18} color="var(--accent-pink)" />
-                  </button>
-                  <button onClick={() => setSelectedContent(null)} className="btn-ghost p-2"><X size={20} /></button>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Script</label>
-                  <textarea className="input-dark" rows={6} value={editScript} onChange={e => setEditScript(e.target.value)} style={{ paddingLeft: '1rem' }} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Caption</label>
-                  <textarea className="input-dark" rows={4} value={editCaption} onChange={e => setEditCaption(e.target.value)} style={{ paddingLeft: '1rem' }} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Hashtags</label>
-                  <input className="input-dark" value={editHashtags} onChange={e => setEditHashtags(e.target.value)} style={{ paddingLeft: '1rem' }} />
-                </div>
-
-                {/* Media Section */}
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Media</label>
-                  {/* Existing media */}
-                  {selectedContent.media && selectedContent.media.length > 0 && (
-                    <div className="flex gap-2 flex-wrap mb-3">
-                      {selectedContent.media.map(m => (
-                        <div key={m.id} className="relative group">
-                          {m.type === 'image' ? (
-                            <img src={`${process.env.REACT_APP_BACKEND_URL}${m.url}`} alt="" className="w-20 h-20 object-cover rounded-lg" />
-                          ) : (
-                            <div className="w-20 h-20 rounded-lg bg-[var(--bg-secondary)] flex items-center justify-center"><Video size={24} /></div>
-                          )}
-                          <button
-                            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[var(--accent-pink)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={async () => {
-                              await api.delete(`/media/${selectedContent.id}/${m.id}`);
-                              setSelectedContent(prev => ({...prev, media: prev.media.filter(x => x.id !== m.id)}));
-                              setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: c.media.filter(x => x.id !== m.id)} : c));
-                            }}
-                          ><X size={10} color="white" /></button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex gap-2 flex-wrap">
-                    {/* Upload */}
-                    <label className="btn-ghost text-xs py-1.5 px-3 cursor-pointer" data-testid="upload-media-btn">
-                      <Plus size={14} /> Upload
-                      <input type="file" accept="image/*,video/*" className="hidden" onChange={async (e) => {
-                        const file = e.target.files[0]; if (!file) return;
-                        const fd = new FormData(); fd.append('file', file);
-                        try {
-                          const { data } = await api.post(`/media/upload/${selectedContent.id}`, fd);
-                          setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
-                          setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
-                        } catch(err) { alert('Errore upload: ' + (err.response?.data?.detail || err.message)); }
-                      }} />
-                    </label>
-                    {/* DALL-E */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="dalle-generate-btn" onClick={async () => {
-                      const prompt = window.prompt('Descrivi l\'immagine da generare:', selectedContent.hook_text);
-                      if (!prompt) return;
-                      try {
-                        const { data } = await api.post('/media/generate-dalle', { content_id: selectedContent.id, prompt, project_id: project.id });
-                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
-                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
-                      } catch(err) { alert('Errore DALL-E: ' + (err.response?.data?.detail || err.message)); }
-                    }}>
-                      <Sparkle size={14} /> DALL-E
-                    </button>
-                    {/* Canva */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={openCanva} data-testid="canva-btn">
-                      <Palette size={14} /> Canva
-                    </button>
-                    {/* Google Drive */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={async () => {
-                      const url = window.prompt('URL diretto del file da Google Drive:');
-                      if (!url) return;
-                      try {
-                        const { data } = await api.post('/media/import-drive', { content_id: selectedContent.id, file_url: url });
-                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
-                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
-                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
-                    }}>
-                      <Download size={14} /> Drive
-                    </button>
-                    {/* Dropbox */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={async () => {
-                      const url = window.prompt('URL diretto del file da Dropbox:');
-                      if (!url) return;
-                      try {
-                        const { data } = await api.post('/media/import-cloud', { content_id: selectedContent.id, file_url: url, source: 'dropbox' });
-                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
-                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
-                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
-                    }}>
-                      <Download size={14} /> Dropbox
-                    </button>
-                    {/* OneDrive */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={async () => {
-                      const url = window.prompt('URL diretto del file da OneDrive:');
-                      if (!url) return;
-                      try {
-                        const { data } = await api.post('/media/import-cloud', { content_id: selectedContent.id, file_url: url, source: 'onedrive' });
-                        setSelectedContent(prev => ({...prev, media: [...(prev.media||[]), data]}));
-                        setContents(prev => prev.map(c => c.id === selectedContent.id ? {...c, media: [...(c.media||[]), data]} : c));
-                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
-                    }}>
-                      <Download size={14} /> OneDrive
-                    </button>
-                    {/* PostNitro */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="postnitro-btn" onClick={async () => {
-                      try {
-                        const result = await openPostNitro(selectedContent.id, project.id, selectedContent.hook_text);
-                        if (result?.success) {
-                          const { data: updatedContents } = await api.get(`/contents/${project.id}`);
-                          const updated = updatedContents.find(c => c.id === selectedContent.id);
-                          if (updated) { setSelectedContent(updated); setContents(updatedContents); }
-                          alert(`Carousel importato! ${result.count} slide salvate.`);
-                        } else if (result?.error) {
-                          alert('Errore: ' + result.error);
-                        }
-                      } catch(err) { alert('Errore PostNitro: ' + (err.message || err)); }
-                    }}>
-                      <Image size={14} /> PostNitro
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 flex-wrap justify-between items-center">
-                  <div className="flex gap-2">
-                    {/* Rigenera */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="regenerate-btn" onClick={async () => {
-                      if (!window.confirm('Rigenerare questo contenuto? Script, caption e hashtag saranno riscritti dall\'AI.')) return;
-                      try {
-                        const { data } = await api.post('/contents/regenerate', { content_id: selectedContent.id, project_id: project.id });
-                        setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(data.hashtags || '');
-                        setSelectedContent(data);
-                        setContents(prev => prev.map(c => c.id === data.id ? data : c));
-                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
-                    }}>
-                      <ArrowClockwise size={14} /> Rigenera
-                    </button>
-                    {/* Converti */}
-                    <button className="btn-ghost text-xs py-1.5 px-3" data-testid="convert-btn" onClick={async () => {
-                      const target = selectedContent.format === 'reel' ? 'carousel' : 'reel';
-                      if (!window.confirm(`Convertire da ${selectedContent.format} a ${target}?`)) return;
-                      try {
-                        const { data } = await api.post('/contents/convert', { content_id: selectedContent.id, project_id: project.id, target_format: target });
-                        setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(data.hashtags || '');
-                        setSelectedContent(data);
-                        setContents(prev => prev.map(c => c.id === data.id ? data : c));
-                      } catch(err) { alert('Errore: ' + (err.response?.data?.detail || err.message)); }
-                    }}>
-                      {selectedContent.format === 'reel' ? <><Image size={14} /> → Carousel</> : <><Video size={14} /> → Reel</>}
-                    </button>
-                  </div>
-                  <div className="flex gap-3">
-                    <button className="btn-ghost" onClick={() => setSelectedContent(null)}>Annulla</button>
-                    <button className="btn-gradient" onClick={saveContent} data-testid="save-content-btn">Salva Modifiche</button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+          <ContentDetail
+            content={selectedContent}
+            project={project}
+            onClose={() => setSelectedContent(null)}
+            onUpdate={handleContentUpdate}
+          />
         )}
       </AnimatePresence>
     </div>
