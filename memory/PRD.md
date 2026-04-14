@@ -58,6 +58,20 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - Brand Kit: /api/brand-kit/{save,get}
 - Export: /api/export/{project_id}/json
 
+### Iteration 2 — Nuovo Post + Social (Jan 14, 2026)
+- ✅ "Nuovo Post" button in Project View header
+- ✅ New Post modal: hook input, Reel/Carousel format, Da zero/Con AI modes
+- ✅ Manual post creation (Da zero) creates empty post
+- ✅ AI post creation (Con AI) generates script+caption+hashtags via Gemini
+- ✅ Content delete button in detail modal
+- ✅ Social Profiles tab (5 platforms: Instagram, Facebook, LinkedIn, TikTok, Pinterest)
+- ✅ OAuth connect URLs configured for all platforms (callbacks → sketchario.app)
+- ✅ Manual profile add (name-based, no OAuth required)
+- ✅ Project-social linking (toggle link/unlink per profile)
+- ✅ All social API keys loaded from config.secrets.php
+- ✅ Auth made more robust with interceptors + auto-refresh
+- ✅ Backend: 100% tests passed (20/20)
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority

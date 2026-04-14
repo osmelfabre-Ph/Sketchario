@@ -1,69 +1,87 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 const AuthContext = createContext(null);
 
+function getStoredToken() {
+  return localStorage.getItem('sk_token') || null;
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('sk_token'));
+  const [token, setTokenState] = useState(getStoredToken);
 
-  const authAxios = useCallback(() => {
+  const setToken = useCallback((t) => {
+    if (t) localStorage.setItem('sk_token', t);
+    else localStorage.removeItem('sk_token');
+    setTokenState(t);
+  }, []);
+
+  const api = useMemo(() => {
     const instance = axios.create({ baseURL: API, withCredentials: true });
-    if (token) instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    instance.interceptors.request.use((config) => {
+      const t = localStorage.getItem('sk_token');
+      if (t) config.headers.Authorization = `Bearer ${t}`;
+      return config;
+    });
+    instance.interceptors.response.use(
+      (res) => res,
+      async (error) => {
+        if (error.response?.status === 401 && !error.config._retry) {
+          error.config._retry = true;
+          try {
+            const { data } = await axios.post(`${API}/auth/refresh`, {}, { withCredentials: true });
+            if (data.access_token) {
+              localStorage.setItem('sk_token', data.access_token);
+              setTokenState(data.access_token);
+              error.config.headers.Authorization = `Bearer ${data.access_token}`;
+              return instance(error.config);
+            }
+          } catch {
+            setUser(null);
+            setToken(null);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
     return instance;
-  }, [token]);
+  }, [setToken]);
 
-  const checkAuth = useCallback(async () => {
-    try {
-      const { data } = await authAxios().get('/auth/me');
-      setUser(data.user);
-    } catch {
-      setUser(null);
-      setToken(null);
-      localStorage.removeItem('sk_token');
-    } finally {
-      setLoading(false);
-    }
-  }, [authAxios]);
+  useEffect(() => {
+    api.get('/auth/me')
+      .then(({ data }) => setUser(data.user))
+      .catch(() => { setUser(null); setToken(null); })
+      .finally(() => setLoading(false));
+  }, [api, setToken]);
 
-  useEffect(() => { checkAuth(); }, [checkAuth]);
-
-  const login = async (email, password) => {
-    const { data } = await authAxios().post('/auth/login', { email, password });
-    if (data.access_token) {
-      localStorage.setItem('sk_token', data.access_token);
-      setToken(data.access_token);
-    }
+  const login = useCallback(async (email, password) => {
+    const { data } = await api.post('/auth/login', { email, password });
+    if (data.access_token) setToken(data.access_token);
     setUser(data.user);
     return data;
-  };
+  }, [api, setToken]);
 
-  const register = async (name, email, password) => {
-    const { data } = await authAxios().post('/auth/register', { name, email, password });
-    if (data.access_token) {
-      localStorage.setItem('sk_token', data.access_token);
-      setToken(data.access_token);
-    }
+  const register = useCallback(async (name, email, password) => {
+    const { data } = await api.post('/auth/register', { name, email, password });
+    if (data.access_token) setToken(data.access_token);
     setUser(data.user);
     return data;
-  };
+  }, [api, setToken]);
 
-  const logout = async () => {
-    try { await authAxios().post('/auth/logout'); } catch {}
+  const logout = useCallback(async () => {
+    try { await api.post('/auth/logout'); } catch {}
     setUser(null);
     setToken(null);
-    localStorage.removeItem('sk_token');
-  };
+  }, [api, setToken]);
 
-  const updateProfile = async (updates) => {
-    const { data } = await authAxios().put('/profile', updates);
+  const updateProfile = useCallback(async (updates) => {
+    const { data } = await api.put('/profile', updates);
     setUser(data);
     return data;
-  };
-
-  const api = authAxios();
+  }, [api]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, api, token }}>
