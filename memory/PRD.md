@@ -152,11 +152,13 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Config: requires POSTNITRO_TEMPLATE_ID and POSTNITRO_BRAND_ID from user's PostNitro account
 - ✅ API key configured: pn-a0hccp9db8wjaecxqgcfbg99
 
-### NOTA: Per attivare PostNitro completamente:
-1. Accedi a PostNitro.ai
-2. Vai nella sezione Embed
-3. Copia Template ID e Brand ID
-4. Inserisci in backend/.env: POSTNITRO_TEMPLATE_ID="..." e POSTNITRO_BRAND_ID="..."
+### NOTA PostNitro — Configurazione Finale:
+- ✅ API Key: pn-a0hccp9db8wjaecxqgcfbg99
+- ✅ Brand ID: 24513e35-95ee-46ed-b8e6-f8608a51d9ab
+- ✅ Embed SDK (@postnitro/embed) installato e integrato
+- ✅ Editor visuale si apre al click del pulsante PostNitro
+- ✅ Slide esportate vengono auto-importate nel contenuto
+- Backend API endpoints mantenuti per future generazioni automatiche (serve presetId + templateId)
 
 ## Prioritized Backlog
 

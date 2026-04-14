@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
+import usePostNitro from './usePostNitro';
 
 const TABS = [
   { id: 'calendar', label: 'Calendario', icon: CalendarBlank },
@@ -80,6 +81,9 @@ export default function ProjectView({ project, setActiveView }) {
 
   // Plan limits
   const [planLimits, setPlanLimits] = useState(null);
+
+  // PostNitro
+  const { openEditor: openPostNitro } = usePostNitro();
 
   useEffect(() => {
     if (!project?.id) return;
@@ -1006,36 +1010,16 @@ export default function ProjectView({ project, setActiveView }) {
                     {/* PostNitro */}
                     <button className="btn-ghost text-xs py-1.5 px-3" data-testid="postnitro-btn" onClick={async () => {
                       try {
-                        const { data: pnStatus } = await api.get('/postnitro/status');
-                        if (!pnStatus.ready) {
-                          const missing = pnStatus.missing_config?.join(', ') || 'configurazione';
-                          alert(`PostNitro richiede configurazione:\n\nCampi mancanti: ${missing}\n\n1. Accedi a postnitro.ai/app/embed\n2. Copia Preset ID (e Template ID se disponibile)\n3. Inseriscili nel backend .env`);
-                          return;
+                        const result = await openPostNitro(selectedContent.id, project.id, selectedContent.hook_text);
+                        if (result?.success) {
+                          const { data: updatedContents } = await api.get(`/contents/${project.id}`);
+                          const updated = updatedContents.find(c => c.id === selectedContent.id);
+                          if (updated) { setSelectedContent(updated); setContents(updatedContents); }
+                          alert(`Carousel importato! ${result.count} slide salvate.`);
+                        } else if (result?.error) {
+                          alert('Errore: ' + result.error);
                         }
-                        const mode = window.confirm('Generare carousel con AI dal contenuto?\n\nOK = AI automatico\nAnnulla = Importa slide manuali') ? 'ai' : 'import';
-                        const { data } = await api.post('/postnitro/generate', { content_id: selectedContent.id, project_id: project.id, mode });
-                        if (data.embed_post_id) {
-                          alert(`Carousel in generazione! ID: ${data.embed_post_id}\nControlla lo stato tra qualche secondo.`);
-                          const poll = async (attempts = 0) => {
-                            if (attempts > 10) return;
-                            try {
-                              const { data: status } = await api.get(`/postnitro/status/${data.embed_post_id}`);
-                              if (status.status === 'COMPLETED' || status.status === 'completed') {
-                                const { data: output } = await api.get(`/postnitro/output/${data.embed_post_id}`);
-                                if (output.slide_urls?.length) {
-                                  const updatedContent = await api.get(`/contents/${project.id}`);
-                                  const updated = updatedContent.data.find(c => c.id === selectedContent.id);
-                                  if (updated) { setSelectedContent(updated); setContents(updatedContent.data); }
-                                  alert(`Carousel completato! ${output.slide_urls.length} slide importate.`);
-                                }
-                              } else if (status.status !== 'error') {
-                                setTimeout(() => poll(attempts + 1), 3000);
-                              }
-                            } catch {}
-                          };
-                          setTimeout(() => poll(), 3000);
-                        }
-                      } catch(err) { alert('Errore PostNitro: ' + (err.response?.data?.detail || err.message)); }
+                      } catch(err) { alert('Errore PostNitro: ' + (err.message || err)); }
                     }}>
                       <Image size={14} /> PostNitro
                     </button>
