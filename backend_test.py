@@ -197,6 +197,146 @@ class SketcharioAPITester:
         
         return success1 and success2
 
+    def test_content_create_post(self):
+        """Test new content creation endpoint"""
+        if not hasattr(self, 'project_id'):
+            print("❌ Skipping content creation test - No project ID available")
+            return False
+            
+        # Test create post Da zero (manual)
+        success1, response1 = self.run_test(
+            "Create Post (Da zero)",
+            "POST",
+            "content/create-post",
+            200,
+            data={
+                "project_id": self.project_id,
+                "hook_text": "Test hook for manual post creation",
+                "format": "reel",
+                "use_ai": False
+            }
+        )
+        
+        if success1 and 'id' in response1:
+            self.content_id = response1['id']
+            print(f"   Content ID: {self.content_id}")
+        
+        # Test create post Con AI
+        success2, _ = self.run_test(
+            "Create Post (Con AI)",
+            "POST",
+            "content/create-post",
+            200,
+            data={
+                "project_id": self.project_id,
+                "hook_text": "Test hook for AI-generated post",
+                "format": "carousel",
+                "use_ai": True
+            }
+        )
+        
+        return success1 and success2
+
+    def test_social_platforms(self):
+        """Test social platforms endpoint"""
+        success, response = self.run_test(
+            "Get Social Platforms",
+            "GET",
+            "social/platforms",
+            200
+        )
+        
+        if success and isinstance(response, list):
+            # Check if all 5 platforms are present
+            platform_ids = [p.get('id') for p in response]
+            expected_platforms = ['instagram', 'facebook', 'linkedin', 'tiktok', 'pinterest']
+            all_present = all(platform in platform_ids for platform in expected_platforms)
+            
+            if all_present:
+                print(f"   ✅ All 5 platforms present: {platform_ids}")
+                # Check if all are configured
+                configured_count = sum(1 for p in response if p.get('configured', False))
+                print(f"   📊 Configured platforms: {configured_count}/5")
+                return True
+            else:
+                print(f"   ❌ Missing platforms. Found: {platform_ids}")
+                return False
+        
+        return success
+
+    def test_social_profiles(self):
+        """Test social profiles endpoints"""
+        # Get profiles list
+        success1, _ = self.run_test(
+            "Get Social Profiles",
+            "GET",
+            "social/profiles",
+            200
+        )
+        
+        # Create manual profile
+        success2, response2 = self.run_test(
+            "Create Manual Social Profile",
+            "POST",
+            "social/profiles",
+            200,
+            data={
+                "platform": "instagram",
+                "profile_name": "@test_profile_manual",
+                "connection_mode": "manual"
+            }
+        )
+        
+        if success2 and 'id' in response2:
+            self.social_profile_id = response2['id']
+            print(f"   Social Profile ID: {self.social_profile_id}")
+        
+        return success1 and success2
+
+    def test_content_operations(self):
+        """Test content CRUD operations"""
+        if not hasattr(self, 'project_id'):
+            print("❌ Skipping content operations - No project ID available")
+            return False
+            
+        # Get contents
+        success1, _ = self.run_test(
+            "Get Contents",
+            "GET",
+            f"contents/{self.project_id}",
+            200
+        )
+        
+        # Update content (if we have content_id)
+        success2 = True
+        if hasattr(self, 'content_id'):
+            success2, _ = self.run_test(
+                "Update Content",
+                "PUT",
+                f"contents/{self.content_id}",
+                200,
+                data={
+                    "script": "Updated test script",
+                    "caption": "Updated test caption",
+                    "hashtags": "#test #updated"
+                }
+            )
+        
+        return success1 and success2
+
+    def test_delete_content(self):
+        """Test content deletion"""
+        if hasattr(self, 'content_id'):
+            return self.run_test(
+                "Delete Content",
+                "DELETE",
+                f"contents/{self.content_id}",
+                200
+            )[0]
+        else:
+            print("❌ Skipping content deletion - No content ID available")
+            return True  # Not a failure if no content to delete
+
 def main():
     print("🚀 Starting Sketchario V4 API Tests")
     print("=" * 50)
@@ -212,8 +352,13 @@ def main():
         ("Create Project", tester.test_create_project),
         ("Get Project", tester.test_get_project),
         ("Profile Endpoints", tester.test_profile_endpoints),
-        ("User Registration", tester.test_register_new_user),
         ("AI Generation", tester.test_ai_generation_endpoints),
+        ("Content Create Post", tester.test_content_create_post),
+        ("Social Platforms", tester.test_social_platforms),
+        ("Social Profiles", tester.test_social_profiles),
+        ("Content Operations", tester.test_content_operations),
+        ("Delete Content", tester.test_delete_content),
+        ("User Registration", tester.test_register_new_user),
         ("Logout", tester.test_logout),
     ]
     

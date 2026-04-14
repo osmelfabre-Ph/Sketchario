@@ -665,6 +665,118 @@ async def get_brand_kit(project_id: str, request: Request):
     bk = await db.brand_kits.find_one({"project_id": project_id}, {"_id": 0})
     return bk or {}
 
+# ── SOCIAL PROFILES ───────────────────────────────────
+SOCIAL_PLATFORMS = {
+    "instagram": {
+        "name": "Instagram",
+        "auth_url": "https://api.instagram.com/oauth/authorize",
+        "client_id_env": "INSTAGRAM_CLIENT_ID",
+        "scope": "instagram_basic,instagram_content_publish",
+    },
+    "facebook": {
+        "name": "Facebook",
+        "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
+        "client_id_env": "META_CLIENT_ID",
+        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts",
+    },
+    "linkedin": {
+        "name": "LinkedIn",
+        "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
+        "client_id_env": "LINKEDIN_CLIENT_ID",
+        "scope": "openid profile email w_member_social",
+    },
+    "tiktok": {
+        "name": "TikTok",
+        "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
+        "client_id_env": "TIKTOK_CLIENT_KEY",
+        "scope": "user.info.basic,video.publish",
+    },
+    "pinterest": {
+        "name": "Pinterest",
+        "auth_url": "https://www.pinterest.com/oauth/",
+        "client_id_env": "PINTEREST_CLIENT_ID",
+        "scope": "boards:read,pins:read,pins:write",
+    },
+}
+
+class SocialProfileSave(BaseModel):
+    platform: str
+    profile_name: str
+    profile_id: Optional[str] = ""
+    access_token: Optional[str] = ""
+    connection_mode: str = "oauth"
+
+class ProjectSocialLink(BaseModel):
+    project_id: str
+    social_profile_ids: List[str]
+
+@api.get("/social/platforms")
+async def list_platforms(request: Request):
+    await get_current_user(request)
+    callback_base = os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE", "https://www.sketchario.app/social_oauth.php")
+    platforms = []
+    for key, cfg in SOCIAL_PLATFORMS.items():
+        client_id = os.environ.get(cfg["client_id_env"], "")
+        platforms.append({
+            "id": key,
+            "name": cfg["name"],
+            "configured": bool(client_id),
+            "auth_url": f"{cfg['auth_url']}?client_id={client_id}&redirect_uri={callback_base}&scope={cfg['scope']}&response_type=code&state={key}" if client_id else None,
+        })
+    return platforms
+
+@api.get("/social/profiles")
+async def list_social_profiles(request: Request):
+    user = await get_current_user(request)
+    profiles = await db.social_accounts.find({"user_id": user["_id"]}, {"_id": 0}).to_list(50)
+    return profiles
+
+@api.post("/social/profiles")
+async def save_social_profile(inp: SocialProfileSave, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["_id"],
+        "platform": inp.platform,
+        "profile_name": inp.profile_name,
+        "profile_id": inp.profile_id,
+        "access_token": inp.access_token,
+        "connection_mode": inp.connection_mode,
+        "connected": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.social_accounts.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/social/profiles/{profile_id}")
+async def delete_social_profile(profile_id: str, request: Request):
+    user = await get_current_user(request)
+    await db.social_accounts.delete_one({"id": profile_id, "user_id": user["_id"]})
+    await db.project_social_accounts.delete_many({"social_profile_id": profile_id})
+    return {"ok": True}
+
+@api.get("/social/project/{project_id}")
+async def get_project_social_profiles(project_id: str, request: Request):
+    user = await get_current_user(request)
+    links = await db.project_social_accounts.find({"project_id": project_id}, {"_id": 0}).to_list(20)
+    profile_ids = [l["social_profile_id"] for l in links]
+    profiles = await db.social_accounts.find({"id": {"$in": profile_ids}, "user_id": user["_id"]}, {"_id": 0}).to_list(20)
+    return profiles
+
+@api.post("/social/project/link")
+async def link_social_to_project(inp: ProjectSocialLink, request: Request):
+    user = await get_current_user(request)
+    await db.project_social_accounts.delete_many({"project_id": inp.project_id})
+    for sid in inp.social_profile_ids:
+        await db.project_social_accounts.insert_one({
+            "project_id": inp.project_id,
+            "social_profile_id": sid,
+            "user_id": user["_id"],
+            "linked_at": datetime.now(timezone.utc).isoformat()
+        })
+    return {"ok": True, "count": len(inp.social_profile_ids)}
+
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/json")
 async def export_json(project_id: str, request: Request):
@@ -701,6 +813,8 @@ async def startup():
     await db.contents.create_index("project_id")
     await db.tov_profiles.create_index("project_id")
     await db.brand_kits.create_index("project_id")
+    await db.social_accounts.create_index("user_id")
+    await db.project_social_accounts.create_index("project_id")
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sketchario.app")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Sketchario2026!")

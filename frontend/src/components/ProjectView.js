@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  CalendarBlank, List, Users as UsersIcon, Palette, Lightning, Video, Image, PencilSimple, X,
+  CalendarBlank, List, Users as UsersIcon, Palette, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
-  Article, Eye, Sparkle
+  Eye, Sparkle, Link as LinkIcon, Trash, Warning, WifiHigh, Globe
 } from '@phosphor-icons/react';
 
 const TABS = [
@@ -12,14 +12,22 @@ const TABS = [
   { id: 'list', label: 'Tutti', icon: List },
   { id: 'personas', label: 'Personas', icon: UsersIcon },
   { id: 'tov', label: 'Tono', icon: Palette },
+  { id: 'social', label: 'Social', icon: Globe },
 ];
+
+const PLATFORM_ICONS = {
+  instagram: { Icon: InstagramLogo, color: '#E4405F' },
+  facebook: { Icon: FacebookLogo, color: '#1877F2' },
+  linkedin: { Icon: LinkedinLogo, color: '#0A66C2' },
+  tiktok: { Icon: TiktokLogo, color: '#ffffff' },
+  pinterest: { Icon: PinterestLogo, color: '#E60023' },
+};
 
 export default function ProjectView({ project, setActiveView }) {
   const { api } = useAuth();
   const [tab, setTab] = useState('calendar');
   const [contents, setContents] = useState([]);
   const [personas, setPersonas] = useState([]);
-  const [hooks, setHooks] = useState([]);
   const [tov, setTov] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedContent, setSelectedContent] = useState(null);
@@ -27,13 +35,29 @@ export default function ProjectView({ project, setActiveView }) {
   const [editScript, setEditScript] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
 
+  // New Post modal
+  const [showNewPost, setShowNewPost] = useState(false);
+  const [newPostHook, setNewPostHook] = useState('');
+  const [newPostFormat, setNewPostFormat] = useState('reel');
+  const [newPostUseAi, setNewPostUseAi] = useState(false);
+  const [newPostLoading, setNewPostLoading] = useState(false);
+
+  // Social
+  const [platforms, setPlatforms] = useState([]);
+  const [socialProfiles, setSocialProfiles] = useState([]);
+  const [projectSocials, setProjectSocials] = useState([]);
+  const [showAddManual, setShowAddManual] = useState(null);
+  const [manualName, setManualName] = useState('');
+
   useEffect(() => {
     if (!project?.id) return;
     Promise.all([
       api.get(`/contents/${project.id}`).then(r => setContents(r.data)).catch(() => {}),
       api.get(`/personas/${project.id}`).then(r => setPersonas(r.data)).catch(() => {}),
-      api.get(`/hooks/${project.id}`).then(r => setHooks(r.data)).catch(() => {}),
       api.get(`/tov/${project.id}`).then(r => setTov(r.data || {})).catch(() => {}),
+      api.get('/social/platforms').then(r => setPlatforms(r.data)).catch(() => {}),
+      api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {}),
+      api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [api, project?.id]);
 
@@ -48,6 +72,78 @@ export default function ProjectView({ project, setActiveView }) {
     await api.put(`/contents/${selectedContent.id}`, { caption: editCaption, script: editScript, hashtags: editHashtags });
     setContents(prev => prev.map(c => c.id === selectedContent.id ? { ...c, caption: editCaption, script: editScript, hashtags: editHashtags } : c));
     setSelectedContent(null);
+  };
+
+  const deleteContent = async (id) => {
+    if (!window.confirm('Eliminare questo contenuto?')) return;
+    await api.delete(`/contents/${id}`);
+    setContents(prev => prev.filter(c => c.id !== id));
+    setSelectedContent(null);
+  };
+
+  // New Post
+  const createNewPost = async () => {
+    if (!newPostHook.trim()) return;
+    setNewPostLoading(true);
+    try {
+      const { data } = await api.post('/content/create-post', {
+        project_id: project.id,
+        hook_text: newPostHook,
+        format: newPostFormat,
+        use_ai: newPostUseAi
+      });
+      setContents(prev => [...prev, data]);
+      setShowNewPost(false);
+      setNewPostHook('');
+      setNewPostFormat('reel');
+      setNewPostUseAi(false);
+      if (data.caption || data.script) openContentDetail(data);
+    } catch (e) {
+      alert('Errore: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setNewPostLoading(false);
+    }
+  };
+
+  // Social
+  const connectSocial = (platform) => {
+    if (platform.auth_url) {
+      window.open(platform.auth_url, '_blank', 'width=600,height=700');
+    }
+  };
+
+  const addManualProfile = async (platformId) => {
+    if (!manualName.trim()) return;
+    try {
+      const { data } = await api.post('/social/profiles', {
+        platform: platformId,
+        profile_name: manualName,
+        connection_mode: 'manual'
+      });
+      setSocialProfiles(prev => [...prev, data]);
+      setShowAddManual(null);
+      setManualName('');
+    } catch (e) {
+      alert('Errore');
+    }
+  };
+
+  const removeSocialProfile = async (id) => {
+    await api.delete(`/social/profiles/${id}`);
+    setSocialProfiles(prev => prev.filter(p => p.id !== id));
+  };
+
+  const toggleProjectLink = async (profileId) => {
+    const isLinked = projectSocials.some(p => p.id === profileId);
+    let newIds;
+    if (isLinked) {
+      newIds = projectSocials.filter(p => p.id !== profileId).map(p => p.id);
+    } else {
+      newIds = [...projectSocials.map(p => p.id), profileId];
+    }
+    await api.post('/social/project/link', { project_id: project.id, social_profile_ids: newIds });
+    const { data } = await api.get(`/social/project/${project.id}`);
+    setProjectSocials(data);
   };
 
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -65,6 +161,9 @@ export default function ProjectView({ project, setActiveView }) {
           <h1 className="text-2xl font-bold gradient-text" data-testid="project-title">{project.name}</h1>
           <p className="text-sm text-[var(--text-secondary)]">{project.sector} | {contents.length} contenuti</p>
         </div>
+        <button data-testid="new-post-btn" className="btn-gradient" onClick={() => setShowNewPost(true)}>
+          <Plus weight="bold" size={18} /> Nuovo Post
+        </button>
       </div>
 
       {/* Tabs */}
@@ -119,7 +218,12 @@ export default function ProjectView({ project, setActiveView }) {
               <Eye size={16} className="text-[var(--text-muted)]" />
             </motion.div>
           ))}
-          {contents.length === 0 && <p className="text-center text-[var(--text-muted)] py-8">Nessun contenuto generato.</p>}
+          {contents.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
+              <button className="btn-gradient" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -132,9 +236,7 @@ export default function ProjectView({ project, setActiveView }) {
               <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
               {p.pain_points && (
                 <div className="p-3 rounded-lg text-sm" style={{ background: 'rgba(236,72,153,0.1)' }}>
-                  {(Array.isArray(p.pain_points) ? p.pain_points : [p.pain_points]).map((pp, j) => (
-                    <p key={j} className="text-sm mt-1">- {pp}</p>
-                  ))}
+                  {(Array.isArray(p.pain_points) ? p.pain_points : [p.pain_points]).map((pp, j) => <p key={j} className="text-sm mt-1">- {pp}</p>)}
                 </div>
               )}
             </div>
@@ -166,25 +268,203 @@ export default function ProjectView({ project, setActiveView }) {
         </div>
       )}
 
-      {/* Social Section */}
-      <div className="mt-8">
-        <h3 className="font-semibold mb-4">Social Collegati</h3>
-        <div className="flex gap-3">
-          {[
-            { Icon: InstagramLogo, color: '#E4405F' },
-            { Icon: LinkedinLogo, color: '#0A66C2' },
-            { Icon: FacebookLogo, color: '#1877F2' },
-            { Icon: TiktokLogo, color: '#ffffff' },
-            { Icon: PinterestLogo, color: '#E60023' },
-          ].map(({ Icon, color }, i) => (
-            <div key={i} className="social-icon-btn"><Icon weight="fill" size={24} color={color} /></div>
-          ))}
-          <div className="social-icon-btn" style={{ borderStyle: 'dashed' }}><Plus size={24} className="text-[var(--text-muted)]" /></div>
-        </div>
-        <p className="text-xs text-[var(--text-muted)] mt-2">Collegamento social disponibile nella prossima versione.</p>
-      </div>
+      {/* Social Tab */}
+      {tab === 'social' && (
+        <div className="max-w-3xl">
+          <h3 className="font-semibold mb-2">Piattaforme disponibili</h3>
+          <p className="text-sm text-[var(--text-muted)] mb-6">
+            Collega i tuoi profili social. L'OAuth richiede il dominio <strong>sketchario.app</strong> per i callback.
+          </p>
 
-      {/* Content Detail Modal */}
+          {/* Platform Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            {platforms.map(platform => {
+              const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#fff' };
+              const connected = socialProfiles.filter(p => p.platform === platform.id);
+              return (
+                <div key={platform.id} className="card" data-testid={`social-platform-${platform.id}`}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="social-icon-btn" style={{ width: 44, height: 44 }}>
+                      <pi.Icon weight="fill" size={22} color={pi.color} />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{platform.name}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{connected.length} profili collegati</p>
+                    </div>
+                  </div>
+
+                  {/* Connected profiles */}
+                  {connected.map(prof => (
+                    <div key={prof.id} className="flex items-center justify-between py-2 px-3 rounded-lg mb-2" style={{ background: 'rgba(34,197,94,0.1)' }}>
+                      <div className="flex items-center gap-2">
+                        <WifiHigh size={14} color="var(--accent-green)" />
+                        <span className="text-sm font-medium">{prof.profile_name}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          className="text-xs text-[var(--text-muted)] hover:text-white"
+                          onClick={() => toggleProjectLink(prof.id)}
+                        >
+                          {projectSocials.some(p => p.id === prof.id) ?
+                            <span className="badge green text-[10px]">Collegato</span> :
+                            <span className="badge orange text-[10px]">Collega</span>
+                          }
+                        </button>
+                        <button className="text-[var(--accent-pink)] hover:opacity-80" onClick={() => removeSocialProfile(prof.id)}>
+                          <Trash size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 mt-3">
+                    {platform.configured && (
+                      <button className="btn-ghost text-xs py-1.5 px-3 flex-1" onClick={() => connectSocial(platform)}>
+                        <LinkIcon size={14} /> OAuth
+                      </button>
+                    )}
+                    <button
+                      className="btn-ghost text-xs py-1.5 px-3 flex-1"
+                      onClick={() => { setShowAddManual(platform.id); setManualName(''); }}
+                    >
+                      <Plus size={14} /> Manuale
+                    </button>
+                  </div>
+
+                  {/* Manual add form */}
+                  {showAddManual === platform.id && (
+                    <div className="mt-3 p-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+                      <input
+                        className="input-dark text-sm py-2 mb-2"
+                        placeholder="Nome profilo (es. @mio_brand)"
+                        value={manualName}
+                        onChange={e => setManualName(e.target.value)}
+                        style={{ paddingLeft: '0.75rem' }}
+                      />
+                      <div className="flex gap-2">
+                        <button className="btn-ghost text-xs py-1.5 flex-1" onClick={() => setShowAddManual(null)}>Annulla</button>
+                        <button className="btn-gradient text-xs py-1.5 flex-1" onClick={() => addManualProfile(platform.id)}>Aggiungi</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Project linked socials summary */}
+          {projectSocials.length > 0 && (
+            <div className="card">
+              <h4 className="font-semibold mb-3">Social collegati a questo progetto</h4>
+              <div className="flex gap-3 flex-wrap">
+                {projectSocials.map(prof => {
+                  const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#fff' };
+                  return (
+                    <div key={prof.id} className="flex items-center gap-2 py-2 px-3 rounded-lg" style={{ background: 'rgba(34,197,94,0.1)' }}>
+                      <pi.Icon weight="fill" size={16} color={pi.color} />
+                      <span className="text-sm">{prof.profile_name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── NEW POST MODAL ── */}
+      <AnimatePresence>
+        {showNewPost && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)' }}
+            onClick={() => !newPostLoading && setShowNewPost(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="card w-full max-w-lg"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold">Nuovo Post</h3>
+                <button onClick={() => setShowNewPost(false)} className="btn-ghost p-2" disabled={newPostLoading}><X size={20} /></button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Idea / Hook del post *</label>
+                  <textarea
+                    data-testid="new-post-hook"
+                    className="input-dark"
+                    rows={3}
+                    placeholder="Es. 3 errori che fanno tutti i fotografi alle prime armi"
+                    value={newPostHook}
+                    onChange={e => setNewPostHook(e.target.value)}
+                    style={{ paddingLeft: '1rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Formato</label>
+                  <div className="flex gap-2">
+                    <button
+                      className={`preset-btn flex-1 ${newPostFormat === 'reel' ? 'active' : ''}`}
+                      onClick={() => setNewPostFormat('reel')}
+                    >
+                      <Video size={16} /> Reel
+                    </button>
+                    <button
+                      className={`preset-btn flex-1 ${newPostFormat === 'carousel' ? 'active' : ''}`}
+                      onClick={() => setNewPostFormat('carousel')}
+                    >
+                      <Image size={16} /> Carousel
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Modalita</label>
+                  <div className="flex gap-2">
+                    <button
+                      data-testid="new-post-mode-manual"
+                      className={`preset-btn flex-1 ${!newPostUseAi ? 'active' : ''}`}
+                      onClick={() => setNewPostUseAi(false)}
+                    >
+                      <PencilSimple size={16} /> Da zero
+                    </button>
+                    <button
+                      data-testid="new-post-mode-ai"
+                      className={`preset-btn flex-1 ${newPostUseAi ? 'active' : ''}`}
+                      onClick={() => setNewPostUseAi(true)}
+                    >
+                      <Sparkle size={16} /> Con AI
+                    </button>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] mt-2">
+                    {newPostUseAi ? "L'AI generera script, caption e hashtag basati sul tuo hook e ToV." : "Creerai un post vuoto da compilare manualmente."}
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button className="btn-ghost flex-1" onClick={() => setShowNewPost(false)} disabled={newPostLoading}>Annulla</button>
+                  <button
+                    data-testid="create-post-btn"
+                    className="btn-gradient flex-1"
+                    onClick={createNewPost}
+                    disabled={newPostLoading || !newPostHook.trim()}
+                  >
+                    {newPostLoading ? 'Creazione...' : newPostUseAi ? 'Genera con AI' : 'Crea Post'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── CONTENT DETAIL MODAL ── */}
       <AnimatePresence>
         {selectedContent && (
           <motion.div
@@ -203,7 +483,12 @@ export default function ProjectView({ project, setActiveView }) {
                   <span className={`badge ${selectedContent.format === 'reel' ? 'pink' : 'blue'} mb-2`}>{selectedContent.format}</span>
                   <h3 className="font-semibold text-lg">{selectedContent.hook_text}</h3>
                 </div>
-                <button onClick={() => setSelectedContent(null)} className="btn-ghost p-2"><X size={20} /></button>
+                <div className="flex gap-2">
+                  <button onClick={() => deleteContent(selectedContent.id)} className="btn-ghost p-2" style={{ borderColor: 'var(--accent-pink)' }}>
+                    <Trash size={18} color="var(--accent-pink)" />
+                  </button>
+                  <button onClick={() => setSelectedContent(null)} className="btn-ghost p-2"><X size={20} /></button>
+                </div>
               </div>
               <div className="space-y-4">
                 <div>
