@@ -72,6 +72,17 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Auth made more robust with interceptors + auto-refresh
 - ✅ Backend: 100% tests passed (20/20)
 
+### Iteration 3 — Feed/RSS + Publishing Queue (Jan 14, 2026)
+- ✅ Feed/RSS: add RSS feeds, fetch and cache articles, display with titles/summaries
+- ✅ AI content generation from feed items (Gemini 3 Flash)
+- ✅ Feed refresh with cache invalidation
+- ✅ Publishing Queue: schedule content to social profiles with date/time
+- ✅ Queue view with status filters (queued/processing/published/failed)
+- ✅ Cancel scheduled items from queue
+- ✅ Schedule modal with social profile multi-select
+- ✅ Content status badges (draft/scheduled/published) in list view
+- ✅ Backend: 100% tests passed (12/12)
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority
