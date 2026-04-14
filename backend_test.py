@@ -24,6 +24,7 @@ class SketcharioAPITester:
         self.media_id = None
         self.power_user_email = None
         self.release_note_id = None
+        self.tov_library_id = None
 
     def log(self, message):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
@@ -406,6 +407,172 @@ class SketcharioAPITester:
             return True
         return False
 
+    # ── CANVA INTEGRATION TESTS ──
+    def test_canva_auth_url(self):
+        """Test GET /api/canva/auth-url"""
+        success, response = self.run_test(
+            "Get Canva Auth URL",
+            "GET",
+            "canva/auth-url",
+            200
+        )
+        if success and 'auth_url' in response and 'configured' in response:
+            self.log(f"✅ Canva auth URL: {response['auth_url'][:50]}...")
+            self.log(f"✅ Canva configured: {response['configured']}")
+            return True
+        return False
+
+    def test_canva_import(self):
+        """Test POST /api/canva/import"""
+        if not self.content_id:
+            return False
+        success, response = self.run_test(
+            "Canva Import",
+            "POST",
+            "canva/import",
+            200,
+            data={
+                "content_id": self.content_id,
+                "image_url": "https://via.placeholder.com/300x300.png"
+            }
+        )
+        if success and 'id' in response:
+            self.log(f"✅ Canva image imported with ID: {response['id']}")
+            return True
+        return False
+
+    # ── TOV LIBRARY TESTS ──
+    def test_create_tov_library_item(self):
+        """Test POST /api/tov-library"""
+        success, response = self.run_test(
+            "Create ToV Library Item",
+            "POST",
+            "tov-library",
+            200,
+            data={
+                "name": "Test Professional Template",
+                "preset": "professional",
+                "formality": 8,
+                "energy": 6,
+                "empathy": 7,
+                "humor": 3,
+                "storytelling": 6,
+                "custom_instructions": "Use professional tone for business content",
+                "brand_keywords": "innovation, quality, excellence",
+                "forbidden_words": "cheap, basic",
+                "signature_phrases": "Excellence in every detail",
+                "caption_length": "medium"
+            }
+        )
+        if success and 'id' in response:
+            self.tov_library_id = response['id']
+            self.log(f"✅ ToV Library item created with ID: {self.tov_library_id}")
+            return True
+        return False
+
+    def test_list_tov_library(self):
+        """Test GET /api/tov-library"""
+        success, response = self.run_test(
+            "List ToV Library",
+            "GET",
+            "tov-library",
+            200
+        )
+        if success:
+            self.log(f"✅ Found {len(response)} ToV library items")
+            return True
+        return False
+
+    def test_apply_tov_library_item(self):
+        """Test POST /api/tov-library/{id}/apply/{project_id}"""
+        if not hasattr(self, 'tov_library_id') or not self.project_id:
+            return False
+        success, response = self.run_test(
+            "Apply ToV Library Item",
+            "POST",
+            f"tov-library/{self.tov_library_id}/apply/{self.project_id}",
+            200
+        )
+        if success:
+            self.log(f"✅ ToV Library item applied to project")
+            return True
+        return False
+
+    def test_delete_tov_library_item(self):
+        """Test DELETE /api/tov-library/{id}"""
+        if not hasattr(self, 'tov_library_id'):
+            return False
+        success, response = self.run_test(
+            "Delete ToV Library Item",
+            "DELETE",
+            f"tov-library/{self.tov_library_id}",
+            200
+        )
+        if success:
+            self.log(f"✅ ToV Library item deleted")
+            return True
+        return False
+
+    # ── EXPORT TESTS ──
+    def test_export_csv(self):
+        """Test GET /api/export/{project_id}/csv"""
+        if not self.project_id:
+            return False
+        
+        url = f"{self.base_url}/api/export/{self.project_id}/csv"
+        headers = {}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        
+        self.tests_run += 1
+        self.log(f"🔍 Testing CSV Export...")
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            success = response.status_code == 200
+            if success:
+                self.tests_passed += 1
+                self.log(f"✅ CSV Export - Status: {response.status_code}")
+                # Check if response is CSV format
+                content_type = response.headers.get('content-type', '')
+                if 'text/csv' in content_type:
+                    self.log(f"✅ CSV Export - Correct content type: {content_type}")
+                    # Check if CSV has content
+                    csv_content = response.text
+                    if len(csv_content) > 0 and 'Hook' in csv_content:
+                        self.log(f"✅ CSV Export - Contains data ({len(csv_content)} chars)")
+                        return True
+                    else:
+                        self.log(f"❌ CSV Export - No data or invalid format")
+                        return False
+                else:
+                    self.log(f"❌ CSV Export - Wrong content type: {content_type}")
+                    return False
+            else:
+                self.log(f"❌ CSV Export - Expected 200, got {response.status_code}")
+                return False
+        except Exception as e:
+            self.log(f"❌ CSV Export - Exception: {str(e)}")
+            return False
+
+    # ── PLAN GATING TESTS ──
+    def test_get_plan_limits(self):
+        """Test GET /api/plan/limits"""
+        success, response = self.run_test(
+            "Get Plan Limits",
+            "GET",
+            "plan/limits",
+            200
+        )
+        if success and 'plan' in response and 'projects_used' in response:
+            self.log(f"✅ Plan: {response['plan']}, Projects used: {response['projects_used']}")
+            self.log(f"✅ Max projects: {response.get('max_projects', 'N/A')}")
+            self.log(f"✅ Max contents per project: {response.get('max_contents_per_project', 'N/A')}")
+            self.log(f"✅ Can publish: {response.get('can_publish', 'N/A')}")
+            self.log(f"✅ Can export CSV: {response.get('can_export_csv', 'N/A')}")
+            return True
+        return False
+
     # ── BILLING TESTS ──
     def test_get_billing_plans(self):
         """Test GET /api/billing/plans"""
@@ -516,6 +683,25 @@ class SketcharioAPITester:
         self.test_media_library()
         self.test_dalle_generation()
 
+        # Canva Integration Tests
+        self.log("\n🎨 Testing Canva Integration APIs...")
+        self.test_canva_auth_url()
+        self.test_canva_import()
+
+        # ToV Library Tests
+        self.log("\n📚 Testing ToV Library APIs...")
+        self.test_create_tov_library_item()
+        self.test_list_tov_library()
+        self.test_apply_tov_library_item()
+
+        # Export Tests
+        self.log("\n📤 Testing Export APIs...")
+        self.test_export_csv()
+
+        # Plan Gating Tests
+        self.log("\n🔒 Testing Plan Gating APIs...")
+        self.test_get_plan_limits()
+
         # Admin Console Tests
         self.log("\n👑 Testing Admin Console APIs...")
         self.test_get_power_users()
@@ -546,6 +732,7 @@ class SketcharioAPITester:
         self.test_cleanup_feed()
         self.test_cleanup_power_user()
         self.test_cleanup_release_note()
+        self.test_delete_tov_library_item()
 
         # Results
         self.log("\n" + "=" * 60)

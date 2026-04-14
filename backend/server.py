@@ -303,6 +303,7 @@ async def list_projects(request: Request):
 @api.post("/projects")
 async def create_project(inp: ProjectCreate, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "project")
     doc = {
         "user_id": user["_id"],
         "name": inp.name,
@@ -577,6 +578,7 @@ Restituisci un oggetto JSON con:
 @api.post("/content/create-post")
 async def create_post(inp: PostCreate, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "content", inp.project_id)
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
@@ -930,6 +932,7 @@ class PublishUpdate(BaseModel):
 @api.post("/publish/schedule")
 async def schedule_publish(inp: PublishSchedule, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "publish")
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
@@ -1228,7 +1231,163 @@ async def stripe_webhook(request: Request):
 async def get_plans(request: Request):
     return [{"id": k, "name": v["name"], "amount": v["amount"], "currency": v["currency"]} for k, v in PLANS.items()]
 
+# ── PLAN GATING ───────────────────────────────────────
+PLAN_LIMITS = {
+    "free": {"max_projects": 1, "max_contents_per_project": 7, "can_publish": False, "can_export_csv": False},
+    "creator": {"max_projects": 5, "max_contents_per_project": 30, "can_publish": True, "can_export_csv": True},
+    "strategist": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True},
+    "custom": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True},
+}
+
+async def check_plan_limit(user: dict, resource: str, project_id: str = None):
+    plan = user.get("plan", "free")
+    pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
+    if pu:
+        exp = pu.get("expires_at", "")
+        if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
+            plan = pu.get("plan", plan)
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    if resource == "project":
+        count = await db.projects.count_documents({"user_id": user.get("_id", user.get("id")), "archived": False})
+        if count >= limits["max_projects"]:
+            raise HTTPException(403, f"Limite raggiunto: massimo {limits['max_projects']} progetti per il piano {plan.title()}. Effettua l'upgrade.")
+    elif resource == "content" and project_id:
+        count = await db.contents.count_documents({"project_id": project_id})
+        if count >= limits["max_contents_per_project"]:
+            raise HTTPException(403, f"Limite raggiunto: massimo {limits['max_contents_per_project']} contenuti per il piano {plan.title()}. Effettua l'upgrade.")
+    elif resource == "publish":
+        if not limits["can_publish"]:
+            raise HTTPException(403, "La pubblicazione richiede il piano Creator o superiore.")
+    elif resource == "export_csv":
+        if not limits["can_export_csv"]:
+            raise HTTPException(403, "L'export CSV richiede il piano Creator o superiore.")
+    return limits
+
+@api.get("/plan/limits")
+async def get_plan_limits(request: Request):
+    user = await get_current_user(request)
+    plan = user.get("plan", "free")
+    pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
+    if pu:
+        exp = pu.get("expires_at", "")
+        if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
+            plan = pu.get("plan", plan)
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    project_count = await db.projects.count_documents({"user_id": user["_id"], "archived": False})
+    return {**limits, "plan": plan, "projects_used": project_count}
+
+# ── CANVA INTEGRATION ─────────────────────────────────
+CANVA_CLIENT_ID = os.environ.get("CANVA_CLIENT_ID", "")
+CANVA_CLIENT_SECRET = os.environ.get("CANVA_CLIENT_SECRET", "")
+
+@api.get("/canva/auth-url")
+async def canva_auth_url(request: Request):
+    await get_current_user(request)
+    callback = os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE", "https://www.sketchario.app/social_oauth.php")
+    canva_callback = callback.replace("social_oauth.php", "editors/canva_oauth.php")
+    if not CANVA_CLIENT_ID:
+        raise HTTPException(400, "Canva non configurato")
+    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={canva_callback}&response_type=code&scope=design:content:read design:content:write asset:read asset:write"
+    return {"auth_url": url, "configured": True}
+
+@api.post("/canva/import")
+async def canva_import(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    content_id = body.get("content_id", "")
+    image_url = body.get("image_url", "")
+    if not content_id or not image_url:
+        raise HTTPException(400, "content_id e image_url richiesti")
+    try:
+        async with httpx.AsyncClient(timeout=30) as hc:
+            resp = await hc.get(image_url)
+            if resp.status_code != 200:
+                raise HTTPException(400, "Impossibile scaricare l'immagine da Canva")
+            fname = f"canva_{uuid.uuid4().hex}.png"
+            fpath = UPLOAD_DIR / fname
+            with open(fpath, "wb") as f:
+                f.write(resp.content)
+            media_url = f"/api/media/file/{fname}"
+            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": "Canva Export", "url": media_url, "type": "image", "source": "canva", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
+            await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
+            return media_doc
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore import Canva: {str(e)}")
+
+# ── TOV LIBRARY ───────────────────────────────────────
+class TovLibraryItem(BaseModel):
+    name: str
+    preset: Optional[str] = ""
+    formality: int = 5
+    energy: int = 5
+    empathy: int = 5
+    humor: int = 3
+    storytelling: int = 5
+    custom_instructions: Optional[str] = ""
+    brand_keywords: Optional[str] = ""
+    forbidden_words: Optional[str] = ""
+    signature_phrases: Optional[str] = ""
+    caption_length: str = "medium"
+
+@api.get("/tov-library")
+async def list_tov_library(request: Request):
+    user = await get_current_user(request)
+    items = await db.tov_library.find({"user_id": user["_id"]}, {"_id": 0}).to_list(50)
+    return items
+
+@api.post("/tov-library")
+async def save_tov_library_item(inp: TovLibraryItem, request: Request):
+    user = await get_current_user(request)
+    doc = inp.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["user_id"] = user["_id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tov_library.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.put("/tov-library/{item_id}")
+async def update_tov_library_item(item_id: str, inp: TovLibraryItem, request: Request):
+    user = await get_current_user(request)
+    updates = inp.model_dump()
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tov_library.update_one({"id": item_id, "user_id": user["_id"]}, {"$set": updates})
+    return {"ok": True}
+
+@api.delete("/tov-library/{item_id}")
+async def delete_tov_library_item(item_id: str, request: Request):
+    user = await get_current_user(request)
+    await db.tov_library.delete_one({"id": item_id, "user_id": user["_id"]})
+    return {"ok": True}
+
+@api.post("/tov-library/{item_id}/apply/{project_id}")
+async def apply_tov_library_item(item_id: str, project_id: str, request: Request):
+    user = await get_current_user(request)
+    item = await db.tov_library.find_one({"id": item_id, "user_id": user["_id"]}, {"_id": 0})
+    if not item:
+        raise HTTPException(404, "Template ToV non trovato")
+    tov_data = {k: v for k, v in item.items() if k not in ("id", "user_id", "created_at", "updated_at", "name")}
+    tov_data["project_id"] = project_id
+    tov_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tov_profiles.update_one({"project_id": project_id}, {"$set": tov_data}, upsert=True)
+    return {"ok": True}
+
 # ── EXPORT ───────────────────────────────────────────
+@api.get("/export/{project_id}/csv")
+async def export_csv(project_id: str, request: Request):
+    user = await get_current_user(request)
+    await check_plan_limit(user, "export_csv")
+    contents = await db.contents.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Hook", "Format", "Pillar", "Persona", "Day", "Script", "Caption", "Hashtags", "Status"])
+    for c in contents:
+        writer.writerow([c.get("hook_text",""), c.get("format",""), c.get("pillar",""), c.get("persona_target",""), c.get("day_offset",""), c.get("script",""), c.get("caption",""), c.get("hashtags",""), c.get("status","")])
+    csv_content = output.getvalue()
+    return Response(content=csv_content, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=sketchario_export_{project_id}.csv"})
 @api.get("/export/{project_id}/json")
 async def export_json(project_id: str, request: Request):
     await get_current_user(request)
@@ -1272,6 +1431,7 @@ async def startup():
     await db.power_users.create_index("email", unique=True)
     await db.release_notes.create_index("created_at")
     await db.payment_transactions.create_index("session_id")
+    await db.tov_library.create_index("user_id")
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sketchario.app")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Sketchario2026!")

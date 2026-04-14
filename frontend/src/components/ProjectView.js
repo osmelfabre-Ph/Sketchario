@@ -5,7 +5,8 @@ import {
   CalendarBlank, List, Users as UsersIcon, Palette, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
   Eye, Sparkle, Link as LinkIcon, Trash, WifiHigh, Globe,
-  RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt
+  RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
+  BookOpen, Download, CanvaLogo
 } from '@phosphor-icons/react';
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
   { id: 'queue', label: 'Queue', icon: Queue },
   { id: 'personas', label: 'Personas', icon: UsersIcon },
   { id: 'tov', label: 'Tono', icon: Palette },
+  { id: 'tov-library', label: 'ToV Library', icon: BookOpen },
   { id: 'social', label: 'Social', icon: Globe },
 ];
 
@@ -68,6 +70,14 @@ export default function ProjectView({ project, setActiveView }) {
   const [scheduleProfiles, setScheduleProfiles] = useState([]);
   const [queueFilter, setQueueFilter] = useState('all');
 
+  // ToV Library
+  const [tovLibrary, setTovLibrary] = useState([]);
+  const [showTovSave, setShowTovSave] = useState(false);
+  const [tovSaveName, setTovSaveName] = useState('');
+
+  // Plan limits
+  const [planLimits, setPlanLimits] = useState(null);
+
   useEffect(() => {
     if (!project?.id) return;
     Promise.all([
@@ -80,6 +90,8 @@ export default function ProjectView({ project, setActiveView }) {
       api.get(`/feeds/${project.id}`).then(r => setFeeds(r.data)).catch(() => {}),
       api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {}),
+      api.get('/tov-library').then(r => setTovLibrary(r.data)).catch(() => {}),
+      api.get('/plan/limits').then(r => setPlanLimits(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [api, project?.id]);
 
@@ -228,6 +240,36 @@ export default function ProjectView({ project, setActiveView }) {
 
   const filteredQueue = queueFilter === 'all' ? queueItems : queueItems.filter(q => q.status === queueFilter);
 
+  // ToV Library functions
+  const saveToTovLibrary = async () => {
+    if (!tovSaveName.trim() || !tov) return;
+    const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
+    setTovLibrary(prev => [...prev, data]);
+    setShowTovSave(false); setTovSaveName('');
+  };
+
+  const applyTovTemplate = async (itemId) => {
+    await api.post(`/tov-library/${itemId}/apply/${project.id}`);
+    const { data } = await api.get(`/tov/${project.id}`);
+    setTov(data || {});
+  };
+
+  const deleteTovItem = async (id) => {
+    await api.delete(`/tov-library/${id}`);
+    setTovLibrary(prev => prev.filter(t => t.id !== id));
+  };
+
+  const exportCSV = () => {
+    window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank');
+  };
+
+  const openCanva = async () => {
+    try {
+      const { data } = await api.get('/canva/auth-url');
+      if (data.auth_url) window.open(data.auth_url, '_blank', 'width=800,height=600');
+    } catch (e) { alert('Canva non disponibile'); }
+  };
+
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
   if (loading) return <p className="text-[var(--text-muted)] text-center py-12">Caricamento progetto...</p>;
@@ -245,6 +287,9 @@ export default function ProjectView({ project, setActiveView }) {
         </div>
         <button data-testid="new-post-btn" className="btn-gradient" onClick={() => setShowNewPost(true)}>
           <Plus weight="bold" size={18} /> Nuovo Post
+        </button>
+        <button className="btn-ghost" onClick={exportCSV} data-testid="export-csv-btn">
+          <Download size={18} /> CSV
         </button>
       </div>
 
@@ -488,6 +533,66 @@ export default function ProjectView({ project, setActiveView }) {
             <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(99,102,241,0.1)' }}>
               <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-1">Istruzioni</p>
               <p>{tov.custom_instructions}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ToV Library Tab */}
+      {tab === 'tov-library' && (
+        <div className="max-w-3xl">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="font-semibold">Libreria Tono di Voce</h3>
+              <p className="text-sm text-[var(--text-muted)] mt-1">Template personali riutilizzabili tra progetti.</p>
+            </div>
+            <button className="btn-gradient text-sm" onClick={() => setShowTovSave(true)} data-testid="save-tov-template-btn">
+              <Plus size={16} /> Salva ToV attuale
+            </button>
+          </div>
+
+          {showTovSave && (
+            <div className="card mb-6">
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Nome template</label>
+                  <input className="input-dark text-sm py-2" placeholder="Es. Professionale Standard" value={tovSaveName} onChange={e => setTovSaveName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+                </div>
+                <button className="btn-gradient text-sm py-2" onClick={saveToTovLibrary}>Salva</button>
+                <button className="btn-ghost text-sm py-2" onClick={() => setShowTovSave(false)}>Annulla</button>
+              </div>
+            </div>
+          )}
+
+          {tovLibrary.length > 0 ? (
+            <div className="space-y-3">
+              {tovLibrary.map(item => (
+                <div key={item.id} className="card">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold">{item.name}</h4>
+                    <div className="flex gap-2">
+                      <button className="btn-gradient text-xs py-1.5 px-3" onClick={() => applyTovTemplate(item.id)}>
+                        Applica al progetto
+                      </button>
+                      <button className="btn-ghost p-1.5" onClick={() => deleteTovItem(item.id)}><Trash size={14} /></button>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 flex-wrap text-sm text-[var(--text-secondary)]">
+                    <span>Formalita: {item.formality}</span>
+                    <span>Energia: {item.energy}</span>
+                    <span>Empatia: {item.empathy}</span>
+                    <span>Humor: {item.humor}</span>
+                    <span>Story: {item.storytelling}</span>
+                  </div>
+                  {item.custom_instructions && <p className="text-xs text-[var(--text-muted)] mt-2">{item.custom_instructions}</p>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <BookOpen size={48} className="mx-auto mb-4 text-[var(--text-muted)] opacity-40" />
+              <p className="text-[var(--text-muted)] mb-2">Nessun template salvato</p>
+              <p className="text-xs text-[var(--text-muted)]">Configura il Tono di Voce nel tab "Tono", poi salvalo qui come template riutilizzabile.</p>
             </div>
           )}
         </div>
@@ -846,6 +951,10 @@ export default function ProjectView({ project, setActiveView }) {
                       } catch(err) { alert('Errore DALL-E: ' + (err.response?.data?.detail || err.message)); }
                     }}>
                       <Sparkle size={14} /> DALL-E
+                    </button>
+                    {/* Canva */}
+                    <button className="btn-ghost text-xs py-1.5 px-3" onClick={openCanva} data-testid="canva-btn">
+                      <Palette size={14} /> Canva
                     </button>
                   </div>
                 </div>
