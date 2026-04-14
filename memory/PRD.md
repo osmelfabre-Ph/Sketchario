@@ -83,6 +83,20 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 - ✅ Content status badges (draft/scheduled/published) in list view
 - ✅ Backend: 100% tests passed (12/12)
 
+### Iteration 4 — Media, DALL-E, Admin, Stripe (Jan 14, 2026)
+- ✅ Media upload: file upload to content (jpg, png, webp, gif, mp4, webm, mov)
+- ✅ Media delete from content
+- ✅ Media library: browse all media across project
+- ✅ DALL-E image generation (GPT Image 1 via Emergent LLM key)
+- ✅ Upload + DALL-E buttons in content detail modal
+- ✅ Admin Console: Power Users CRUD (add, toggle, delete)
+- ✅ Release Notes: create, list, delete (admin only)
+- ✅ Stripe Billing: checkout sessions for Creator (19EUR) and Strategist (49EUR)
+- ✅ Payment status polling + webhook handler
+- ✅ Billing page with 3 plan cards and "Popolare" badge
+- ✅ Sidebar updated with Piani + Admin (admin only)
+- ✅ Backend: 100% (23/23), Frontend: 100%
+
 ## Prioritized Backlog
 
 ### P0 — Next Priority
