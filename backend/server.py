@@ -1936,13 +1936,13 @@ class PostNitroGenerateInput(BaseModel):
 async def postnitro_status(request: Request):
     await get_current_user(request)
     configured = bool(POSTNITRO_API_KEY)
-    ready = configured and bool(POSTNITRO_TEMPLATE_ID)
-    missing = []
-    if not POSTNITRO_TEMPLATE_ID: missing.append("POSTNITRO_TEMPLATE_ID")
+    embed_sdk_ready = configured
+    api_ready = configured and bool(POSTNITRO_TEMPLATE_ID) and bool(POSTNITRO_BRAND_ID)
     return {
-        "available": configured, "configured": configured, "ready": ready,
-        "missing_config": missing,
-        "message": f"Inserisci nel backend .env: {', '.join(missing)}. Li trovi su postnitro.ai/app/embed" if missing and configured else ""
+        "available": configured, "configured": configured, "ready": embed_sdk_ready,
+        "api_ready": api_ready,
+        "missing_config": [],
+        "message": "" if embed_sdk_ready else "PostNitro API key mancante"
     }
 
 @api.post("/postnitro/generate")
