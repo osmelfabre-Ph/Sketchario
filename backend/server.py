@@ -1936,9 +1936,8 @@ class PostNitroGenerateInput(BaseModel):
 async def postnitro_status(request: Request):
     await get_current_user(request)
     configured = bool(POSTNITRO_API_KEY)
-    ready = configured and bool(POSTNITRO_PRESET_ID)
+    ready = configured and bool(POSTNITRO_TEMPLATE_ID)
     missing = []
-    if not POSTNITRO_PRESET_ID: missing.append("POSTNITRO_PRESET_ID")
     if not POSTNITRO_TEMPLATE_ID: missing.append("POSTNITRO_TEMPLATE_ID")
     return {
         "available": configured, "configured": configured, "ready": ready,
@@ -1951,47 +1950,80 @@ async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
     user = await get_current_user(request)
     if not POSTNITRO_API_KEY:
         raise HTTPException(400, "PostNitro non configurato")
-    if not POSTNITRO_PRESET_ID:
-        raise HTTPException(400, "PostNitro presetId mancante. Accedi a postnitro.ai/app/embed, copia il Preset ID e inseriscilo come POSTNITRO_PRESET_ID nel backend .env")
+    if not POSTNITRO_TEMPLATE_ID:
+        raise HTTPException(400, "PostNitro templateId mancante")
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     headers = {"Content-Type": "application/json", "embed-api-key": POSTNITRO_API_KEY}
     try:
+        # Strategy: Use our AI (Gemini) to generate slide content, then import into PostNitro for rendering
+        context_text = f"{content.get('hook_text', '')}. {content.get('script', '')}. {content.get('caption', '')}"
+
         if inp.mode == "ai":
-            context_text = f"{content.get('hook_text', '')}. {content.get('script', '')}. {content.get('caption', '')}"
-            payload = {
-                "postType": "CAROUSEL",
-                "responseType": "PNG",
-                "presetId": POSTNITRO_PRESET_ID,
-                "aiGeneration": {
-                    "type": "text",
-                    "context": context_text[:2000]
-                }
-            }
+            # Generate slides content using Gemini
+            system = "Sei un esperto di social media carousel. Genera il contenuto per le slide di un carousel. Rispondi SOLO con JSON array."
+            prompt = f"""Genera 5-7 slide per un carousel social media basato su questo contenuto:
+{context_text[:1500]}
+
+Restituisci un JSON array con queste slide in ordine:
+1. Prima slide (starting_slide): heading (titolo accattivante), description (sottotitolo breve), cta_button ("Scorri per scoprire")
+2. 3-5 slide centrali (body_slide): heading (titolo punto chiave), description (spiegazione 1-2 frasi)
+3. Ultima slide (ending_slide): heading (call to action), description (messaggio finale), cta_button ("Seguimi per altri contenuti")
+
+Ogni oggetto deve avere: type, heading, description. cta_button solo per starting_slide e ending_slide."""
+
+            result = await call_ai(system, prompt)
+            slides = extract_json(result)
+            if not isinstance(slides, list):
+                slides = [slides]
         else:
+            # Use existing slides from content
             slides_data = inp.slides or content.get("slides", [])
             if not slides_data:
                 slides_data = [s.strip() for s in content.get("script", "").split("---") if s.strip()]
-            slide_contents = []
+            slides = []
             for i, slide in enumerate(slides_data):
                 if isinstance(slide, str):
-                    slide_contents.append({"heading": f"Slide {i+1}", "description": slide})
+                    if i == 0:
+                        slides.append({"type": "starting_slide", "heading": slide[:100], "description": "", "cta_button": "Scorri"})
+                    elif i == len(slides_data) - 1:
+                        slides.append({"type": "ending_slide", "heading": slide[:100], "description": "", "cta_button": "Seguimi"})
+                    else:
+                        slides.append({"type": "body_slide", "heading": f"Punto {i}", "description": slide[:200]})
                 elif isinstance(slide, dict):
-                    slide_contents.append(slide)
-            payload = {
-                "postType": "CAROUSEL",
-                "responseType": "PNG",
-                "presetId": POSTNITRO_PRESET_ID,
-                "slideContents": slide_contents
-            }
-        if POSTNITRO_TEMPLATE_ID:
-            payload["templateId"] = POSTNITRO_TEMPLATE_ID
+                    slides.append(slide)
+
+        # Ensure proper slide structure for PostNitro
+        formatted_slides = []
+        for i, s in enumerate(slides):
+            slide_type = s.get("type", "body_slide")
+            if i == 0:
+                slide_type = "starting_slide"
+            elif i == len(slides) - 1:
+                slide_type = "ending_slide"
+            formatted = {"type": slide_type, "heading": s.get("heading", s.get("title", f"Slide {i+1}"))}
+            if s.get("description"):
+                formatted["description"] = s["description"]
+            if s.get("cta_button") and slide_type in ("starting_slide", "ending_slide"):
+                formatted["cta_button"] = s["cta_button"]
+            if s.get("sub_heading"):
+                formatted["sub_heading"] = s["sub_heading"]
+            formatted_slides.append(formatted)
+
+        # Use import endpoint (doesn't require presetId)
+        payload = {
+            "postType": "CAROUSEL",
+            "responseType": "PNG",
+            "templateId": POSTNITRO_TEMPLATE_ID,
+            "slides": formatted_slides
+        }
         if POSTNITRO_BRAND_ID:
             payload["brandId"] = POSTNITRO_BRAND_ID
+
         async with httpx.AsyncClient(timeout=30) as hc:
-            resp = await hc.post(f"{POSTNITRO_API_URL}/post/initiate/{'generate' if inp.mode == 'ai' else 'import'}", headers=headers, json=payload)
+            resp = await hc.post(f"{POSTNITRO_API_URL}/post/initiate/import", headers=headers, json=payload)
             if resp.status_code != 200:
                 raise HTTPException(resp.status_code, f"PostNitro errore: {resp.text}")
             data = resp.json()
