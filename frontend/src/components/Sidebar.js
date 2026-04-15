@@ -28,7 +28,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
   }, [api]);
 
   const isAdmin = user?.role === 'admin';
-  const w = collapsed ? 50 : 220;
+  const w = collapsed ? 68 : 220;
 
   // Mobile: show context-aware navigation
   if (isMobile) {
@@ -92,22 +92,22 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
   ];
 
   return (
-    <div className="sidebar flex flex-col" style={{ width: w, minWidth: w, transition: 'width 0.2s ease, min-width 0.2s ease' }}>
+    <div className="sidebar flex flex-col" style={{ width: w, minWidth: w, padding: collapsed ? '1.25rem 0.5rem' : '1.25rem', transition: 'width 0.2s ease, min-width 0.2s ease, padding 0.2s ease' }}>
       {/* Logo + Collapse */}
       <div className="flex items-center gap-2 mb-6" style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
-        <img src={LOGO} alt="S" style={{ height: collapsed ? 28 : 32, borderRadius: 6 }} />
+        <img src={LOGO} alt="S" style={{ width: collapsed ? 32 : 32, height: collapsed ? 32 : 32, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
         {!collapsed && <h2 className="text-base font-bold gradient-text flex-1">Sketchario</h2>}
         {!collapsed && (
           <button data-testid="sidebar-toggle" className="p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(true)}>
             <CaretLeft size={14} />
           </button>
         )}
-        {collapsed && (
-          <button data-testid="sidebar-toggle" className="absolute top-3 left-1/2 -translate-x-1/2 mt-10 p-0.5 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(false)}>
-            <CaretRight size={12} />
-          </button>
-        )}
       </div>
+      {collapsed && (
+        <button data-testid="sidebar-toggle" className="flex items-center justify-center w-full mb-2 p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(false)}>
+          <CaretRight size={14} />
+        </button>
+      )}
 
       {/* Main Nav */}
       <nav className="space-y-1 mb-3">
@@ -182,10 +182,10 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
         data-testid="nav-profile"
         className="user-profile-card cursor-pointer hover:border-[var(--gradient-start)] transition-colors mt-2"
         onClick={() => setActiveView('profile')}
-        style={collapsed ? { justifyContent: 'center', padding: '0.5rem' } : {}}
+        style={collapsed ? { justifyContent: 'center', padding: '0.5rem', flexDirection: 'column', alignItems: 'center', gap: 0 } : {}}
       >
-        <div className="user-avatar" style={{ width: 32, height: 32, flexShrink: 0 }}>
-          <User weight="fill" size={14} color="white" />
+        <div className="user-avatar" style={{ width: collapsed ? 28 : 32, height: collapsed ? 28 : 32, flexShrink: 0 }}>
+          <User weight="fill" size={collapsed ? 12 : 14} color="white" />
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">
