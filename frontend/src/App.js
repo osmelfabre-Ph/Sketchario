@@ -83,9 +83,9 @@ function AppContent() {
           <footer className="flex-shrink-0 px-4 md:px-8 py-3 md:py-4 border-t border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-2" style={{ background: 'var(--bg-secondary)' }}>
             <p className="text-[10px] md:text-[11px] text-[var(--text-muted)]">&copy; {new Date().getFullYear()} Sketchario. Tutti i diritti riservati.</p>
             <div className="flex gap-3 md:gap-4">
-              <a href="/legal/terms" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Termini</a>
-              <a href="/legal/privacy" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Privacy</a>
-              <a href="/legal/cookies" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Cookie</a>
+              <a href="/legal/termini-e-condizioni.html" target="_blank" rel="noopener" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Termini</a>
+              <a href="/legal/privacy-policy.html" target="_blank" rel="noopener" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Privacy</a>
+              <a href="/legal/cookie-policy.html" target="_blank" rel="noopener" className="text-[10px] md:text-[11px] text-[var(--text-muted)] hover:text-white transition-colors">Cookie</a>
             </div>
           </footer>
         )}

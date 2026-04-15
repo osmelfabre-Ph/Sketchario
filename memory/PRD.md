@@ -88,9 +88,17 @@ Rebuild Sketchario, a social content strategy platform, from PHP/vanilla JS to R
 
 ## Prioritized Backlog
 
+### Iteration 11 — Sidebar Fix + Legal Pages Integration (Apr 15, 2026)
+- ✅ **Sidebar collassata**: Larghezza aumentata da 50px a 68px, logo con object-fit:contain, padding ridotto, elementi centrati
+- ✅ **Pagine Legali**: Privacy Policy, Termini e Condizioni, Cookie Policy integrate dal repo GitHub utente
+- ✅ File HTML multilingue (IT/EN/FR/ES) con auto-detect lingua browser
+- ✅ Serviti come file statici da /legal/*.html
+- ✅ Footer links aggiornati per aprire in nuova tab (target="_blank")
+- ✅ Link "Torna indietro" nel documento legale aggiornato per tornare alla root app
+
+
 ### P0 — Next Priority
 - Deploy to sketchario.app (unblocks Social OAuth callbacks)
-- Integrate Legal Pages (user to provide ../legal/ documents)
 
 ### P1 — Phase 2
 - Refactor server.py into modular routers (auth, projects, social, media, billing)

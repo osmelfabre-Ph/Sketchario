@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy — Sketchario</title>
+  <meta name="description" content="Privacy Policy di Sketchario.app aggiornata al 10 aprile 2026." />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
+
+    :root{
+      --bg:#f5f1ea;
+      --panel:#fffdf8;
+      --panel-soft:#f1ebe0;
+      --line:#d9cfbf;
+      --text:#2d261d;
+      --muted:#756b5c;
+      --gold:#8f7346;
+      --gold-soft:rgba(143,115,70,.10);
+      --shadow:0 22px 50px rgba(72,52,23,.10);
+      --radius:5px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%}
+    body{
+      font-family:"Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(219,207,184,.45), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(203,188,158,.32), transparent 30%),
+        linear-gradient(180deg,#faf7f1 0%, var(--bg) 100%);
+      padding:24px 16px 40px;
+    }
+
+    .shell{
+      width:min(1040px,100%);
+      margin:0 auto;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px 16px;
+      border:1px solid var(--line);
+      background:rgba(255,253,248,.88);
+      backdrop-filter:blur(10px);
+      box-shadow:var(--shadow);
+      border-radius:var(--radius);
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
+    }
+
+    .brand-mark{
+      width:42px;
+      height:42px;
+      border-radius:var(--radius);
+      overflow:hidden;
+      border:1px solid rgba(143,115,70,.22);
+      background:#fff;
+      flex:0 0 auto;
+    }
+
+    .brand-mark img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
+
+    .brand-copy strong{
+      display:block;
+      font-size:1rem;
+      letter-spacing:.12em;
+    }
+
+    .brand-copy small{
+      display:block;
+      color:var(--muted);
+      margin-top:3px;
+      font-size:.78rem;
+    }
+
+    .back-btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      min-height:42px;
+      padding:0 14px;
+      border:1px solid var(--text);
+      border-radius:var(--radius);
+      color:var(--text);
+      background:#fffdf8;
+      text-decoration:none;
+      font-weight:600;
+      white-space:nowrap;
+    }
+
+    .hero{
+      position:relative;
+      overflow:hidden;
+      padding:34px 28px 28px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      background:
+        linear-gradient(135deg, rgba(143,115,70,.10), rgba(255,253,248,.96) 42%),
+        var(--panel);
+    }
+
+    .hero::after{
+      content:"";
+      position:absolute;
+      right:-90px;
+      top:-90px;
+      width:260px;
+      height:260px;
+      border-radius:50%;
+      background:radial-gradient(circle, rgba(143,115,70,.14), transparent 62%);
+      pointer-events:none;
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 11px;
+      border:1px solid rgba(143,115,70,.22);
+      background:rgba(255,255,255,.7);
+      border-radius:999px;
+      color:var(--gold);
+      font-size:.78rem;
+      font-weight:700;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+
+    h1{
+      margin:16px 0 10px;
+      font-family:"Playfair Display",serif;
+      font-size:clamp(2.2rem,4.8vw,4rem);
+      line-height:.98;
+      letter-spacing:-.04em;
+      max-width:12ch;
+      color:#241d15;
+    }
+
+    .lead{
+      max-width:760px;
+      color:#544a3e;
+      line-height:1.8;
+      font-size:1rem;
+    }
+
+    .hero-meta{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px;
+      margin-top:24px;
+    }
+
+    .meta-box{
+      padding:14px 15px;
+      border:1px solid var(--line);
+      background:rgba(255,253,248,.84);
+      border-radius:var(--radius);
+    }
+
+    .meta-label{
+      display:block;
+      font-size:.76rem;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--muted);
+      margin-bottom:6px;
+      font-weight:700;
+    }
+
+    .meta-value{
+      font-size:.95rem;
+      line-height:1.6;
+      color:var(--text);
+      font-weight:600;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:minmax(0,250px) minmax(0,1fr);
+      gap:18px;
+      align-items:start;
+    }
+
+    .toc,
+    .content{
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+
+    .toc{
+      position:sticky;
+      top:16px;
+      padding:18px;
+    }
+
+    .toc h2{
+      margin:0 0 12px;
+      font-size:.92rem;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+    }
+
+    .toc a{
+      display:block;
+      padding:9px 10px;
+      border-radius:var(--radius);
+      color:#4b4237;
+      text-decoration:none;
+      font-size:.94rem;
+      line-height:1.35;
+    }
+
+    .toc a:hover{
+      background:var(--gold-soft);
+      color:var(--text);
+    }
+
+    .content{
+      padding:8px;
+    }
+
+    .section{
+      padding:24px 20px;
+      border-bottom:1px solid var(--line);
+    }
+
+    .section:last-child{
+      border-bottom:none;
+    }
+
+    .section h2{
+      margin:0 0 10px;
+      font-size:1.12rem;
+      letter-spacing:.01em;
+      color:#241d15;
+    }
+
+    .section p,
+    .section li{
+      margin:8px 0;
+      color:#4b4237;
+      line-height:1.85;
+      font-size:.96rem;
+    }
+
+    .section ul{
+      margin:10px 0 0;
+      padding-left:18px;
+    }
+
+    .sub-block{
+      margin-top:16px;
+      padding:16px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel-soft);
+    }
+
+    .sub-block strong{
+      display:block;
+      margin-bottom:6px;
+      font-size:.9rem;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      color:var(--gold);
+    }
+
+    .contact-card{
+      margin-top:8px;
+      padding:18px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:linear-gradient(180deg, rgba(143,115,70,.08), rgba(255,253,248,.95));
+    }
+
+    .contact-card p{
+      margin:4px 0;
+    }
+
+    a.inline{
+      color:var(--text);
+      text-decoration:underline;
+      text-decoration-color:rgba(143,115,70,.45);
+      font-weight:600;
+    }
+
+    .footer-note{
+      color:var(--muted);
+      font-size:.82rem;
+      line-height:1.7;
+      text-align:center;
+      padding:2px 8px 0;
+    }
+
+    @media (max-width: 860px){
+      body{padding:14px 10px 24px}
+      .topbar{
+        flex-direction:column;
+        align-items:stretch;
+      }
+      .back-btn{
+        width:100%;
+      }
+      .hero{
+        padding:26px 18px 20px;
+      }
+      .hero-meta,
+      .grid{
+        grid-template-columns:1fr;
+      }
+      .toc{
+        position:static;
+      }
+      .content{
+        padding:0;
+      }
+      .section{
+        padding:20px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="privacy-root"></div>
+
+  <script>
+    (function () {
+      const translations = {
+        it: {
+          title: 'Privacy Policy — Sketchario',
+          description: 'Privacy Policy di Sketchario.app aggiornata al 10 aprile 2026.',
+          brandSmall: 'Privacy Policy',
+          backToApp: '← Torna indietro',
+          eyebrow: 'Privacy Policy',
+          heroTitle: 'Trasparenza chiara, stesso stile Sketchario.',
+          lead: 'Questa informativa descrive come Sketchario.app raccoglie, utilizza, conserva e protegge i dati personali degli utenti che utilizzano la piattaforma e le sue integrazioni.',
+          lastUpdatedLabel: 'Ultimo aggiornamento',
+          controllerLabel: 'Titolare',
+          contactLabel: 'Contatto',
+          updatedDate: '10 aprile 2026',
+          tocTitle: 'Indice',
+          sections: [
+            { id: 'titolare', title: '1. Titolare del trattamento' },
+            { id: 'dati', title: '2. Tipologie di dati raccolti' },
+            { id: 'finalita', title: '3. Finalità del trattamento' },
+            { id: 'base-giuridica', title: '4. Base giuridica' },
+            { id: 'servizi-terzi', title: '5. Integrazione con servizi terzi' },
+            { id: 'modalita', title: '6. Modalità del trattamento' },
+            { id: 'conservazione', title: '7. Conservazione dei dati' },
+            { id: 'diritti', title: '8. Diritti dell\'utente' },
+            { id: 'trasferimento', title: '9. Trasferimento dei dati' },
+            { id: 'modifiche', title: '10. Modifiche alla presente policy' },
+            { id: 'aggiornamento', title: '11. Data di aggiornamento' }
+          ],
+          controllerCard: [
+            '<strong>Sketchario.app</strong>',
+            'by Osmel Fred Fabre De Leon',
+            'Via Nomentana 295',
+            '00013 Fonte Nuova (Roma)',
+            'Codice Fiscale: FBRSLF76S17Z505X',
+            'Email: <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>',
+            'Sito web: <a class="inline" href="https://www.sketchario.app" target="_blank" rel="noopener">www.sketchario.app</a>'
+          ],
+          blocks: {
+            dati: {
+              intro: 'L\'applicazione Sketchario.app raccoglie e tratta le seguenti categorie di dati:',
+              groups: [
+                {
+                  title: 'a) Dati di accesso e autenticazione',
+                  items: ['Nome e cognome', 'Indirizzo email', 'ID utente dei social collegati', 'Token di accesso (OAuth)']
+                },
+                {
+                  title: 'b) Dati provenienti da piattaforme terze',
+                  paragraphs: [
+                    'Nel momento in cui l\'utente collega i propri account, possono essere raccolti dati provenienti da:'
+                  ],
+                  items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'],
+                  afterParagraphs: ['I dati raccolti dipendono dalle autorizzazioni concesse dall\'utente e possono includere:'],
+                  afterItems: ['contenuti pubblicati', 'immagini', 'dati di engagement', 'informazioni del profilo']
+                },
+                {
+                  title: 'c) Dati di utilizzo',
+                  items: ['Attività all\'interno della piattaforma', 'Preferenze di utilizzo', 'Log tecnici', 'Interazioni con le funzionalità AI']
+                },
+                {
+                  title: 'd) Dati generati dall\'utente',
+                  items: ['Testi inseriti', 'Prompt', 'Contenuti creati o modificati tramite AI']
+                }
+              ]
+            },
+            finalita: {
+              intro: 'I dati vengono trattati per le seguenti finalità:',
+              items: ['Fornire e migliorare il servizio Sketchario', 'Consentire la connessione con piattaforme social', 'Generare contenuti tramite AI', 'Analizzare l\'utilizzo della piattaforma', 'Garantire sicurezza e prevenzione abusi', 'Adempiere ad obblighi legali']
+            },
+            base: {
+              intro: 'Il trattamento dei dati si basa su:',
+              items: ['Esecuzione di un contratto (uso del servizio)', 'Consenso dell\'utente (connessione social, AI, marketing eventuale)', 'Legittimo interesse (sicurezza, miglioramento servizio)', 'Obblighi legali']
+            },
+            servizi: {
+              intro: 'Sketchario utilizza servizi esterni per il funzionamento della piattaforma:',
+              groups: [
+                { title: 'AI e generazione contenuti', items: ['OpenAI (es. DALL·E, modelli linguistici)'] },
+                { title: 'Strumenti grafici', items: ['Canva', 'VistaCreate', 'PostNitro'] },
+                { title: 'Social network', items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'] }
+              ],
+              outro: 'Questi servizi trattano dati secondo le loro rispettive privacy policy.'
+            },
+            modalita: {
+              intro: 'Il trattamento avviene mediante strumenti:',
+              items: ['Digitali', 'Automatizzati', 'Sicuri'],
+              outro: 'Sono adottate misure tecniche e organizzative adeguate per proteggere i dati.'
+            },
+            conservazione: {
+              intro: 'I dati vengono conservati:',
+              items: ['Per il tempo necessario all\'erogazione del servizio', 'Fino alla richiesta di cancellazione da parte dell\'utente', 'Per obblighi di legge, ove richiesto']
+            },
+            diritti: {
+              intro: 'L\'utente ha il diritto di:',
+              items: ['Accedere ai propri dati', 'Richiedere la rettifica', 'Richiedere la cancellazione', 'Limitare il trattamento', 'Opporsi al trattamento', 'Richiedere la portabilità dei dati'],
+              outro: 'Le richieste possono essere inviate a: <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>'
+            },
+            trasferimento: {
+              paragraphs: ['I dati possono essere trasferiti al di fuori dell\'Unione Europea, ad esempio per servizi cloud o AI, garantendo adeguati livelli di protezione secondo il GDPR.']
+            },
+            modifiche: {
+              paragraphs: ['Il Titolare si riserva il diritto di modificare la presente Privacy Policy in qualsiasi momento.', 'Le modifiche saranno pubblicate su questa pagina.']
+            },
+            aggiornamento: {
+              paragraphs: ['Ultimo aggiornamento: <strong>10 aprile 2026</strong>']
+            }
+          },
+          footerNote: 'Pagina tradotta automaticamente in base alla lingua del browser e impaginata in coerenza con lo stile visuale di Sketchario.app.'
+        },
+        en: {
+          title: 'Privacy Policy — Sketchario',
+          description: 'Sketchario.app Privacy Policy updated on April 10, 2026.',
+          brandSmall: 'Privacy Policy',
+          backToApp: '← Back',
+          eyebrow: 'Privacy Policy',
+          heroTitle: 'Clear transparency, unmistakably Sketchario.',
+          lead: 'This notice explains how Sketchario.app collects, uses, stores, and protects the personal data of users who use the platform and its integrations.',
+          lastUpdatedLabel: 'Last updated',
+          controllerLabel: 'Controller',
+          contactLabel: 'Contact',
+          updatedDate: 'April 10, 2026',
+          tocTitle: 'Contents',
+          sections: [
+            { id: 'titolare', title: '1. Data controller' },
+            { id: 'dati', title: '2. Types of data collected' },
+            { id: 'finalita', title: '3. Purposes of processing' },
+            { id: 'base-giuridica', title: '4. Legal basis' },
+            { id: 'servizi-terzi', title: '5. Third-party services integration' },
+            { id: 'modalita', title: '6. Processing methods' },
+            { id: 'conservazione', title: '7. Data retention' },
+            { id: 'diritti', title: '8. User rights' },
+            { id: 'trasferimento', title: '9. Data transfer' },
+            { id: 'modifiche', title: '10. Changes to this policy' },
+            { id: 'aggiornamento', title: '11. Update date' }
+          ],
+          controllerCard: [
+            '<strong>Sketchario.app</strong>',
+            'by Osmel Fred Fabre De Leon',
+            'Via Nomentana 295',
+            '00013 Fonte Nuova (Rome), Italy',
+            'Tax Code: FBRSLF76S17Z505X',
+            'Email: <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>',
+            'Website: <a class="inline" href="https://www.sketchario.app" target="_blank" rel="noopener">www.sketchario.app</a>'
+          ],
+          blocks: {
+            dati: {
+              intro: 'Sketchario.app collects and processes the following categories of data:',
+              groups: [
+                {
+                  title: 'a) Access and authentication data',
+                  items: ['First and last name', 'Email address', 'Connected social account user ID', 'Access tokens (OAuth)']
+                },
+                {
+                  title: 'b) Data from third-party platforms',
+                  paragraphs: ['When the user connects their accounts, data may be collected from:'],
+                  items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'],
+                  afterParagraphs: ['The collected data depends on the permissions granted by the user and may include:'],
+                  afterItems: ['published content', 'images', 'engagement data', 'profile information']
+                },
+                {
+                  title: 'c) Usage data',
+                  items: ['Activity within the platform', 'Usage preferences', 'Technical logs', 'Interactions with AI features']
+                },
+                {
+                  title: 'd) User-generated data',
+                  items: ['Entered text', 'Prompts', 'Content created or edited through AI']
+                }
+              ]
+            },
+            finalita: {
+              intro: 'Data is processed for the following purposes:',
+              items: ['Providing and improving the Sketchario service', 'Enabling connection with social platforms', 'Generating content through AI', 'Analyzing platform usage', 'Ensuring security and preventing abuse', 'Complying with legal obligations']
+            },
+            base: {
+              intro: 'Data processing is based on:',
+              items: ['Performance of a contract (use of the service)', 'User consent (social connection, AI, possible marketing)', 'Legitimate interest (security, service improvement)', 'Legal obligations']
+            },
+            servizi: {
+              intro: 'Sketchario uses external services for platform operation:',
+              groups: [
+                { title: 'AI and content generation', items: ['OpenAI (e.g. DALL·E, language models)'] },
+                { title: 'Graphic tools', items: ['Canva', 'VistaCreate', 'PostNitro'] },
+                { title: 'Social networks', items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'] }
+              ],
+              outro: 'These services process data according to their respective privacy policies.'
+            },
+            modalita: {
+              intro: 'Processing takes place through tools that are:',
+              items: ['Digital', 'Automated', 'Secure'],
+              outro: 'Appropriate technical and organizational measures are adopted to protect data.'
+            },
+            conservazione: {
+              intro: 'Data is retained:',
+              items: ['For the time necessary to provide the service', 'Until the user requests deletion', 'For legal obligations, where required']
+            },
+            diritti: {
+              intro: 'The user has the right to:',
+              items: ['Access their data', 'Request rectification', 'Request deletion', 'Restrict processing', 'Object to processing', 'Request data portability'],
+              outro: 'Requests may be sent to: <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>'
+            },
+            trasferimento: {
+              paragraphs: ['Data may be transferred outside the European Union, for example for cloud or AI services, while ensuring adequate levels of protection in accordance with the GDPR.']
+            },
+            modifiche: {
+              paragraphs: ['The Controller reserves the right to modify this Privacy Policy at any time.', 'Changes will be published on this page.']
+            },
+            aggiornamento: {
+              paragraphs: ['Last updated: <strong>April 10, 2026</strong>']
+            }
+          },
+          footerNote: 'This page is automatically translated based on the browser language and designed to match the visual style of Sketchario.app.'
+        },
+        fr: {
+          title: 'Politique de confidentialité — Sketchario',
+          description: 'Politique de confidentialité de Sketchario.app mise à jour le 10 avril 2026.',
+          brandSmall: 'Politique de confidentialité',
+          backToApp: '← Retour',
+          eyebrow: 'Politique de confidentialité',
+          heroTitle: 'Une transparence claire, dans le style Sketchario.',
+          lead: 'Cette notice explique comment Sketchario.app collecte, utilise, conserve et protège les données personnelles des utilisateurs qui utilisent la plateforme et ses intégrations.',
+          lastUpdatedLabel: 'Dernière mise à jour',
+          controllerLabel: 'Responsable',
+          contactLabel: 'Contact',
+          updatedDate: '10 avril 2026',
+          tocTitle: 'Sommaire',
+          sections: [
+            { id: 'titolare', title: '1. Responsable du traitement' },
+            { id: 'dati', title: '2. Types de données collectées' },
+            { id: 'finalita', title: '3. Finalités du traitement' },
+            { id: 'base-giuridica', title: '4. Base juridique' },
+            { id: 'servizi-terzi', title: '5. Intégration de services tiers' },
+            { id: 'modalita', title: '6. Modalités du traitement' },
+            { id: 'conservazione', title: '7. Conservation des données' },
+            { id: 'diritti', title: '8. Droits de l\'utilisateur' },
+            { id: 'trasferimento', title: '9. Transfert des données' },
+            { id: 'modifiche', title: '10. Modifications de la présente politique' },
+            { id: 'aggiornamento', title: '11. Date de mise à jour' }
+          ],
+          controllerCard: [
+            '<strong>Sketchario.app</strong>',
+            'by Osmel Fred Fabre De Leon',
+            'Via Nomentana 295',
+            '00013 Fonte Nuova (Rome)',
+            'Code fiscal : FBRSLF76S17Z505X',
+            'Email : <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>',
+            'Site web : <a class="inline" href="https://www.sketchario.app" target="_blank" rel="noopener">www.sketchario.app</a>'
+          ],
+          blocks: {
+            dati: {
+              intro: 'L\'application Sketchario.app collecte et traite les catégories de données suivantes :',
+              groups: [
+                {
+                  title: 'a) Données d\'accès et d\'authentification',
+                  items: ['Nom et prénom', 'Adresse e-mail', 'ID utilisateur des réseaux sociaux connectés', 'Jetons d\'accès (OAuth)']
+                },
+                {
+                  title: 'b) Données provenant de plateformes tierces',
+                  paragraphs: ['Lorsque l\'utilisateur connecte ses comptes, des données peuvent être collectées depuis :'],
+                  items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'],
+                  afterParagraphs: ['Les données collectées dépendent des autorisations accordées par l\'utilisateur et peuvent inclure :'],
+                  afterItems: ['contenus publiés', 'images', 'données d\'engagement', 'informations de profil']
+                },
+                {
+                  title: 'c) Données d\'utilisation',
+                  items: ['Activité au sein de la plateforme', 'Préférences d\'utilisation', 'Journaux techniques', 'Interactions avec les fonctionnalités d\'IA']
+                },
+                {
+                  title: 'd) Données générées par l\'utilisateur',
+                  items: ['Textes saisis', 'Prompts', 'Contenus créés ou modifiés via l\'IA']
+                }
+              ]
+            },
+            finalita: {
+              intro: 'Les données sont traitées aux fins suivantes :',
+              items: ['Fournir et améliorer le service Sketchario', 'Permettre la connexion aux plateformes sociales', 'Générer des contenus via l\'IA', 'Analyser l\'utilisation de la plateforme', 'Garantir la sécurité et prévenir les abus', 'Respecter les obligations légales']
+            },
+            base: {
+              intro: 'Le traitement des données repose sur :',
+              items: ['L\'exécution d\'un contrat (utilisation du service)', 'Le consentement de l\'utilisateur (connexion sociale, IA, éventuel marketing)', 'L\'intérêt légitime (sécurité, amélioration du service)', 'Les obligations légales']
+            },
+            servizi: {
+              intro: 'Sketchario utilise des services externes pour le fonctionnement de la plateforme :',
+              groups: [
+                { title: 'IA et génération de contenu', items: ['OpenAI (ex. DALL·E, modèles linguistiques)'] },
+                { title: 'Outils graphiques', items: ['Canva', 'VistaCreate', 'PostNitro'] },
+                { title: 'Réseaux sociaux', items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'] }
+              ],
+              outro: 'Ces services traitent les données conformément à leurs propres politiques de confidentialité.'
+            },
+            modalita: {
+              intro: 'Le traitement s\'effectue à l\'aide d\'outils :',
+              items: ['Numériques', 'Automatisés', 'Sécurisés'],
+              outro: 'Des mesures techniques et organisationnelles appropriées sont adoptées pour protéger les données.'
+            },
+            conservazione: {
+              intro: 'Les données sont conservées :',
+              items: ['Pendant le temps nécessaire à la fourniture du service', 'Jusqu\'à la demande de suppression de l\'utilisateur', 'Pour les obligations légales, lorsque cela est requis']
+            },
+            diritti: {
+              intro: 'L\'utilisateur a le droit de :',
+              items: ['Accéder à ses données', 'Demander la rectification', 'Demander la suppression', 'Limiter le traitement', 'S\'opposer au traitement', 'Demander la portabilité des données'],
+              outro: 'Les demandes peuvent être envoyées à : <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>'
+            },
+            trasferimento: {
+              paragraphs: ['Les données peuvent être transférées en dehors de l\'Union européenne, par exemple pour des services cloud ou d\'IA, en garantissant des niveaux de protection adéquats conformément au RGPD.']
+            },
+            modifiche: {
+              paragraphs: ['Le Responsable se réserve le droit de modifier la présente Politique de confidentialité à tout moment.', 'Les modifications seront publiées sur cette page.']
+            },
+            aggiornamento: {
+              paragraphs: ['Dernière mise à jour : <strong>10 avril 2026</strong>']
+            }
+          },
+          footerNote: 'Cette page est automatiquement traduite selon la langue du navigateur et mise en page en cohérence avec le style visuel de Sketchario.app.'
+        },
+        es: {
+          title: 'Política de privacidad — Sketchario',
+          description: 'Política de privacidad de Sketchario.app actualizada el 10 de abril de 2026.',
+          brandSmall: 'Política de privacidad',
+          backToApp: '← Volver',
+          eyebrow: 'Política de privacidad',
+          heroTitle: 'Transparencia clara, con el estilo de Sketchario.',
+          lead: 'Este aviso explica cómo Sketchario.app recopila, utiliza, conserva y protege los datos personales de los usuarios que utilizan la plataforma y sus integraciones.',
+          lastUpdatedLabel: 'Última actualización',
+          controllerLabel: 'Responsable',
+          contactLabel: 'Contacto',
+          updatedDate: '10 de abril de 2026',
+          tocTitle: 'Índice',
+          sections: [
+            { id: 'titolare', title: '1. Responsable del tratamiento' },
+            { id: 'dati', title: '2. Tipos de datos recopilados' },
+            { id: 'finalita', title: '3. Finalidades del tratamiento' },
+            { id: 'base-giuridica', title: '4. Base jurídica' },
+            { id: 'servizi-terzi', title: '5. Integración con servicios de terceros' },
+            { id: 'modalita', title: '6. Modalidades del tratamiento' },
+            { id: 'conservazione', title: '7. Conservación de los datos' },
+            { id: 'diritti', title: '8. Derechos del usuario' },
+            { id: 'trasferimento', title: '9. Transferencia de datos' },
+            { id: 'modifiche', title: '10. Modificaciones de esta política' },
+            { id: 'aggiornamento', title: '11. Fecha de actualización' }
+          ],
+          controllerCard: [
+            '<strong>Sketchario.app</strong>',
+            'by Osmel Fred Fabre De Leon',
+            'Via Nomentana 295',
+            '00013 Fonte Nuova (Roma)',
+            'Código fiscal: FBRSLF76S17Z505X',
+            'Email: <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>',
+            'Sitio web: <a class="inline" href="https://www.sketchario.app" target="_blank" rel="noopener">www.sketchario.app</a>'
+          ],
+          blocks: {
+            dati: {
+              intro: 'La aplicación Sketchario.app recopila y trata las siguientes categorías de datos:',
+              groups: [
+                {
+                  title: 'a) Datos de acceso y autenticación',
+                  items: ['Nombre y apellidos', 'Correo electrónico', 'ID de usuario de las redes sociales conectadas', 'Tokens de acceso (OAuth)']
+                },
+                {
+                  title: 'b) Datos procedentes de plataformas de terceros',
+                  paragraphs: ['Cuando el usuario conecta sus cuentas, se pueden recopilar datos de:'],
+                  items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'],
+                  afterParagraphs: ['Los datos recopilados dependen de los permisos concedidos por el usuario y pueden incluir:'],
+                  afterItems: ['contenidos publicados', 'imágenes', 'datos de interacción', 'información del perfil']
+                },
+                {
+                  title: 'c) Datos de uso',
+                  items: ['Actividad dentro de la plataforma', 'Preferencias de uso', 'Registros técnicos', 'Interacciones con las funciones de IA']
+                },
+                {
+                  title: 'd) Datos generados por el usuario',
+                  items: ['Textos introducidos', 'Prompts', 'Contenidos creados o modificados mediante IA']
+                }
+              ]
+            },
+            finalita: {
+              intro: 'Los datos se tratan con las siguientes finalidades:',
+              items: ['Proporcionar y mejorar el servicio Sketchario', 'Permitir la conexión con plataformas sociales', 'Generar contenidos mediante IA', 'Analizar el uso de la plataforma', 'Garantizar la seguridad y prevenir abusos', 'Cumplir con obligaciones legales']
+            },
+            base: {
+              intro: 'El tratamiento de datos se basa en:',
+              items: ['La ejecución de un contrato (uso del servicio)', 'El consentimiento del usuario (conexión social, IA, posible marketing)', 'El interés legítimo (seguridad, mejora del servicio)', 'Obligaciones legales']
+            },
+            servizi: {
+              intro: 'Sketchario utiliza servicios externos para el funcionamiento de la plataforma:',
+              groups: [
+                { title: 'IA y generación de contenidos', items: ['OpenAI (p. ej., DALL·E, modelos lingüísticos)'] },
+                { title: 'Herramientas gráficas', items: ['Canva', 'VistaCreate', 'PostNitro'] },
+                { title: 'Redes sociales', items: ['Facebook', 'Instagram', 'LinkedIn', 'Pinterest', 'TikTok'] }
+              ],
+              outro: 'Estos servicios tratan los datos de acuerdo con sus respectivas políticas de privacidad.'
+            },
+            modalita: {
+              intro: 'El tratamiento se realiza mediante herramientas:',
+              items: ['Digitales', 'Automatizadas', 'Seguras'],
+              outro: 'Se adoptan medidas técnicas y organizativas adecuadas para proteger los datos.'
+            },
+            conservazione: {
+              intro: 'Los datos se conservan:',
+              items: ['Durante el tiempo necesario para prestar el servicio', 'Hasta que el usuario solicite su eliminación', 'Por obligaciones legales, cuando sea necesario']
+            },
+            diritti: {
+              intro: 'El usuario tiene derecho a:',
+              items: ['Acceder a sus datos', 'Solicitar la rectificación', 'Solicitar la eliminación', 'Limitar el tratamiento', 'Oponerse al tratamiento', 'Solicitar la portabilidad de los datos'],
+              outro: 'Las solicitudes pueden enviarse a: <a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a>'
+            },
+            trasferimento: {
+              paragraphs: ['Los datos pueden transferirse fuera de la Unión Europea, por ejemplo para servicios en la nube o de IA, garantizando niveles adecuados de protección conforme al RGPD.']
+            },
+            modifiche: {
+              paragraphs: ['El Responsable se reserva el derecho de modificar esta Política de privacidad en cualquier momento.', 'Los cambios se publicarán en esta página.']
+            },
+            aggiornamento: {
+              paragraphs: ['Última actualización: <strong>10 de abril de 2026</strong>']
+            }
+          },
+          footerNote: 'Esta página se traduce automáticamente según el idioma del navegador y está maquetada en coherencia con el estilo visual de Sketchario.app.'
+        }
+      };
+
+      function detectLanguage() {
+        const params = new URLSearchParams(window.location.search);
+        const forced = (params.get('lang') || '').toLowerCase();
+        if (translations[forced]) return forced;
+
+        const langs = Array.isArray(navigator.languages) && navigator.languages.length
+          ? navigator.languages
+          : [navigator.language || 'it'];
+
+        for (const lang of langs) {
+          const short = String(lang || '').toLowerCase().slice(0, 2);
+          if (translations[short]) return short;
+        }
+
+        return 'it';
+      }
+
+      function list(items) {
+        return `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
+      }
+
+      function paragraphs(items) {
+        return items.map((item) => `<p>${item}</p>`).join('');
+      }
+
+      function subBlocks(groups) {
+        return groups.map((group) => {
+          const before = group.paragraphs ? paragraphs(group.paragraphs) : '';
+          const mainList = group.items ? list(group.items) : '';
+          const after = group.afterParagraphs ? paragraphs(group.afterParagraphs) : '';
+          const afterList = group.afterItems ? list(group.afterItems) : '';
+          return `<div class="sub-block"><strong>${group.title}</strong>${before}${mainList}${after}${afterList}</div>`;
+        }).join('');
+      }
+
+      function renderSections(copy) {
+        return `
+          <section class="section" id="titolare">
+            <h2>${copy.sections[0].title}</h2>
+            <div class="contact-card">
+              ${copy.controllerCard.map((row) => `<p>${row}</p>`).join('')}
+            </div>
+          </section>
+
+          <section class="section" id="dati">
+            <h2>${copy.sections[1].title}</h2>
+            <p>${copy.blocks.dati.intro}</p>
+            ${subBlocks(copy.blocks.dati.groups)}
+          </section>
+
+          <section class="section" id="finalita">
+            <h2>${copy.sections[2].title}</h2>
+            <p>${copy.blocks.finalita.intro}</p>
+            ${list(copy.blocks.finalita.items)}
+          </section>
+
+          <section class="section" id="base-giuridica">
+            <h2>${copy.sections[3].title}</h2>
+            <p>${copy.blocks.base.intro}</p>
+            ${list(copy.blocks.base.items)}
+          </section>
+
+          <section class="section" id="servizi-terzi">
+            <h2>${copy.sections[4].title}</h2>
+            <p>${copy.blocks.servizi.intro}</p>
+            ${subBlocks(copy.blocks.servizi.groups)}
+            <p>${copy.blocks.servizi.outro}</p>
+          </section>
+
+          <section class="section" id="modalita">
+            <h2>${copy.sections[5].title}</h2>
+            <p>${copy.blocks.modalita.intro}</p>
+            ${list(copy.blocks.modalita.items)}
+            <p>${copy.blocks.modalita.outro}</p>
+          </section>
+
+          <section class="section" id="conservazione">
+            <h2>${copy.sections[6].title}</h2>
+            <p>${copy.blocks.conservazione.intro}</p>
+            ${list(copy.blocks.conservazione.items)}
+          </section>
+
+          <section class="section" id="diritti">
+            <h2>${copy.sections[7].title}</h2>
+            <p>${copy.blocks.diritti.intro}</p>
+            ${list(copy.blocks.diritti.items)}
+            <p>${copy.blocks.diritti.outro}</p>
+          </section>
+
+          <section class="section" id="trasferimento">
+            <h2>${copy.sections[8].title}</h2>
+            ${paragraphs(copy.blocks.trasferimento.paragraphs)}
+          </section>
+
+          <section class="section" id="modifiche">
+            <h2>${copy.sections[9].title}</h2>
+            ${paragraphs(copy.blocks.modifiche.paragraphs)}
+          </section>
+
+          <section class="section" id="aggiornamento">
+            <h2>${copy.sections[10].title}</h2>
+            ${paragraphs(copy.blocks.aggiornamento.paragraphs)}
+          </section>
+        `;
+      }
+
+      function renderPage(lang) {
+        const copy = translations[lang] || translations.it;
+        document.documentElement.lang = lang;
+        document.title = copy.title;
+        const metaDescription = document.querySelector('meta[name="description"]');
+        if (metaDescription) metaDescription.setAttribute('content', copy.description);
+
+        document.getElementById('privacy-root').innerHTML = `
+          <div class="topbar">
+            <div class="brand">
+              <div class="brand-mark">
+                <img src="https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/oyv8tqit_favicon-invert.jpg" alt="Sketchario">
+              </div>
+              <div class="brand-copy">
+                <strong>SKETCHARIO</strong>
+                <small>${copy.brandSmall}</small>
+              </div>
+            </div>
+            <a class="back-btn" href="/" data-back-link>${copy.backToApp}</a>
+          </div>
+
+          <section class="hero">
+            <span class="eyebrow">${copy.eyebrow}</span>
+            <h1>${copy.heroTitle}</h1>
+            <p class="lead">${copy.lead}</p>
+
+            <div class="hero-meta">
+              <div class="meta-box">
+                <span class="meta-label">${copy.lastUpdatedLabel}</span>
+                <span class="meta-value">${copy.updatedDate}</span>
+              </div>
+              <div class="meta-box">
+                <span class="meta-label">${copy.controllerLabel}</span>
+                <span class="meta-value">Sketchario.app by Osmel Fred Fabre De Leon</span>
+              </div>
+              <div class="meta-box">
+                <span class="meta-label">${copy.contactLabel}</span>
+                <span class="meta-value"><a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a></span>
+              </div>
+            </div>
+          </section>
+
+          <div class="grid">
+            <aside class="toc">
+              <h2>${copy.tocTitle}</h2>
+              ${copy.sections.map((section) => `<a href="#${section.id}">${section.title}</a>`).join('')}
+            </aside>
+
+            <main class="content">
+              ${renderSections(copy)}
+            </main>
+          </div>
+
+          <p class="footer-note">${copy.footerNote}</p>
+        `;
+
+        const backLink = document.querySelector('[data-back-link]');
+        if (backLink) {
+          backLink.addEventListener('click', function (event) {
+            const fallback = backLink.getAttribute('href') || '../index.html';
+            event.preventDefault();
+            if (window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+            if (document.referrer) {
+              window.location.href = document.referrer;
+              return;
+            }
+            window.location.href = fallback;
+          });
+        }
+      }
+
+      renderPage(detectLanguage());
+    })();
+  </script>
+</body>
+</html>

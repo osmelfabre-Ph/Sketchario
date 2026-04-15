@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Termini e Condizioni — Sketchario v1</title>
+  <meta name="description" content="Termini e Condizioni d'uso di Sketchario v1. Pagamenti tramite Stripe." />
+
+  <style>
+    :root{
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.72);
+      --shadow: 0 18px 60px rgba(0,0,0,.45);
+      --radius: 18px;
+      --max: 980px;
+      --bg: #070A12;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&display=swap');
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family:"Barlow", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(900px 500px at 15% -10%, rgba(124,58,237,.25), transparent 55%),
+        radial-gradient(900px 500px at 85% 0%, rgba(34,211,238,.18), transparent 55%),
+        linear-gradient(180deg, #050712 0%, var(--bg) 55%, #050712 100%);
+      padding: 26px 16px;
+    }
+    .wrap{ width: min(var(--max), 100%); margin: 0 auto; }
+    .card{
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+    .top-link{
+      color: rgba(255,255,255,.78);
+      text-decoration:none;
+      font-weight: 800;
+      display:inline-flex;
+      gap: 8px;
+      align-items:center;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      margin-bottom: 14px;
+      white-space: nowrap;
+    }
+    h1{
+      margin: 6px 0 6px;
+      font-weight: 950;
+      letter-spacing: -.4px;
+      font-size: 30px;
+    }
+    .sub{
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-weight: 650;
+      line-height:1.7;
+      font-size: 14px;
+    }
+    h2{
+      margin: 18px 0 8px;
+      font-size: 16px;
+      font-weight: 950;
+      letter-spacing: -.1px;
+    }
+    p, li{
+      color: var(--muted);
+      line-height:1.85;
+      font-weight: 620;
+      font-size: 14px;
+      margin: 8px 0;
+    }
+    ul{ padding-left: 18px; }
+    a.inline{
+      color: rgba(255,255,255,.92);
+      text-decoration: underline;
+      text-decoration-color: rgba(255,255,255,.35);
+      font-weight: 800;
+    }
+    .small{
+      font-size: 12px;
+      color: rgba(255,255,255,.62);
+      margin-top: 14px;
+      line-height:1.7;
+    }
+    @media (max-width: 720px){
+      body{ padding: 18px 10px; }
+      .card{ padding: 18px; }
+      h1{ font-size: 26px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap" id="terms-root"></div>
+
+  <script>
+    (function () {
+      const translations = {
+        it: {
+          title: 'Termini e Condizioni — Sketchario v1',
+          description: 'Termini e Condizioni d\'uso di Sketchario v1. Pagamenti tramite Stripe.',
+          back: '← Torna indietro',
+          h1: 'Termini e Condizioni — Sketchario v1',
+          sub: 'Ultimo aggiornamento: <b>10 aprile 2026</b>. Accedendo o utilizzando Sketchario v1 (il “Servizio”), accetti questi Termini e Condizioni (i “Termini”).',
+          sections: [
+            {
+              title: '1) Chi siamo (Titolare)',
+              paragraphs: [
+                'Il Servizio è gestito da <b>Osmel Fred Fabre de Leon</b>, in qualità di titolare. Sede: <b>Via Nomentana 295, 00013 Fonte Nuova, Roma</b>.',
+                'Codice Fiscale: <b>FBRSLF76S17Z505X</b>. Indirizzo email del Titolare: <b>info@sketchario.app</b>.'
+              ]
+            },
+            {
+              title: '2) Ambito del Servizio',
+              paragraphs: [
+                'Il Servizio è un\'applicazione web che consente all\'Utente di utilizzare funzionalità di generazione e/o assistenza basate su contenuti e modelli (inclusi, ove applicabile, sistemi di AI/automazione).'
+              ]
+            },
+            {
+              title: '3) Accettazione e modifiche',
+              list: [
+                'Utilizzando il Servizio accetti questi Termini.',
+                'Potremmo aggiornare i Termini per riflettere cambiamenti del Servizio o requisiti normativi.',
+                'Le modifiche saranno pubblicate su questo sito; l\'uso continuato del Servizio dopo la pubblicazione comporta accettazione.'
+              ]
+            },
+            {
+              title: '4) Idoneità e account',
+              list: [
+                'L\'Utente dichiara di avere la capacità di concludere contratti.',
+                'Se l\'accesso richiede registrazione o credenziali, l\'Utente è responsabile della riservatezza delle proprie credenziali.',
+                'L\'Utente si impegna a fornire informazioni veritiere e aggiornate.'
+              ]
+            },
+            {
+              title: '5) Pagamenti, piani e Stripe',
+              paragraphs: [
+                'Alcune funzionalità potrebbero richiedere l\'attivazione di un abbonamento o l\'acquisto di un piano (il “Piano”). I pagamenti sono elaborati tramite terzi, in particolare <b>Stripe</b>. Pertanto, si applicano anche i termini e condizioni del provider di pagamento.',
+                'Se è previsto un periodo di prova, coupon o promozioni, termini specifici di tali offerte possono essere comunicati al momento dell\'acquisto o dell\'attivazione.'
+              ]
+            },
+            {
+              title: '6) Rinnovo, gestione e cessazione',
+              paragraphs: [
+                'I Piani possono prevedere rinnovi periodici. La disponibilità del Servizio segue le tempistiche e le impostazioni del provider di pagamento e/o del sistema utilizzato per gestire l\'abbonamento.',
+                'In caso di cancellazione o mancato rinnovo, l\'accesso alle funzionalità incluse nel Piano può cessare alla fine del periodo di fatturazione in corso, salvo quanto diversamente previsto dalla normativa applicabile.'
+              ]
+            },
+            {
+              title: '7) Rimborsi',
+              paragraphs: [
+                'Salvo quanto diversamente previsto dalla normativa applicabile e/o da eventuali policy comunicati al momento dell\'acquisto, i pagamenti potrebbero essere <b>non rimborsabili</b> una volta elaborati.',
+                'Se hai dubbi su un eventuale rimborso, contatta <b>info@sketchario.app</b> indicando i dettagli dell\'ordine e/o del pagamento.'
+              ]
+            },
+            {
+              title: '8) Contenuti generati dall\'AI e responsabilità dell\'Utente',
+              list: [
+                'I contenuti generati o suggeriti dal Servizio possono essere inesatti, incompleti o non adatti a uno specifico scopo.',
+                'L\'Utente è responsabile di verificare i contenuti prima di utilizzarli.',
+                'Non garantiamo risultati specifici (ad es. performance economiche, conformità legale o outcome desiderati).'
+              ],
+              note: 'Suggerimento: se usi contenuti per attività legali, mediche, finanziarie o contrattuali, consulta sempre un professionista qualificato.'
+            },
+            {
+              title: '9) Uso consentito (obblighi dell\'Utente)',
+              paragraphs: ['L\'Utente si impegna a non:'],
+              list: [
+                'violare leggi o regolamenti applicabili;',
+                'utilizzare il Servizio in modo fraudolento, illecito o per aggirare misure tecniche o funzionali;',
+                'caricare, pubblicare o trasmettere contenuti illeciti, ingannevoli o che violano diritti di terzi;',
+                'tentare di compromettere sicurezza, integrità o disponibilità del Servizio (es. hacking, scraping massivo, ecc.);',
+                'inviare dati personali non necessari o comunque in violazione delle norme applicabili.'
+              ]
+            },
+            {
+              title: '10) Proprietà intellettuale',
+              paragraphs: [
+                'Il Servizio (incluse interfacce, codice, marchi, loghi e contenuti proprietari) è protetto da diritti di proprietà intellettuale. L\'Utente ha una licenza limitata, non esclusiva e revocabile per utilizzare il Servizio secondo questi Termini.',
+                'L\'Utente conserva i diritti sui contenuti che immette nel Servizio, ma concede al Titolare una licenza limitata e necessaria per elaborare tali contenuti ai fini dell\'erogazione del Servizio.'
+              ]
+            },
+            {
+              title: '11) Servizi di terzi',
+              paragraphs: [
+                'Il Servizio può integrare o dipendere da servizi di terzi (es. provider di pagamento e, se applicabile, servizi tecnici o di infrastruttura). Tali servizi possono essere soggetti a termini e condizioni separati. Non controlliamo tali terzi e non siamo responsabili per interruzioni o modifiche dei loro servizi.'
+              ]
+            },
+            {
+              title: '12) Sospensione e cessazione',
+              paragraphs: [
+                'Possiamo sospendere o limitare l\'accesso dell\'Utente, anche temporaneamente, in caso di violazione dei presenti Termini, rischio di sicurezza, attività anomale o mancato rispetto delle condizioni del Piano/pagamento.'
+              ]
+            },
+            {
+              title: '13) Limitazione di responsabilità',
+              paragraphs: [
+                'Nella misura massima consentita dalla legge, <b>Osmel Fred Fabre de Leon</b> non sarà responsabile per danni indiretti, consequenziali o per perdite di profitto derivanti dall\'uso del Servizio, salvo diversa disposizione inderogabile.',
+                'Il Servizio è fornito “così com\'è” e “come disponibile” nei limiti consentiti dalla legge.'
+              ]
+            },
+            {
+              title: '14) Indennizzo (se applicabile)',
+              paragraphs: [
+                'L\'Utente accetta di manlevare e tenere indenne il Titolare da eventuali reclami, danni, perdite e spese (incluse spese legali ragionevoli) derivanti dall\'uso improprio del Servizio o dalla violazione dei presenti Termini.'
+              ]
+            },
+            {
+              title: '15) Privacy',
+              paragraphs: [
+                'Il trattamento dei dati personali è disciplinato dalla <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>. Ti invitiamo a prenderne visione prima di utilizzare il Servizio.'
+              ]
+            },
+            {
+              title: '16) Legge applicabile',
+              paragraphs: [
+                'I presenti Termini sono regolati dalla normativa applicabile nello Stato in cui il Titolare è stabilito.'
+              ]
+            },
+            {
+              title: '17) Contatti',
+              paragraphs: [
+                'Per domande sui presenti Termini, contatta: <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Nota: questo testo è un modello. Verifica con un professionista legale i dettagli su rimborsi, gestione abbonamenti, diritti del consumatore e altri aspetti specifici del tuo caso.'
+        },
+        en: {
+          title: 'Terms and Conditions — Sketchario v1',
+          description: 'Terms and Conditions for the use of Sketchario v1. Payments via Stripe.',
+          back: '← Back',
+          h1: 'Terms and Conditions — Sketchario v1',
+          sub: 'Last updated: <b>April 10, 2026</b>. By accessing or using Sketchario v1 (the “Service”), you accept these Terms and Conditions (the “Terms”).',
+          sections: [
+            {
+              title: '1) Who we are (Controller)',
+              paragraphs: [
+                'The Service is operated by <b>Osmel Fred Fabre de Leon</b>, as controller. Registered office: <b>Via Nomentana 295, 00013 Fonte Nuova, Rome, Italy</b>.',
+                'Tax Code: <b>FBRSLF76S17Z505X</b>. Controller email address: <b>info@sketchario.app</b>.'
+              ]
+            },
+            {
+              title: '2) Scope of the Service',
+              paragraphs: [
+                'The Service is a web application that allows the User to access generation and/or assistance features based on content and models (including, where applicable, AI/automation systems).'
+              ]
+            },
+            {
+              title: '3) Acceptance and changes',
+              list: [
+                'By using the Service, you accept these Terms.',
+                'We may update the Terms to reflect changes to the Service or legal requirements.',
+                'Changes will be published on this site; continued use of the Service after publication constitutes acceptance.'
+              ]
+            },
+            {
+              title: '4) Eligibility and account',
+              list: [
+                'The User declares that they have the legal capacity to enter into contracts.',
+                'If access requires registration or credentials, the User is responsible for keeping their credentials confidential.',
+                'The User agrees to provide truthful and up-to-date information.'
+              ]
+            },
+            {
+              title: '5) Payments, plans and Stripe',
+              paragraphs: [
+                'Some features may require activation of a subscription or the purchase of a plan (the “Plan”). Payments are processed through third parties, in particular <b>Stripe</b>. Therefore, the payment provider\'s terms and conditions also apply.',
+                'If a trial period, coupons, or promotions are offered, specific terms for those offers may be communicated at the time of purchase or activation.'
+              ]
+            },
+            {
+              title: '6) Renewal, management and termination',
+              paragraphs: [
+                'Plans may provide for periodic renewals. Service availability follows the timelines and settings of the payment provider and/or the system used to manage the subscription.',
+                'In the event of cancellation or non-renewal, access to features included in the Plan may end at the close of the current billing period, unless otherwise required by applicable law.'
+              ]
+            },
+            {
+              title: '7) Refunds',
+              paragraphs: [
+                'Unless otherwise required by applicable law and/or any policy communicated at the time of purchase, payments may be <b>non-refundable</b> once processed.',
+                'If you have questions about a possible refund, contact <b>info@sketchario.app</b> and include the details of the order and/or payment.'
+              ]
+            },
+            {
+              title: '8) AI-generated content and User responsibility',
+              list: [
+                'Content generated or suggested by the Service may be inaccurate, incomplete, or unsuitable for a specific purpose.',
+                'The User is responsible for reviewing content before using it.',
+                'We do not guarantee specific results (e.g. economic performance, legal compliance, or desired outcomes).'
+              ],
+              note: 'Suggestion: if you use content for legal, medical, financial, or contractual activities, always consult a qualified professional.'
+            },
+            {
+              title: '9) Permitted use (User obligations)',
+              paragraphs: ['The User agrees not to:'],
+              list: [
+                'violate applicable laws or regulations;',
+                'use the Service fraudulently, unlawfully, or to bypass technical or functional measures;',
+                'upload, publish, or transmit unlawful or misleading content or content that infringes third-party rights;',
+                'attempt to compromise the security, integrity, or availability of the Service (e.g. hacking, mass scraping, etc.);',
+                'send personal data that is unnecessary or otherwise in breach of applicable rules.'
+              ]
+            },
+            {
+              title: '10) Intellectual property',
+              paragraphs: [
+                'The Service (including interfaces, code, trademarks, logos, and proprietary content) is protected by intellectual property rights. The User receives a limited, non-exclusive, revocable license to use the Service in accordance with these Terms.',
+                'The User retains rights to content submitted to the Service, but grants the Controller a limited license necessary to process that content for the purpose of providing the Service.'
+              ]
+            },
+            {
+              title: '11) Third-party services',
+              paragraphs: [
+                'The Service may integrate with or depend on third-party services (e.g. payment providers and, where applicable, technical or infrastructure services). Such services may be subject to separate terms and conditions. We do not control such third parties and are not responsible for interruptions or changes in their services.'
+              ]
+            },
+            {
+              title: '12) Suspension and termination',
+              paragraphs: [
+                'We may suspend or limit the User\'s access, including temporarily, in the event of a breach of these Terms, security risk, abnormal activity, or failure to comply with Plan/payment conditions.'
+              ]
+            },
+            {
+              title: '13) Limitation of liability',
+              paragraphs: [
+                'To the fullest extent permitted by law, <b>Osmel Fred Fabre de Leon</b> shall not be liable for indirect or consequential damages or loss of profit arising from use of the Service, unless otherwise required by mandatory law.',
+                'The Service is provided “as is” and “as available” to the extent permitted by law.'
+              ]
+            },
+            {
+              title: '14) Indemnification (where applicable)',
+              paragraphs: [
+                'The User agrees to indemnify and hold the Controller harmless from claims, damages, losses, and expenses (including reasonable legal fees) arising from misuse of the Service or breach of these Terms.'
+              ]
+            },
+            {
+              title: '15) Privacy',
+              paragraphs: [
+                'The processing of personal data is governed by the <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>. Please review it before using the Service.'
+              ]
+            },
+            {
+              title: '16) Governing law',
+              paragraphs: [
+                'These Terms are governed by the applicable law of the State in which the Controller is established.'
+              ]
+            },
+            {
+              title: '17) Contacts',
+              paragraphs: [
+                'For questions about these Terms, contact: <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Note: this text is a template. Check with a legal professional the details on refunds, subscription management, consumer rights, and other aspects specific to your case.'
+        },
+        fr: {
+          title: 'Conditions générales — Sketchario v1',
+          description: 'Conditions générales d\'utilisation de Sketchario v1. Paiements via Stripe.',
+          back: '← Retour',
+          h1: 'Conditions générales — Sketchario v1',
+          sub: 'Dernière mise à jour : <b>10 avril 2026</b>. En accédant à Sketchario v1 ou en l\'utilisant (le « Service »), vous acceptez les présentes Conditions générales (les « Conditions »).',
+          sections: [
+            {
+              title: '1) Qui sommes-nous (Responsable)',
+              paragraphs: [
+                'Le Service est géré par <b>Osmel Fred Fabre de Leon</b>, en qualité de responsable. Siège : <b>Via Nomentana 295, 00013 Fonte Nuova, Rome</b>.',
+                'Code fiscal : <b>FBRSLF76S17Z505X</b>. Adresse e-mail du responsable : <b>info@sketchario.app</b>.'
+              ]
+            },
+            {
+              title: '2) Champ du Service',
+              paragraphs: [
+                'Le Service est une application web qui permet à l\'Utilisateur d\'accéder à des fonctionnalités de génération et/ou d\'assistance basées sur des contenus et des modèles (y compris, le cas échéant, des systèmes d\'IA/automatisation).'
+              ]
+            },
+            {
+              title: '3) Acceptation et modifications',
+              list: [
+                'En utilisant le Service, vous acceptez les présentes Conditions.',
+                'Nous pouvons mettre à jour les Conditions pour refléter des changements du Service ou des exigences légales.',
+                'Les modifications seront publiées sur ce site ; l\'utilisation continue du Service après publication vaut acceptation.'
+              ]
+            },
+            {
+              title: '4) Capacité et compte',
+              list: [
+                'L\'Utilisateur déclare avoir la capacité juridique de conclure des contrats.',
+                'Si l\'accès requiert une inscription ou des identifiants, l\'Utilisateur est responsable de la confidentialité de ses identifiants.',
+                'L\'Utilisateur s\'engage à fournir des informations exactes et à jour.'
+              ]
+            },
+            {
+              title: '5) Paiements, plans et Stripe',
+              paragraphs: [
+                'Certaines fonctionnalités peuvent nécessiter l\'activation d\'un abonnement ou l\'achat d\'un plan (le « Plan »). Les paiements sont traités par des tiers, notamment <b>Stripe</b>. En conséquence, les conditions générales du prestataire de paiement s\'appliquent également.',
+                'Si une période d\'essai, des coupons ou des promotions sont prévus, les conditions spécifiques de ces offres peuvent être communiquées au moment de l\'achat ou de l\'activation.'
+              ]
+            },
+            {
+              title: '6) Renouvellement, gestion et cessation',
+              paragraphs: [
+                'Les Plans peuvent prévoir des renouvellements périodiques. La disponibilité du Service dépend des délais et paramètres du prestataire de paiement et/ou du système utilisé pour gérer l\'abonnement.',
+                'En cas d\'annulation ou de non-renouvellement, l\'accès aux fonctionnalités incluses dans le Plan peut cesser à la fin de la période de facturation en cours, sauf disposition contraire de la loi applicable.'
+              ]
+            },
+            {
+              title: '7) Remboursements',
+              paragraphs: [
+                'Sauf disposition contraire de la loi applicable et/ou d\'une politique communiquée au moment de l\'achat, les paiements peuvent être <b>non remboursables</b> une fois traités.',
+                'Si vous avez des doutes concernant un éventuel remboursement, contactez <b>info@sketchario.app</b> en indiquant les détails de la commande et/ou du paiement.'
+              ]
+            },
+            {
+              title: '8) Contenus générés par l\'IA et responsabilité de l\'Utilisateur',
+              list: [
+                'Les contenus générés ou suggérés par le Service peuvent être inexacts, incomplets ou inadaptés à un objectif spécifique.',
+                'L\'Utilisateur est responsable de vérifier les contenus avant de les utiliser.',
+                'Nous ne garantissons pas de résultats spécifiques (par ex. performance économique, conformité légale ou résultat souhaité).'
+              ],
+              note: 'Conseil : si vous utilisez ces contenus pour des activités juridiques, médicales, financières ou contractuelles, consultez toujours un professionnel qualifié.'
+            },
+            {
+              title: '9) Utilisation autorisée (obligations de l\'Utilisateur)',
+              paragraphs: ['L\'Utilisateur s\'engage à ne pas :'],
+              list: [
+                'violer les lois ou règlements applicables ;',
+                'utiliser le Service de manière frauduleuse, illicite ou pour contourner des mesures techniques ou fonctionnelles ;',
+                'téléverser, publier ou transmettre des contenus illicites, trompeurs ou portant atteinte aux droits de tiers ;',
+                'tenter de compromettre la sécurité, l\'intégrité ou la disponibilité du Service (par ex. piratage, scraping massif, etc.) ;',
+                'envoyer des données personnelles non nécessaires ou en violation des règles applicables.'
+              ]
+            },
+            {
+              title: '10) Propriété intellectuelle',
+              paragraphs: [
+                'Le Service (y compris interfaces, code, marques, logos et contenus propriétaires) est protégé par des droits de propriété intellectuelle. L\'Utilisateur bénéficie d\'une licence limitée, non exclusive et révocable pour utiliser le Service conformément aux présentes Conditions.',
+                'L\'Utilisateur conserve ses droits sur les contenus qu\'il soumet au Service, mais accorde au Responsable une licence limitée et nécessaire pour traiter ces contenus aux fins de fourniture du Service.'
+              ]
+            },
+            {
+              title: '11) Services tiers',
+              paragraphs: [
+                'Le Service peut intégrer ou dépendre de services tiers (par ex. prestataires de paiement et, le cas échéant, services techniques ou d\'infrastructure). Ces services peuvent être soumis à des conditions générales distinctes. Nous ne contrôlons pas ces tiers et ne sommes pas responsables des interruptions ou modifications de leurs services.'
+              ]
+            },
+            {
+              title: '12) Suspension et cessation',
+              paragraphs: [
+                'Nous pouvons suspendre ou limiter l\'accès de l\'Utilisateur, y compris temporairement, en cas de violation des présentes Conditions, de risque de sécurité, d\'activité anormale ou de non-respect des conditions du Plan/paiement.'
+              ]
+            },
+            {
+              title: '13) Limitation de responsabilité',
+              paragraphs: [
+                'Dans la mesure maximale permise par la loi, <b>Osmel Fred Fabre de Leon</b> ne sera pas responsable des dommages indirects ou consécutifs ni des pertes de profit découlant de l\'utilisation du Service, sauf disposition impérative contraire.',
+                'Le Service est fourni « tel quel » et « selon disponibilité » dans les limites permises par la loi.'
+              ]
+            },
+            {
+              title: '14) Indemnisation (le cas échéant)',
+              paragraphs: [
+                'L\'Utilisateur accepte d\'indemniser et de dégager le Responsable de toute réclamation, dommage, perte et dépense (y compris les frais juridiques raisonnables) résultant d\'une mauvaise utilisation du Service ou d\'une violation des présentes Conditions.'
+              ]
+            },
+            {
+              title: '15) Confidentialité',
+              paragraphs: [
+                'Le traitement des données personnelles est régi par la <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Politique de confidentialité</a>. Nous vous invitons à la consulter avant d\'utiliser le Service.'
+              ]
+            },
+            {
+              title: '16) Loi applicable',
+              paragraphs: [
+                'Les présentes Conditions sont régies par la loi applicable de l\'État dans lequel le Responsable est établi.'
+              ]
+            },
+            {
+              title: '17) Contacts',
+              paragraphs: [
+                'Pour toute question sur les présentes Conditions, contactez : <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Note : ce texte est un modèle. Vérifiez avec un professionnel du droit les détails relatifs aux remboursements, à la gestion des abonnements, aux droits des consommateurs et aux autres aspects spécifiques à votre situation.'
+        },
+        es: {
+          title: 'Términos y Condiciones — Sketchario v1',
+          description: 'Términos y Condiciones de uso de Sketchario v1. Pagos mediante Stripe.',
+          back: '← Volver',
+          h1: 'Términos y Condiciones — Sketchario v1',
+          sub: 'Última actualización: <b>10 de abril de 2026</b>. Al acceder o utilizar Sketchario v1 (el “Servicio”), aceptas estos Términos y Condiciones (los “Términos”).',
+          sections: [
+            {
+              title: '1) Quiénes somos (Responsable)',
+              paragraphs: [
+                'El Servicio es gestionado por <b>Osmel Fred Fabre de Leon</b>, en calidad de responsable. Sede: <b>Via Nomentana 295, 00013 Fonte Nuova, Roma</b>.',
+                'Código fiscal: <b>FBRSLF76S17Z505X</b>. Dirección de correo del responsable: <b>info@sketchario.app</b>.'
+              ]
+            },
+            {
+              title: '2) Alcance del Servicio',
+              paragraphs: [
+                'El Servicio es una aplicación web que permite al Usuario utilizar funciones de generación y/o asistencia basadas en contenidos y modelos (incluidos, cuando corresponda, sistemas de IA/automatización).'
+              ]
+            },
+            {
+              title: '3) Aceptación y cambios',
+              list: [
+                'Al utilizar el Servicio aceptas estos Términos.',
+                'Podemos actualizar los Términos para reflejar cambios en el Servicio o requisitos normativos.',
+                'Los cambios se publicarán en este sitio; el uso continuado del Servicio después de la publicación constituye aceptación.'
+              ]
+            },
+            {
+              title: '4) Capacidad y cuenta',
+              list: [
+                'El Usuario declara tener la capacidad legal para celebrar contratos.',
+                'Si el acceso requiere registro o credenciales, el Usuario es responsable de mantener la confidencialidad de sus credenciales.',
+                'El Usuario se compromete a proporcionar información veraz y actualizada.'
+              ]
+            },
+            {
+              title: '5) Pagos, planes y Stripe',
+              paragraphs: [
+                'Algunas funciones pueden requerir la activación de una suscripción o la compra de un plan (el “Plan”). Los pagos se procesan a través de terceros, en particular <b>Stripe</b>. Por lo tanto, también se aplican los términos y condiciones del proveedor de pago.',
+                'Si existe un período de prueba, cupones o promociones, las condiciones específicas de dichas ofertas podrán comunicarse en el momento de la compra o activación.'
+              ]
+            },
+            {
+              title: '6) Renovación, gestión y terminación',
+              paragraphs: [
+                'Los Planes pueden prever renovaciones periódicas. La disponibilidad del Servicio sigue los plazos y configuraciones del proveedor de pago y/o del sistema utilizado para gestionar la suscripción.',
+                'En caso de cancelación o falta de renovación, el acceso a las funciones incluidas en el Plan puede finalizar al término del período de facturación en curso, salvo disposición distinta de la normativa aplicable.'
+              ]
+            },
+            {
+              title: '7) Reembolsos',
+              paragraphs: [
+                'Salvo que la normativa aplicable y/o cualquier política comunicada en el momento de la compra dispongan lo contrario, los pagos pueden ser <b>no reembolsables</b> una vez procesados.',
+                'Si tienes dudas sobre un posible reembolso, contacta con <b>info@sketchario.app</b> indicando los detalles del pedido y/o del pago.'
+              ]
+            },
+            {
+              title: '8) Contenidos generados por IA y responsabilidad del Usuario',
+              list: [
+                'Los contenidos generados o sugeridos por el Servicio pueden ser inexactos, incompletos o no adecuados para un fin específico.',
+                'El Usuario es responsable de revisar los contenidos antes de utilizarlos.',
+                'No garantizamos resultados específicos (por ejemplo, rendimiento económico, cumplimiento legal o resultados deseados).'
+              ],
+              note: 'Sugerencia: si utilizas contenidos para actividades legales, médicas, financieras o contractuales, consulta siempre a un profesional cualificado.'
+            },
+            {
+              title: '9) Uso permitido (obligaciones del Usuario)',
+              paragraphs: ['El Usuario se compromete a no:'],
+              list: [
+                'violar leyes o reglamentos aplicables;',
+                'utilizar el Servicio de manera fraudulenta, ilícita o para eludir medidas técnicas o funcionales;',
+                'cargar, publicar o transmitir contenidos ilícitos, engañosos o que vulneren derechos de terceros;',
+                'intentar comprometer la seguridad, integridad o disponibilidad del Servicio (por ejemplo, hacking, scraping masivo, etc.);',
+                'enviar datos personales innecesarios o en violación de la normativa aplicable.'
+              ]
+            },
+            {
+              title: '10) Propiedad intelectual',
+              paragraphs: [
+                'El Servicio (incluidas interfaces, código, marcas, logotipos y contenidos propietarios) está protegido por derechos de propiedad intelectual. El Usuario recibe una licencia limitada, no exclusiva y revocable para utilizar el Servicio conforme a estos Términos.',
+                'El Usuario conserva los derechos sobre los contenidos que introduce en el Servicio, pero concede al Responsable una licencia limitada y necesaria para tratar dichos contenidos con el fin de prestar el Servicio.'
+              ]
+            },
+            {
+              title: '11) Servicios de terceros',
+              paragraphs: [
+                'El Servicio puede integrar o depender de servicios de terceros (por ejemplo, proveedores de pago y, cuando corresponda, servicios técnicos o de infraestructura). Dichos servicios pueden estar sujetos a términos y condiciones independientes. No controlamos esos terceros y no somos responsables de interrupciones o cambios en sus servicios.'
+              ]
+            },
+            {
+              title: '12) Suspensión y terminación',
+              paragraphs: [
+                'Podemos suspender o limitar el acceso del Usuario, incluso temporalmente, en caso de incumplimiento de estos Términos, riesgo de seguridad, actividad anómala o incumplimiento de las condiciones del Plan/pago.'
+              ]
+            },
+            {
+              title: '13) Limitación de responsabilidad',
+              paragraphs: [
+                'En la máxima medida permitida por la ley, <b>Osmel Fred Fabre de Leon</b> no será responsable de daños indirectos o consecuentes ni de pérdidas de beneficios derivadas del uso del Servicio, salvo disposición imperativa en contrario.',
+                'El Servicio se proporciona “tal cual” y “según disponibilidad” dentro de los límites permitidos por la ley.'
+              ]
+            },
+            {
+              title: '14) Indemnización (si procede)',
+              paragraphs: [
+                'El Usuario acepta indemnizar y mantener indemne al Responsable frente a reclamaciones, daños, pérdidas y gastos (incluidos honorarios legales razonables) derivados del uso indebido del Servicio o del incumplimiento de estos Términos.'
+              ]
+            },
+            {
+              title: '15) Privacidad',
+              paragraphs: [
+                'El tratamiento de los datos personales se rige por la <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Política de Privacidad</a>. Te invitamos a consultarla antes de utilizar el Servicio.'
+              ]
+            },
+            {
+              title: '16) Ley aplicable',
+              paragraphs: [
+                'Estos Términos se rigen por la normativa aplicable del Estado en el que esté establecido el Responsable.'
+              ]
+            },
+            {
+              title: '17) Contactos',
+              paragraphs: [
+                'Para cualquier pregunta sobre estos Términos, contacta con: <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Nota: este texto es un modelo. Verifica con un profesional legal los detalles sobre reembolsos, gestión de suscripciones, derechos del consumidor y otros aspectos específicos de tu caso.'
+        }
+      };
+
+      function detectLanguage() {
+        const params = new URLSearchParams(window.location.search);
+        const forced = (params.get('lang') || '').toLowerCase();
+        if (translations[forced]) return forced;
+
+        const langs = Array.isArray(navigator.languages) && navigator.languages.length
+          ? navigator.languages
+          : [navigator.language || 'it'];
+
+        for (const lang of langs) {
+          const short = String(lang || '').toLowerCase().slice(0, 2);
+          if (translations[short]) return short;
+        }
+
+        return 'it';
+      }
+
+      function renderList(items) {
+        if (!items || !items.length) return '';
+        return `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
+      }
+
+      function renderParagraphs(items) {
+        if (!items || !items.length) return '';
+        return items.map((item) => `<p>${item}</p>`).join('');
+      }
+
+      function renderSections(sections) {
+        return sections.map((section) => `
+          <h2>${section.title}</h2>
+          ${renderParagraphs(section.paragraphs)}
+          ${renderList(section.list)}
+          ${section.note ? `<p class="small">${section.note}</p>` : ''}
+        `).join('');
+      }
+
+      function renderPage(lang) {
+        const copy = translations[lang] || translations.it;
+        document.documentElement.lang = lang;
+        document.title = copy.title;
+
+        const metaDescription = document.querySelector('meta[name="description"]');
+        if (metaDescription) metaDescription.setAttribute('content', copy.description);
+
+        document.getElementById('terms-root').innerHTML = `
+          <a class="top-link" href="/" data-back-link>${copy.back}</a>
+
+          <div class="card">
+            <h1>${copy.h1}</h1>
+            <p class="sub">${copy.sub}</p>
+            ${renderSections(copy.sections)}
+            <div class="small">${copy.footer}</div>
+          </div>
+        `;
+
+        const backLink = document.querySelector('[data-back-link]');
+        if (backLink) {
+          backLink.addEventListener('click', function (event) {
+            const fallback = backLink.getAttribute('href') || '../index.html';
+            event.preventDefault();
+            if (window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+            if (document.referrer) {
+              window.location.href = document.referrer;
+              return;
+            }
+            window.location.href = fallback;
+          });
+        }
+      }
+
+      renderPage(detectLanguage());
+    })();
+  </script>
+</body>
+</html>

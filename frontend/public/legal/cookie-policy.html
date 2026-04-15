@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cookie Policy — Sketchario</title>
+  <meta name="description" content="Cookie Policy di Sketchario aggiornata al 10 aprile 2026." />
+
+  <style>
+    :root{
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.72);
+      --shadow: 0 18px 60px rgba(0,0,0,.45);
+      --radius: 18px;
+      --max: 980px;
+      --bg: #070A12;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&display=swap');
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family:"Barlow", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(900px 500px at 15% -10%, rgba(124,58,237,.25), transparent 55%),
+        radial-gradient(900px 500px at 85% 0%, rgba(34,211,238,.18), transparent 55%),
+        linear-gradient(180deg, #050712 0%, var(--bg) 55%, #050712 100%);
+      padding: 26px 16px;
+    }
+    .wrap{ width: min(var(--max), 100%); margin: 0 auto; }
+    .card{
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+    .top-link{
+      color: rgba(255,255,255,.78);
+      text-decoration:none;
+      font-weight: 800;
+      display:inline-flex;
+      gap: 8px;
+      align-items:center;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      margin-bottom: 14px;
+      white-space: nowrap;
+    }
+    h1{
+      margin: 6px 0 6px;
+      font-weight: 950;
+      letter-spacing: -.4px;
+      font-size: 30px;
+    }
+    .sub{
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-weight: 650;
+      line-height:1.7;
+      font-size: 14px;
+    }
+    h2{
+      margin: 18px 0 8px;
+      font-size: 16px;
+      font-weight: 950;
+      letter-spacing: -.1px;
+    }
+    p, li{
+      color: var(--muted);
+      line-height:1.85;
+      font-weight: 620;
+      font-size: 14px;
+      margin: 8px 0;
+    }
+    ul{ padding-left: 18px; }
+    a.inline{
+      color: rgba(255,255,255,.92);
+      text-decoration: underline;
+      text-decoration-color: rgba(255,255,255,.35);
+      font-weight: 800;
+    }
+    .small{
+      font-size: 12px;
+      color: rgba(255,255,255,.62);
+      margin-top: 14px;
+      line-height:1.7;
+    }
+    @media (max-width: 720px){
+      body{ padding: 18px 10px; }
+      .card{ padding: 18px; }
+      h1{ font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="cookie-root"></div>
+
+  <script>
+    (function () {
+      const translations = {
+        it: {
+          title: 'Cookie Policy — Sketchario',
+          description: 'Cookie Policy di Sketchario aggiornata al 10 aprile 2026.',
+          back: '← Torna indietro',
+          h1: 'Cookie Policy — Sketchario',
+          sub: 'Ultimo aggiornamento: <b>10 aprile 2026</b>. Questa informativa spiega in modo sintetico come Sketchario utilizza cookie e tecnologie simili sul sito e nell\'applicazione.',
+          sections: [
+            {
+              title: '1) Cosa sono i cookie',
+              paragraphs: [
+                'I cookie sono piccoli file di testo che un sito o un\'applicazione possono salvare sul dispositivo dell\'utente per far funzionare correttamente il servizio, ricordare preferenze, migliorare l\'esperienza e supportare alcune integrazioni tecniche.'
+              ]
+            },
+            {
+              title: '2) Tipologie di cookie che possono essere utilizzate',
+              list: [
+                'cookie tecnici o strettamente necessari, indispensabili per il funzionamento del sito e dell\'app;',
+                'cookie di preferenza, utilizzati per ricordare impostazioni o scelte dell\'utente;',
+                'cookie di terze parti legati a servizi integrati, ad esempio autenticazione, pagamenti, contenuti incorporati o funzionalità esterne.'
+              ]
+            },
+            {
+              title: '3) Finalità di utilizzo',
+              list: [
+                'consentire l\'accesso e la navigazione corretta;',
+                'mantenere sessioni o preferenze operative;',
+                'abilitare funzioni collegate a provider esterni come login social o pagamenti;',
+                'migliorare stabilità, sicurezza e prestazioni del servizio.'
+              ]
+            },
+            {
+              title: '4) Cookie di terze parti',
+              paragraphs: [
+                'Sketchario può integrare strumenti e servizi forniti da terze parti. In tali casi, i rispettivi fornitori possono impostare cookie o tecnologie analoghe secondo le loro informative. A titolo esemplificativo, questo può riguardare servizi per autenticazione, social login, pagamenti o altre funzionalità tecniche.'
+              ]
+            },
+            {
+              title: '5) Gestione dei cookie',
+              paragraphs: [
+                'L\'utente può gestire o limitare i cookie tramite le impostazioni del browser e, ove disponibile, tramite gli eventuali strumenti di consenso presenti sul sito. La disattivazione di alcuni cookie tecnici può compromettere il corretto funzionamento di alcune sezioni del servizio.'
+              ]
+            },
+            {
+              title: '6) Durata',
+              paragraphs: [
+                'I cookie possono essere di sessione, quindi eliminati alla chiusura del browser, oppure persistenti, cioè conservati per un periodo determinato in funzione della loro finalità tecnica o operativa.'
+              ]
+            },
+            {
+              title: '7) Maggiori informazioni',
+              paragraphs: [
+                'Per maggiori informazioni sul trattamento dei dati personali, consulta la <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>.'
+              ]
+            },
+            {
+              title: '8) Contatti',
+              paragraphs: [
+                'Per richieste relative a questa Cookie Policy, contatta: <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Nota: il dettaglio puntuale dei cookie effettivamente installati dovrebbe essere verificato insieme al banner/consent manager e ai servizi terzi realmente attivi in produzione.'
+        },
+        en: {
+          title: 'Cookie Policy — Sketchario',
+          description: 'Sketchario Cookie Policy updated on April 10, 2026.',
+          back: '← Back',
+          h1: 'Cookie Policy — Sketchario',
+          sub: 'Last updated: <b>April 10, 2026</b>. This notice briefly explains how Sketchario uses cookies and similar technologies on the website and in the application.',
+          sections: [
+            {
+              title: '1) What cookies are',
+              paragraphs: [
+                'Cookies are small text files that a website or application may store on the user\'s device to make the service work properly, remember preferences, improve the experience, and support certain technical integrations.'
+              ]
+            },
+            {
+              title: '2) Types of cookies that may be used',
+              list: [
+                'technical or strictly necessary cookies, essential for the operation of the website and app;',
+                'preference cookies, used to remember user settings or choices;',
+                'third-party cookies related to integrated services, for example authentication, payments, embedded content, or external features.'
+              ]
+            },
+            {
+              title: '3) Purposes of use',
+              list: [
+                'allow proper access and navigation;',
+                'maintain sessions or operating preferences;',
+                'enable features connected to external providers such as social login or payments;',
+                'improve the stability, security, and performance of the service.'
+              ]
+            },
+            {
+              title: '4) Third-party cookies',
+              paragraphs: [
+                'Sketchario may integrate tools and services provided by third parties. In such cases, the respective providers may set cookies or similar technologies according to their own policies. For example, this may involve services for authentication, social login, payments, or other technical features.'
+              ]
+            },
+            {
+              title: '5) Managing cookies',
+              paragraphs: [
+                'The user can manage or limit cookies through browser settings and, where available, through any consent tools present on the website. Disabling some technical cookies may affect the proper functioning of some sections of the service.'
+              ]
+            },
+            {
+              title: '6) Duration',
+              paragraphs: [
+                'Cookies may be session cookies, which are deleted when the browser is closed, or persistent cookies, which are stored for a defined period depending on their technical or operational purpose.'
+              ]
+            },
+            {
+              title: '7) More information',
+              paragraphs: [
+                'For more information about personal data processing, please consult the <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>.'
+              ]
+            },
+            {
+              title: '8) Contacts',
+              paragraphs: [
+                'For requests related to this Cookie Policy, contact: <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Note: the detailed list of cookies actually installed should be verified together with the banner/consent manager and the third-party services that are truly active in production.'
+        },
+        fr: {
+          title: 'Politique de cookies — Sketchario',
+          description: 'Politique de cookies de Sketchario mise à jour le 10 avril 2026.',
+          back: '← Retour',
+          h1: 'Politique de cookies — Sketchario',
+          sub: 'Dernière mise à jour : <b>10 avril 2026</b>. Cette notice explique brièvement comment Sketchario utilise les cookies et technologies similaires sur le site et dans l\'application.',
+          sections: [
+            {
+              title: '1) Que sont les cookies',
+              paragraphs: [
+                'Les cookies sont de petits fichiers texte qu\'un site ou une application peut enregistrer sur l\'appareil de l\'utilisateur afin de faire fonctionner correctement le service, mémoriser des préférences, améliorer l\'expérience et prendre en charge certaines intégrations techniques.'
+              ]
+            },
+            {
+              title: '2) Types de cookies pouvant être utilisés',
+              list: [
+                'cookies techniques ou strictement nécessaires, indispensables au fonctionnement du site et de l\'application ;',
+                'cookies de préférence, utilisés pour mémoriser des paramètres ou choix de l\'utilisateur ;',
+                'cookies tiers liés à des services intégrés, par exemple authentification, paiements, contenus intégrés ou fonctionnalités externes.'
+              ]
+            },
+            {
+              title: '3) Finalités d\'utilisation',
+              list: [
+                'permettre l\'accès et la navigation correcte ;',
+                'maintenir des sessions ou des préférences de fonctionnement ;',
+                'activer des fonctionnalités liées à des fournisseurs externes comme le social login ou les paiements ;',
+                'améliorer la stabilité, la sécurité et les performances du service.'
+              ]
+            },
+            {
+              title: '4) Cookies tiers',
+              paragraphs: [
+                'Sketchario peut intégrer des outils et services fournis par des tiers. Dans ce cas, les fournisseurs concernés peuvent déposer des cookies ou technologies similaires selon leurs propres politiques. Cela peut concerner, par exemple, des services d\'authentification, de social login, de paiement ou d\'autres fonctionnalités techniques.'
+              ]
+            },
+            {
+              title: '5) Gestion des cookies',
+              paragraphs: [
+                'L\'utilisateur peut gérer ou limiter les cookies via les paramètres du navigateur et, lorsqu\'ils sont disponibles, via les éventuels outils de consentement présents sur le site. La désactivation de certains cookies techniques peut compromettre le bon fonctionnement de certaines sections du service.'
+              ]
+            },
+            {
+              title: '6) Durée',
+              paragraphs: [
+                'Les cookies peuvent être des cookies de session, supprimés à la fermeture du navigateur, ou des cookies persistants, conservés pendant une période déterminée selon leur finalité technique ou opérationnelle.'
+              ]
+            },
+            {
+              title: '7) Informations complémentaires',
+              paragraphs: [
+                'Pour plus d\'informations sur le traitement des données personnelles, consultez la <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Politique de confidentialité</a>.'
+              ]
+            },
+            {
+              title: '8) Contacts',
+              paragraphs: [
+                'Pour toute demande relative à cette Politique de cookies, contactez : <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Note : la liste détaillée des cookies effectivement installés devrait être vérifiée avec le bandeau/gestionnaire de consentement et les services tiers réellement actifs en production.'
+        },
+        es: {
+          title: 'Política de cookies — Sketchario',
+          description: 'Política de cookies de Sketchario actualizada el 10 de abril de 2026.',
+          back: '← Volver',
+          h1: 'Política de cookies — Sketchario',
+          sub: 'Última actualización: <b>10 de abril de 2026</b>. Este aviso explica brevemente cómo Sketchario utiliza cookies y tecnologías similares en el sitio web y en la aplicación.',
+          sections: [
+            {
+              title: '1) Qué son las cookies',
+              paragraphs: [
+                'Las cookies son pequeños archivos de texto que un sitio web o una aplicación pueden guardar en el dispositivo del usuario para hacer que el servicio funcione correctamente, recordar preferencias, mejorar la experiencia y dar soporte a determinadas integraciones técnicas.'
+              ]
+            },
+            {
+              title: '2) Tipos de cookies que pueden utilizarse',
+              list: [
+                'cookies técnicas o estrictamente necesarias, indispensables para el funcionamiento del sitio y de la app;',
+                'cookies de preferencia, utilizadas para recordar configuraciones o elecciones del usuario;',
+                'cookies de terceros vinculadas a servicios integrados, por ejemplo autenticación, pagos, contenidos embebidos o funcionalidades externas.'
+              ]
+            },
+            {
+              title: '3) Finalidades de uso',
+              list: [
+                'permitir el acceso y la navegación correcta;',
+                'mantener sesiones o preferencias operativas;',
+                'habilitar funciones conectadas con proveedores externos como login social o pagos;',
+                'mejorar la estabilidad, la seguridad y el rendimiento del servicio.'
+              ]
+            },
+            {
+              title: '4) Cookies de terceros',
+              paragraphs: [
+                'Sketchario puede integrar herramientas y servicios proporcionados por terceros. En esos casos, los proveedores correspondientes pueden instalar cookies o tecnologías similares de acuerdo con sus propias políticas. Esto puede incluir, por ejemplo, servicios de autenticación, social login, pagos u otras funcionalidades técnicas.'
+              ]
+            },
+            {
+              title: '5) Gestión de cookies',
+              paragraphs: [
+                'El usuario puede gestionar o limitar las cookies a través de la configuración del navegador y, cuando estén disponibles, mediante las herramientas de consentimiento presentes en el sitio. La desactivación de algunas cookies técnicas puede afectar al correcto funcionamiento de ciertas secciones del servicio.'
+              ]
+            },
+            {
+              title: '6) Duración',
+              paragraphs: [
+                'Las cookies pueden ser de sesión, por lo que se eliminan al cerrar el navegador, o persistentes, es decir, se conservan durante un período determinado según su finalidad técnica u operativa.'
+              ]
+            },
+            {
+              title: '7) Más información',
+              paragraphs: [
+                'Para obtener más información sobre el tratamiento de datos personales, consulta la <a class="inline" href="privacy-policy.html" target="_blank" rel="noopener">Política de Privacidad</a>.'
+              ]
+            },
+            {
+              title: '8) Contactos',
+              paragraphs: [
+                'Para solicitudes relacionadas con esta Política de cookies, contacta con: <b>info@sketchario.app</b>.'
+              ]
+            }
+          ],
+          footer: 'Nota: el listado detallado de las cookies realmente instaladas debería verificarse junto con el banner/gestor de consentimiento y los servicios de terceros realmente activos en producción.'
+        }
+      };
+
+      function detectLanguage() {
+        const params = new URLSearchParams(window.location.search);
+        const forced = (params.get('lang') || '').toLowerCase();
+        if (translations[forced]) return forced;
+
+        const langs = Array.isArray(navigator.languages) && navigator.languages.length
+          ? navigator.languages
+          : [navigator.language || 'it'];
+
+        for (const lang of langs) {
+          const short = String(lang || '').toLowerCase().slice(0, 2);
+          if (translations[short]) return short;
+        }
+
+        return 'it';
+      }
+
+      function renderList(items) {
+        if (!items || !items.length) return '';
+        return `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
+      }
+
+      function renderParagraphs(items) {
+        if (!items || !items.length) return '';
+        return items.map((item) => `<p>${item}</p>`).join('');
+      }
+
+      function renderSections(sections) {
+        return sections.map((section) => `
+          <h2>${section.title}</h2>
+          ${renderParagraphs(section.paragraphs)}
+          ${renderList(section.list)}
+        `).join('');
+      }
+
+      function renderPage(lang) {
+        const copy = translations[lang] || translations.it;
+        document.documentElement.lang = lang;
+        document.title = copy.title;
+
+        const metaDescription = document.querySelector('meta[name="description"]');
+        if (metaDescription) metaDescription.setAttribute('content', copy.description);
+
+        document.getElementById('cookie-root').innerHTML = `
+          <a class="top-link" href="/" data-back-link>${copy.back}</a>
+
+          <div class="card">
+            <h1>${copy.h1}</h1>
+            <p class="sub">${copy.sub}</p>
+            ${renderSections(copy.sections)}
+            <div class="small">${copy.footer}</div>
+          </div>
+        `;
+
+        const backLink = document.querySelector('[data-back-link]');
+        if (backLink) {
+          backLink.addEventListener('click', function (event) {
+            const fallback = backLink.getAttribute('href') || '../index.html';
+            event.preventDefault();
+            if (window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+            if (document.referrer) {
+              window.location.href = document.referrer;
+              return;
+            }
+            window.location.href = fallback;
+          });
+        }
+      }
+
+      renderPage(detectLanguage());
+    })();
+  </script>
+</body>
+</html>
