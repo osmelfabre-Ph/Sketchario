@@ -452,14 +452,15 @@ async def remove_project_cover(project_id: str, request: Request):
 
 # ── AI GENERATION ────────────────────────────────────
 async def call_ai(system_prompt: str, user_prompt: str) -> str:
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(
-        api_key=os.environ["EMERGENT_LLM_KEY"],
-        session_id=f"sk-{uuid.uuid4().hex[:12]}",
-        system_message=system_prompt
-    ).with_model("gemini", "gemini-3-flash-preview")
-    response = await chat.send_message(UserMessage(text=user_prompt))
-    return response
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    response = await client.aio.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=user_prompt,
+        config=types.GenerateContentConfig(system_instruction=system_prompt)
+    )
+    return response.text
 
 def extract_json(text: str):
     text = text.strip()
@@ -1297,19 +1298,26 @@ class DalleGenerateInput(BaseModel):
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
     user = await get_current_user(request)
     try:
-        from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration
-        image_gen = OpenAIImageGeneration(api_key=os.environ["EMERGENT_LLM_KEY"])
-        images = await image_gen.generate_images(prompt=inp.prompt, model="gpt-image-1", number_of_images=1)
-        if not images:
+        import openai as openai_sdk
+        client = openai_sdk.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        resp = await client.images.generate(
+            model="dall-e-3",
+            prompt=inp.prompt,
+            n=1,
+            size="1024x1024",
+            response_format="b64_json"
+        )
+        image_bytes = base64.b64decode(resp.data[0].b64_json)
+        if not image_bytes:
             raise HTTPException(500, "Nessuna immagine generata")
         fname = f"dalle_{uuid.uuid4().hex}.png"
         fpath = UPLOAD_DIR / fname
         with open(fpath, "wb") as f:
-            f.write(images[0])
+            f.write(image_bytes)
         media_url = f"/api/media/file/{fname}"
-        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"DALL-E: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "dalle", "size": len(images[0]), "created_at": datetime.now(timezone.utc).isoformat()}
+        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"DALL-E: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "dalle", "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
         await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
-        image_base64 = base64.b64encode(images[0]).decode('utf-8')
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
         return {**media_doc, "image_base64": image_base64}
     except Exception as e:
         logger.error(f"DALL-E generation error: {e}")
@@ -1409,20 +1417,24 @@ async def create_checkout(inp: CheckoutInput, request: Request):
         raise HTTPException(400, "Piano non valido")
     plan = PLANS[inp.plan_id]
     try:
-        from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-        api_key = os.environ.get("STRIPE_API_KEY", "")
-        webhook_url = f"{os.environ.get('FRONTEND_URL', inp.origin_url)}/api/webhook/stripe"
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+        import stripe as stripe_sdk
+        stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
         success_url = f"{inp.origin_url}?billing=success&session_id={{CHECKOUT_SESSION_ID}}"
         cancel_url = f"{inp.origin_url}?billing=cancelled"
-        req = CheckoutSessionRequest(amount=plan["amount"], currency=plan["currency"], success_url=success_url, cancel_url=cancel_url, metadata={"user_id": user["_id"], "email": user.get("email", ""), "plan_id": inp.plan_id})
-        session = await stripe_checkout.create_checkout_session(req)
+        session = stripe_sdk.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price_data": {"currency": plan["currency"], "product_data": {"name": plan.get("name", inp.plan_id)}, "unit_amount": plan["amount"]}, "quantity": 1}],
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={"user_id": user["_id"], "email": user.get("email", ""), "plan_id": inp.plan_id}
+        )
         await db.payment_transactions.insert_one({
-            "session_id": session.session_id, "user_id": user["_id"], "email": user.get("email", ""),
+            "session_id": session.id, "user_id": user["_id"], "email": user.get("email", ""),
             "plan_id": inp.plan_id, "amount": plan["amount"], "currency": plan["currency"],
             "payment_status": "pending", "created_at": datetime.now(timezone.utc).isoformat()
         })
-        return {"url": session.url, "session_id": session.session_id}
+        return {"url": session.url, "session_id": session.id}
     except Exception as e:
         logger.error(f"Stripe checkout error: {e}")
         raise HTTPException(500, f"Errore checkout: {str(e)}")
@@ -1431,18 +1443,17 @@ async def create_checkout(inp: CheckoutInput, request: Request):
 async def checkout_status(session_id: str, request: Request):
     user = await get_current_user(request)
     try:
-        from emergentintegrations.payments.stripe.checkout import StripeCheckout
-        api_key = os.environ.get("STRIPE_API_KEY", "")
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
-        status = await stripe_checkout.get_checkout_status(session_id)
+        import stripe as stripe_sdk
+        stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
+        session = stripe_sdk.checkout.Session.retrieve(session_id)
         tx = await db.payment_transactions.find_one({"session_id": session_id})
-        if tx and tx.get("payment_status") != "paid" and status.payment_status == "paid":
+        if tx and tx.get("payment_status") != "paid" and session.payment_status == "paid":
             plan_id = tx.get("plan_id", "")
             await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
             await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"plan": plan_id}})
-        elif tx and status.payment_status != "paid":
-            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": status.payment_status}})
-        return {"status": status.status, "payment_status": status.payment_status, "amount_total": status.amount_total, "currency": status.currency}
+        elif tx and session.payment_status != "paid":
+            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": session.payment_status}})
+        return {"status": session.status, "payment_status": session.payment_status, "amount_total": session.amount_total, "currency": session.currency}
     except Exception as e:
         logger.error(f"Stripe status error: {e}")
         raise HTTPException(500, f"Errore stato pagamento: {str(e)}")
@@ -1452,15 +1463,17 @@ async def stripe_webhook(request: Request):
     body = await request.body()
     sig = request.headers.get("Stripe-Signature", "")
     try:
-        from emergentintegrations.payments.stripe.checkout import StripeCheckout
-        api_key = os.environ.get("STRIPE_API_KEY", "")
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
-        event = await stripe_checkout.handle_webhook(body, sig)
-        if event.payment_status == "paid":
-            tx = await db.payment_transactions.find_one({"session_id": event.session_id})
-            if tx and tx.get("payment_status") != "paid":
-                await db.payment_transactions.update_one({"session_id": event.session_id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
-                await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
+        import stripe as stripe_sdk
+        stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
+        webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+        event = stripe_sdk.Webhook.construct_event(body, sig, webhook_secret)
+        if event.type == "checkout.session.completed":
+            session_obj = event.data.object
+            if session_obj.payment_status == "paid":
+                tx = await db.payment_transactions.find_one({"session_id": session_obj.id})
+                if tx and tx.get("payment_status") != "paid":
+                    await db.payment_transactions.update_one({"session_id": session_obj.id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
+                    await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
         return {"ok": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
