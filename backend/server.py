@@ -860,6 +860,14 @@ SOCIAL_PLATFORMS = {
         "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
         "scope": "pages_show_list,pages_read_engagement,pages_manage_posts",
     },
+    "instagram": {
+        "name": "Instagram",
+        "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
+        "client_id_env": "INSTAGRAM_CLIENT_ID",
+        "client_secret_env": "INSTAGRAM_CLIENT_SECRET",
+        "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
+        "scope": "instagram_basic,instagram_content_publish,pages_show_list",
+    },
     "linkedin": {
         "name": "LinkedIn",
         "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
@@ -891,6 +899,35 @@ def _app_url() -> str:
 
 def _oauth_callback_url() -> str:
     return f"{_app_url()}/api/social/oauth/callback"
+
+async def _exchange_token_instagram(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("INSTAGRAM_CLIENT_ID", "")
+    client_secret = os.environ.get("INSTAGRAM_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "client_id": client_id, "client_secret": client_secret,
+            "code": code, "redirect_uri": redirect_uri,
+        })
+        r.raise_for_status()
+        token = r.json()["access_token"]
+        # Get Instagram Business Account
+        pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts", params={"access_token": token})
+        pages_r.raise_for_status()
+        pages = pages_r.json().get("data", [])
+        ig_id, ig_name = "", "Instagram"
+        for page in pages:
+            ig_r = await c.get(f"https://graph.facebook.com/v19.0/{page['id']}", params={
+                "fields": "instagram_business_account", "access_token": page["access_token"]
+            })
+            ig_data = ig_r.json().get("instagram_business_account", {})
+            if ig_data:
+                ig_id = ig_data["id"]
+                info_r = await c.get(f"https://graph.facebook.com/v19.0/{ig_id}", params={
+                    "fields": "username", "access_token": token
+                })
+                ig_name = info_r.json().get("username", "Instagram")
+                break
+        return {"access_token": token, "profile_id": ig_id, "profile_name": ig_name}
 
 async def _exchange_token_facebook(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("FACEBOOK_APP_ID", "")
@@ -1003,6 +1040,22 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
         r.raise_for_status()
         return r.json().get("id", "")
 
+async def _publish_instagram(token: str, ig_id: str, text: str, image_url: Optional[str] = None) -> str:
+    if not ig_id:
+        raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
+    async with httpx.AsyncClient(timeout=30) as c:
+        if image_url:
+            container_r = await c.post(f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                params={"image_url": image_url, "caption": text, "access_token": token})
+            container_r.raise_for_status()
+            container_id = container_r.json()["id"]
+        else:
+            raise ValueError("Instagram richiede un'immagine per pubblicare. Carica prima un'immagine sul contenuto.")
+        pub_r = await c.post(f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
+            params={"creation_id": container_id, "access_token": token})
+        pub_r.raise_for_status()
+        return pub_r.json().get("id", "")
+
 async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
     text = content.get("caption") or content.get("hook_text") or content.get("title") or ""
     title = content.get("title") or content.get("hook_text") or "Post"
@@ -1010,6 +1063,8 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     image_url = media[0].get("url") if media else None
     if platform == "facebook":
         return await _publish_facebook(token, text, image_url)
+    elif platform == "instagram":
+        return await _publish_instagram(token, profile_id, text, image_url)
     elif platform == "linkedin":
         return await _publish_linkedin(token, text, profile_id)
     elif platform == "pinterest":
@@ -1083,6 +1138,7 @@ async def social_oauth_callback(request: Request):
     try:
         exchangers = {
             "facebook": _exchange_token_facebook,
+            "instagram": _exchange_token_instagram,
             "linkedin": _exchange_token_linkedin,
             "tiktok": _exchange_token_tiktok,
             "pinterest": _exchange_token_pinterest,
