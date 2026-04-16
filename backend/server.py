@@ -458,7 +458,7 @@ async def call_ai(system_prompt: str, user_prompt: str) -> str:
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     response = await asyncio.wait_for(
         client.aio.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-lite",
             contents=user_prompt,
             config=types.GenerateContentConfig(system_instruction=system_prompt)
         ),
