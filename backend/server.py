@@ -27,7 +27,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
-app.mount("/api/media/file", StaticFiles(directory="/app/backend/uploads"), name="uploads")
+app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
 api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
