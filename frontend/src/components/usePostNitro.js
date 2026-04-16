@@ -2,6 +2,7 @@ import { useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 const POSTNITRO_API_KEY = 'pn-a0hccp9db8wjaecxqgcfbg99';
+const POSTNITRO_TEMPLATE_ID = 'fanb2h68m7kdcbkaqfhukdvm';
 
 export default function usePostNitro() {
   const { api } = useAuth();
@@ -27,7 +28,7 @@ export default function usePostNitro() {
     }
 
     return new Promise((resolve) => {
-      editor.createDesign(async (exportData) => {
+      editor.createDesign({ templateId: POSTNITRO_TEMPLATE_ID }, async (exportData) => {
         try {
           if (exportData.type === 'png' && Array.isArray(exportData.data)) {
             const uploaded = [];
