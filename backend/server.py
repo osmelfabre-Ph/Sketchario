@@ -850,39 +850,174 @@ async def get_brand_kit(project_id: str, request: Request):
     bk = await db.brand_kits.find_one({"project_id": project_id}, {"_id": 0})
     return bk or {}
 
-# ── SOCIAL PROFILES ───────────────────────────────────
+# ── SOCIAL PLATFORMS CONFIG ────────────────────────────
 SOCIAL_PLATFORMS = {
-    "instagram": {
-        "name": "Instagram",
-        "auth_url": "https://api.instagram.com/oauth/authorize",
-        "client_id_env": "INSTAGRAM_CLIENT_ID",
-        "scope": "instagram_basic,instagram_content_publish",
-    },
     "facebook": {
         "name": "Facebook",
         "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
-        "client_id_env": "META_CLIENT_ID",
+        "client_id_env": "FACEBOOK_APP_ID",
+        "client_secret_env": "FACEBOOK_APP_SECRET",
+        "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
         "scope": "pages_show_list,pages_read_engagement,pages_manage_posts",
     },
     "linkedin": {
         "name": "LinkedIn",
         "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
         "client_id_env": "LINKEDIN_CLIENT_ID",
+        "client_secret_env": "LINKEDIN_CLIENT_SECRET",
+        "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
         "scope": "openid profile email w_member_social",
     },
     "tiktok": {
         "name": "TikTok",
         "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
         "client_id_env": "TIKTOK_CLIENT_KEY",
+        "client_secret_env": "TIKTOK_CLIENT_SECRET",
+        "token_url": "https://open.tiktok.com/v2/oauth/token/",
         "scope": "user.info.basic,video.publish",
     },
     "pinterest": {
         "name": "Pinterest",
         "auth_url": "https://www.pinterest.com/oauth/",
         "client_id_env": "PINTEREST_CLIENT_ID",
+        "client_secret_env": "PINTEREST_CLIENT_SECRET",
+        "token_url": "https://api.pinterest.com/v5/oauth/token",
         "scope": "boards:read,pins:read,pins:write",
     },
 }
+
+def _app_url() -> str:
+    return os.environ.get("APP_URL", os.environ.get("FRONTEND_URL", "http://localhost:3000"))
+
+def _oauth_callback_url() -> str:
+    return f"{_app_url()}/api/social/oauth/callback"
+
+async def _exchange_token_facebook(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("FACEBOOK_APP_ID", "")
+    client_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "client_id": client_id, "client_secret": client_secret,
+            "code": code, "redirect_uri": redirect_uri,
+        })
+        r.raise_for_status()
+        data = r.json()
+        token = data["access_token"]
+        # Get profile name
+        pr = await c.get("https://graph.facebook.com/v19.0/me", params={"fields": "id,name", "access_token": token})
+        pr.raise_for_status()
+        profile = pr.json()
+        return {"access_token": token, "profile_id": profile.get("id", ""), "profile_name": profile.get("name", "Facebook")}
+
+async def _exchange_token_linkedin(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("LINKEDIN_CLIENT_ID", "")
+    client_secret = os.environ.get("LINKEDIN_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://www.linkedin.com/oauth/v2/accessToken", data={
+            "grant_type": "authorization_code", "code": code,
+            "redirect_uri": redirect_uri, "client_id": client_id, "client_secret": client_secret,
+        }, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        r.raise_for_status()
+        token = r.json()["access_token"]
+        pr = await c.get("https://api.linkedin.com/v2/userinfo", headers={"Authorization": f"Bearer {token}"})
+        pr.raise_for_status()
+        profile = pr.json()
+        return {"access_token": token, "profile_id": profile.get("sub", ""), "profile_name": profile.get("name", "LinkedIn")}
+
+async def _exchange_token_tiktok(code: str, redirect_uri: str) -> dict:
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY", "")
+    client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://open.tiktok.com/v2/oauth/token/", data={
+            "client_key": client_key, "client_secret": client_secret,
+            "code": code, "grant_type": "authorization_code", "redirect_uri": redirect_uri,
+        }, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        r.raise_for_status()
+        d = r.json().get("data", r.json())
+        return {"access_token": d.get("access_token", ""), "profile_id": d.get("open_id", ""), "profile_name": d.get("display_name", "TikTok")}
+
+async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
+    client_secret = os.environ.get("PINTEREST_CLIENT_SECRET", "")
+    import base64 as _b64
+    creds = _b64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://api.pinterest.com/v5/oauth/token",
+            data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
+            headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
+        r.raise_for_status()
+        token = r.json()["access_token"]
+        pr = await c.get("https://api.pinterest.com/v5/user_account", headers={"Authorization": f"Bearer {token}"})
+        pr.raise_for_status()
+        profile = pr.json()
+        return {"access_token": token, "profile_id": profile.get("username", ""), "profile_name": profile.get("username", "Pinterest")}
+
+async def _publish_facebook(token: str, text: str, image_url: Optional[str] = None) -> str:
+    async with httpx.AsyncClient(timeout=30) as c:
+        pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts", params={"access_token": token})
+        pages_r.raise_for_status()
+        pages = pages_r.json().get("data", [])
+        if not pages:
+            raise ValueError("Nessuna pagina Facebook trovata per questo account")
+        page = pages[0]
+        page_token = page["access_token"]
+        page_id = page["id"]
+        if image_url:
+            r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/photos",
+                params={"access_token": page_token}, data={"url": image_url, "caption": text})
+        else:
+            r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/feed",
+                params={"access_token": page_token}, data={"message": text})
+        r.raise_for_status()
+        return r.json().get("id", "")
+
+async def _publish_linkedin(token: str, text: str, profile_id: str) -> str:
+    urn = f"urn:li:person:{profile_id}"
+    payload = {
+        "author": urn, "lifecycleState": "PUBLISHED",
+        "specificContent": {"com.linkedin.ugc.ShareContent": {
+            "shareCommentary": {"text": text}, "shareMediaCategory": "NONE"
+        }},
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+    }
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post("https://api.linkedin.com/v2/ugcPosts",
+            json=payload, headers={"Authorization": f"Bearer {token}", "X-Restli-Protocol-Version": "2.0.0"})
+        r.raise_for_status()
+        return r.headers.get("x-restli-id", "")
+
+async def _publish_pinterest(token: str, text: str, title: str, image_url: Optional[str] = None) -> str:
+    async with httpx.AsyncClient(timeout=30) as c:
+        boards_r = await c.get("https://api.pinterest.com/v5/boards", headers={"Authorization": f"Bearer {token}"})
+        boards_r.raise_for_status()
+        boards = boards_r.json().get("items", [])
+        if not boards:
+            raise ValueError("Nessuna board Pinterest trovata")
+        board_id = boards[0]["id"]
+        pin = {"board_id": board_id, "title": title[:100], "description": text[:500]}
+        if image_url:
+            pin["media_source"] = {"source_type": "image_url", "url": image_url}
+        else:
+            pin["media_source"] = {"source_type": "image_url", "url": "https://via.placeholder.com/800x800?text=Sketchario"}
+        r = await c.post("https://api.pinterest.com/v5/pins", json=pin, headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json().get("id", "")
+
+async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
+    text = content.get("caption") or content.get("hook_text") or content.get("title") or ""
+    title = content.get("title") or content.get("hook_text") or "Post"
+    media = content.get("media", [])
+    image_url = media[0].get("url") if media else None
+    if platform == "facebook":
+        return await _publish_facebook(token, text, image_url)
+    elif platform == "linkedin":
+        return await _publish_linkedin(token, text, profile_id)
+    elif platform == "pinterest":
+        return await _publish_pinterest(token, text, title, image_url)
+    elif platform == "tiktok":
+        raise ValueError("TikTok richiede upload video. Usa l'app TikTok direttamente.")
+    else:
+        raise ValueError(f"Piattaforma {platform} non supportata per la pubblicazione")
 
 class SocialProfileSave(BaseModel):
     platform: str
@@ -898,7 +1033,6 @@ class ProjectSocialLink(BaseModel):
 @api.get("/social/platforms")
 async def list_platforms(request: Request):
     await get_current_user(request)
-    callback_base = os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE", "https://www.sketchario.app/social_oauth.php")
     platforms = []
     for key, cfg in SOCIAL_PLATFORMS.items():
         client_id = os.environ.get(cfg["client_id_env"], "")
@@ -906,9 +1040,71 @@ async def list_platforms(request: Request):
             "id": key,
             "name": cfg["name"],
             "configured": bool(client_id),
-            "auth_url": f"{cfg['auth_url']}?client_id={client_id}&redirect_uri={callback_base}&scope={cfg['scope']}&response_type=code&state={key}" if client_id else None,
         })
     return platforms
+
+@api.get("/social/oauth/start/{platform}")
+async def social_oauth_start(platform: str, request: Request):
+    user = await get_current_user(request)
+    cfg = SOCIAL_PLATFORMS.get(platform)
+    if not cfg:
+        raise HTTPException(400, "Piattaforma non supportata")
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    if not client_id:
+        raise HTTPException(400, f"Credenziali {platform} non configurate")
+    state_id = str(uuid.uuid4())
+    await db.social_oauth_states.insert_one({
+        "state": state_id, "user_id": user["_id"], "platform": platform,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    })
+    callback = _oauth_callback_url()
+    from urllib.parse import quote
+    auth_url = (f"{cfg['auth_url']}?client_id={client_id}"
+                f"&redirect_uri={quote(callback, safe='')}"
+                f"&scope={cfg['scope']}&response_type=code&state={state_id}")
+    return {"auth_url": auth_url}
+
+@api.get("/social/oauth/callback")
+async def social_oauth_callback(request: Request):
+    from starlette.responses import HTMLResponse
+    params = dict(request.query_params)
+    code = params.get("code", "")
+    state_id = params.get("state", "")
+    error = params.get("error", "")
+    app_url = _app_url()
+    if error or not code or not state_id:
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_error',error:'{error or 'cancelled'}'}}, '*');window.close();</script>")
+    state_doc = await db.social_oauth_states.find_one_and_delete({"state": state_id})
+    if not state_doc:
+        return HTMLResponse("<script>window.opener&&window.opener.postMessage({type:'oauth_error',error:'state_invalid'}, '*');window.close();</script>")
+    platform = state_doc["platform"]
+    user_id = state_doc["user_id"]
+    callback = _oauth_callback_url()
+    try:
+        exchangers = {
+            "facebook": _exchange_token_facebook,
+            "linkedin": _exchange_token_linkedin,
+            "tiktok": _exchange_token_tiktok,
+            "pinterest": _exchange_token_pinterest,
+        }
+        exchanger = exchangers.get(platform)
+        if not exchanger:
+            raise ValueError(f"Piattaforma {platform} non supportata")
+        result = await exchanger(code, callback)
+        doc = {
+            "id": str(uuid.uuid4()), "user_id": user_id, "platform": platform,
+            "profile_name": result["profile_name"], "profile_id": result["profile_id"],
+            "access_token": result["access_token"], "connection_mode": "oauth", "connected": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.social_accounts.delete_many({"user_id": user_id, "platform": platform, "profile_id": result["profile_id"]})
+        await db.social_accounts.insert_one(doc)
+        pname = result["profile_name"]
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_success',platform:'{platform}',name:'{pname}'}}, '*');window.close();</script>")
+    except Exception as e:
+        logger.error(f"OAuth callback error {platform}: {e}")
+        msg = str(e).replace("'", "")
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_error',error:'{msg}'}}, '*');window.close();</script>")
 
 @api.get("/social/profiles")
 async def list_social_profiles(request: Request):
@@ -1180,30 +1376,42 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        scheduled_dt = datetime.fromisoformat(inp.scheduled_at.replace("Z", "+00:00"))
+    except Exception:
+        scheduled_dt = datetime.now(timezone.utc)
+    publish_now = scheduled_dt <= datetime.now(timezone.utc)
     items = []
     for sp_id in inp.social_profile_ids:
         profile = await db.social_accounts.find_one({"id": sp_id, "user_id": user["_id"]}, {"_id": 0})
         if not profile:
             continue
+        item_id = str(uuid.uuid4())
         doc = {
-            "id": str(uuid.uuid4()),
-            "content_id": inp.content_id,
-            "project_id": inp.project_id,
-            "social_profile_id": sp_id,
-            "platform": profile.get("platform", ""),
-            "profile_name": profile.get("profile_name", ""),
-            "user_id": user["_id"],
-            "status": "queued",
-            "scheduled_at": inp.scheduled_at,
-            "first_comment": inp.first_comment,
-            "error_message": "",
-            "published_at": "",
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "id": item_id, "content_id": inp.content_id, "project_id": inp.project_id,
+            "social_profile_id": sp_id, "platform": profile.get("platform", ""),
+            "profile_name": profile.get("profile_name", ""), "user_id": user["_id"],
+            "status": "queued", "scheduled_at": inp.scheduled_at, "first_comment": inp.first_comment,
+            "error_message": "", "published_at": "", "created_at": now_iso,
         }
+        if publish_now:
+            try:
+                post_id = await _do_publish(profile["platform"], profile.get("access_token", ""), profile.get("profile_id", ""), content)
+                doc["status"] = "published"
+                doc["published_at"] = now_iso
+                doc["post_id"] = post_id
+            except Exception as e:
+                doc["status"] = "failed"
+                doc["error_message"] = str(e)
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
         items.append(doc)
-    await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": "scheduled"}})
+    new_status = "published" if publish_now and all(i["status"] == "published" for i in items) else "scheduled"
+    await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": new_status}})
+    failed = [i for i in items if i.get("status") == "failed"]
+    if failed:
+        raise HTTPException(500, f"Errore pubblicazione: {failed[0]['error_message']}")
     return {"ok": True, "items": items}
 
 @api.get("/publish/queue/{project_id}")

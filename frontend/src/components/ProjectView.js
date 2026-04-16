@@ -160,7 +160,27 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setDragContent(null);
   };
 
-  const connectSocial = (platform) => { if (platform.auth_url) window.open(platform.auth_url, '_blank', 'width=600,height=700'); };
+  const connectSocial = async (platform) => {
+    try {
+      const { data } = await api.get(`/social/oauth/start/${platform.id}`);
+      const popup = window.open(data.auth_url, 'oauth_popup', 'width=600,height=700,left=200,top=100');
+      const handler = (e) => {
+        if (e.data?.type === 'oauth_success') {
+          window.removeEventListener('message', handler);
+          popup?.close();
+          api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
+          alert(`✓ ${e.data.name} collegato con successo!`);
+        } else if (e.data?.type === 'oauth_error') {
+          window.removeEventListener('message', handler);
+          popup?.close();
+          alert(`Errore connessione: ${e.data.error}`);
+        }
+      };
+      window.addEventListener('message', handler);
+    } catch (e) {
+      alert('Errore: ' + (e.response?.data?.detail || e.message));
+    }
+  };
   const addManualProfile = async (platformId) => {
     if (!manualName.trim()) return;
     const { data } = await api.post('/social/profiles', { platform: platformId, profile_name: manualName, connection_mode: 'manual' });
