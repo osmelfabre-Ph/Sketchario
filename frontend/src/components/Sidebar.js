@@ -5,7 +5,6 @@ import {
   CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck
 } from '@phosphor-icons/react';
 
-const LOGO = 'https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/oyv8tqit_favicon-invert.jpg';
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -95,7 +94,9 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
     <div className="sidebar flex flex-col" style={{ width: w, minWidth: w, padding: collapsed ? '1.25rem 0.5rem' : '1.25rem', transition: 'width 0.2s ease, min-width 0.2s ease, padding 0.2s ease' }}>
       {/* Logo + Collapse */}
       <div className="flex items-center gap-2 mb-6" style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
-        <img src={LOGO} alt="S" style={{ width: collapsed ? 32 : 32, height: collapsed ? 32 : 32, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
+        <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>S</span>
+        </div>
         {!collapsed && <h2 className="text-base font-bold gradient-text flex-1">Sketchario</h2>}
         {!collapsed && (
           <button data-testid="sidebar-toggle" className="p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(true)}>

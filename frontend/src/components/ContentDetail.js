@@ -16,15 +16,12 @@ const PLATFORM_ICONS = {
   pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
 };
 
-const CANVA_LOGO = 'https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/a6adpna7_logo-canva.jpg';
-const POSTNITRO_LOGO = 'https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/f6khg7it_logo-postnitro.jpg';
-
 const CanvaIcon = ({ size = 16 }) => (
-  <img src={CANVA_LOGO} alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
+  <img src="https://www.canva.com/favicon.ico" alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
 const PostNitroIcon = ({ size = 16 }) => (
-  <img src={POSTNITRO_LOGO} alt="PostNitro" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
+  <img src="https://postnitro.ai/favicon.ico" alt="PostNitro" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
 function useIsMobile() {
