@@ -452,13 +452,17 @@ async def remove_project_cover(project_id: str, request: Request):
 
 # ── AI GENERATION ────────────────────────────────────
 async def call_ai(system_prompt: str, user_prompt: str) -> str:
+    import asyncio
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    response = await client.aio.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=user_prompt,
-        config=types.GenerateContentConfig(system_instruction=system_prompt)
+    response = await asyncio.wait_for(
+        client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=user_prompt,
+            config=types.GenerateContentConfig(system_instruction=system_prompt)
+        ),
+        timeout=240
     )
     return response.text
 
