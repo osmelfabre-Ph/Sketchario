@@ -274,8 +274,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                 <div className="personas-grid mb-8">
                   {personas.map((p, i) => (
                     <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card persona-card">
-                      <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
-                      <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
+                      <h3 className="font-semibold text-lg mb-1">{p.role}{p.age ? `, ${p.age} anni` : ''}</h3>
                       {p.pain_points && (
                         <div className="p-3 rounded-lg text-sm mb-2" style={{ background: 'rgba(236,72,153,0.1)' }}>
                           <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">Pain Points</span>

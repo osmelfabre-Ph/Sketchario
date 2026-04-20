@@ -535,9 +535,8 @@ Descrizione: {project.get('description', '')}
 Area: {project.get('geo', 'Italia')}
 
 Per ogni persona restituisci un oggetto JSON con:
-- name: nome e eta (es. "Marco, 35")
-- role: professione/ruolo
-- age_range: fascia eta
+- role: professione o tipo di persona (es. "Insegnante", "Libero professionista", "Imprenditore")
+- age: età in anni (numero intero)
 - pain_points: lista di 2-3 pain point
 - desires: lista di 2-3 desideri
 - objections: lista di 1-2 obiezioni
