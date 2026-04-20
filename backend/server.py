@@ -453,6 +453,25 @@ async def remove_project_cover(project_id: str, request: Request):
 # ── AI GENERATION ────────────────────────────────────
 async def call_ai(system_prompt: str, user_prompt: str) -> str:
     import asyncio
+    # Primary: OpenAI GPT-4o-mini
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.7,
+            ),
+            timeout=240
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"OpenAI failed, falling back to Gemini: {e}")
+    # Fallback: Gemini
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
