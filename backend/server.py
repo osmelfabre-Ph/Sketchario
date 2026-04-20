@@ -553,6 +553,7 @@ Rispondi con un array JSON di 6 oggetti."""
             p["project_id"] = inp.project_id
             p["id"] = str(uuid.uuid4())
             await db.personas.insert_one(p)
+            p.pop("_id", None)
         await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$set": {"wizard_step": 1}})
         return {"personas": personas}
     except Exception as e:
@@ -616,6 +617,7 @@ Distribuisci i formati e i pillar secondo gli obiettivi. Rispondi con un array J
             h["project_id"] = inp.project_id
             h["id"] = str(uuid.uuid4())
             await db.hooks.insert_one(h)
+            h.pop("_id", None)
         await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$set": {"wizard_step": 3}})
         return {"hooks": hooks}
     except Exception as e:
