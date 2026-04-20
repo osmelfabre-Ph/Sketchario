@@ -272,7 +272,21 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <Sparkle size={16} weight="fill" color="#a855f7" />
           </button>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Canva" onClick={async () => {
-            try { const { data } = await api.get('/canva/auth-url'); if (data.auth_url) window.open(data.auth_url, '_blank'); } catch {}
+            try {
+              const { data } = await api.get('/canva/auth-url');
+              if (!data.auth_url) return;
+              const popup = window.open(data.auth_url, 'canva_oauth', 'width=600,height=700,left=200,top=100');
+              const handler = async (e) => {
+                if (e.data?.type === 'canva_success') {
+                  window.removeEventListener('message', handler);
+                  popup?.close();
+                } else if (e.data?.type === 'canva_error') {
+                  window.removeEventListener('message', handler);
+                  alert('Errore Canva: ' + e.data.error);
+                }
+              };
+              window.addEventListener('message', handler);
+            } catch(e) { alert('Errore Canva: ' + (e.response?.data?.detail || e.message)); }
           }}>
             <CanvaIcon size={16} />
           </button>

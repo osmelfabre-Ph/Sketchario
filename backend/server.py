@@ -1904,15 +1904,41 @@ async def get_plan_limits(request: Request):
 CANVA_CLIENT_ID = os.environ.get("CANVA_CLIENT_ID", "")
 CANVA_CLIENT_SECRET = os.environ.get("CANVA_CLIENT_SECRET", "")
 
+def _canva_callback_url() -> str:
+    return f"{_app_url()}/api/canva/oauth/callback"
+
 @api.get("/canva/auth-url")
 async def canva_auth_url(request: Request):
     await get_current_user(request)
-    callback = os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE", "https://www.sketchario.app/social_oauth.php")
-    canva_callback = callback.replace("social_oauth.php", "editors/canva_oauth.php")
     if not CANVA_CLIENT_ID:
         raise HTTPException(400, "Canva non configurato")
-    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={canva_callback}&response_type=code&scope=design:content:read design:content:write asset:read asset:write"
+    callback = _canva_callback_url()
+    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={quote(callback, safe='')}&response_type=code&scope=design:content:read design:content:write asset:read asset:write"
     return {"auth_url": url, "configured": True}
+
+@api.get("/canva/oauth/callback")
+async def canva_oauth_callback(request: Request):
+    code = request.query_params.get("code")
+    error = request.query_params.get("error")
+    if error or not code:
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{error or 'cancelled'}'}}, '*');window.close();</script>")
+    try:
+        callback = _canva_callback_url()
+        async with httpx.AsyncClient(timeout=30) as hc:
+            r = await hc.post("https://api.canva.com/rest/v1/oauth/token", data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": callback,
+                "client_id": CANVA_CLIENT_ID,
+                "client_secret": CANVA_CLIENT_SECRET,
+            })
+            token_data = r.json()
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            raise Exception(token_data.get("error_description", "Token non ricevuto"))
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_success',token:'{access_token}'}}, '*');window.close();</script>")
+    except Exception as e:
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{str(e)}'}}, '*');window.close();</script>")
 
 @api.post("/canva/import")
 async def canva_import(request: Request):
