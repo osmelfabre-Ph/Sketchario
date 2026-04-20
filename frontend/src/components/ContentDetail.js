@@ -55,6 +55,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [mobileTab, setMobileTab] = useState('editor');
   const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState(null);
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
@@ -237,6 +238,11 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 ) : (
                   <div className="w-full h-full rounded-lg bg-[var(--bg-secondary)] flex items-center justify-center"><Video size={20} /></div>
                 )}
+                {m.type === 'image' && (
+                  <button className="absolute inset-0 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setLightboxUrl(`${process.env.REACT_APP_BACKEND_URL}${m.url}`)}>
+                    <Eye size={18} color="white" />
+                  </button>
+                )}
                 <button className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-pink)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteMedia(m.id)}>
                   <X size={8} color="white" />
                 </button>
@@ -272,13 +278,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <ArrowClockwise size={14} /> Rigenera
         </button>
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="DALL-E" onClick={() => {
-            setInputModal({ title: 'Genera immagine con DALL-E', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true,
+          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="FLUX AI" onClick={() => {
+            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
                 try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore DALL-E'); }
                 setGeneratingImage(false);
-              }
+              },
+
             });
           }}>
             <Sparkle size={16} weight="fill" color="#a855f7" />
@@ -487,6 +494,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
             }}>Conferma</button>
           </div>
         </motion.div>
+      </div>
+    )}
+    {lightboxUrl && (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setLightboxUrl(null)}>
+        <button className="absolute top-4 right-4 btn-ghost p-2" onClick={() => setLightboxUrl(null)}><X size={24} /></button>
+        <img src={lightboxUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()} />
       </div>
     )}
     </>

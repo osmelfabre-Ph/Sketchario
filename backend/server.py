@@ -1649,7 +1649,7 @@ async def media_library(project_id: str, request: Request):
             all_media.append(m)
     return all_media
 
-# ── DALL·E IMAGE GENERATION ───────────────────────────
+# ── IMAGE GENERATION (FLUX via fal.ai) ────────────────
 class DalleGenerateInput(BaseModel):
     content_id: str
     prompt: str
@@ -1657,31 +1657,34 @@ class DalleGenerateInput(BaseModel):
 
 @api.post("/media/generate-dalle")
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
-    user = await get_current_user(request)
+    await get_current_user(request)
+    fal_key = os.environ.get("FAL_API_KEY", "")
+    if not fal_key:
+        raise HTTPException(400, "FAL_API_KEY non configurata")
     try:
-        import openai as openai_sdk
-        client = openai_sdk.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        resp = await client.images.generate(
-            model="dall-e-3",
-            prompt=inp.prompt,
-            n=1,
-            size="1024x1024",
-            response_format="b64_json"
-        )
-        image_bytes = base64.b64decode(resp.data[0].b64_json)
-        if not image_bytes:
-            raise HTTPException(500, "Nessuna immagine generata")
-        fname = f"dalle_{uuid.uuid4().hex}.png"
+        async with httpx.AsyncClient(timeout=120) as hc:
+            r = await hc.post(
+                "https://fal.run/fal-ai/flux/dev",
+                headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
+                json={"prompt": inp.prompt, "image_size": "landscape_4_3", "num_images": 1, "output_format": "jpeg"}
+            )
+            r.raise_for_status()
+            result = r.json()
+        image_url = result["images"][0]["url"]
+        async with httpx.AsyncClient(timeout=60) as hc:
+            img_r = await hc.get(image_url)
+            img_r.raise_for_status()
+            image_bytes = img_r.content
+        fname = f"flux_{uuid.uuid4().hex}.jpg"
         fpath = UPLOAD_DIR / fname
         with open(fpath, "wb") as f:
             f.write(image_bytes)
         media_url = f"/api/media/file/{fname}"
-        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"DALL-E: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "dalle", "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
+        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"FLUX: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "flux", "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
         await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
-        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        return {**media_doc, "image_base64": image_base64}
+        return media_doc
     except Exception as e:
-        logger.error(f"DALL-E generation error: {e}")
+        logger.error(f"FLUX generation error: {e}")
         raise HTTPException(500, f"Errore generazione immagine: {str(e)}")
 
 # ── ADMIN CONSOLE ─────────────────────────────────────
