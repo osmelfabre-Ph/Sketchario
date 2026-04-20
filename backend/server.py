@@ -972,6 +972,7 @@ SOCIAL_PLATFORMS = {
         "name": "TikTok",
         "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
         "client_id_env": "TIKTOK_CLIENT_KEY",
+        "client_id_param": "client_key",
         "client_secret_env": "TIKTOK_CLIENT_SECRET",
         "token_url": "https://open.tiktok.com/v2/oauth/token/",
         "scope": "user.info.basic,video.publish",
@@ -1206,7 +1207,8 @@ async def social_oauth_start(platform: str, request: Request):
     })
     callback = _oauth_callback_url()
     from urllib.parse import quote
-    auth_url = (f"{cfg['auth_url']}?client_id={client_id}"
+    client_id_param = cfg.get("client_id_param", "client_id")
+    auth_url = (f"{cfg['auth_url']}?{client_id_param}={client_id}"
                 f"&redirect_uri={quote(callback, safe='')}"
                 f"&scope={cfg['scope']}&response_type=code&state={state_id}")
     return {"auth_url": auth_url}
