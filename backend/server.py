@@ -1844,14 +1844,22 @@ async def get_plans(request: Request):
     return [{"id": k, "name": v["name"], "amount": v["amount"], "currency": v["currency"]} for k, v in PLANS.items()]
 
 # ── PLAN GATING ───────────────────────────────────────
+ADMIN_EMAILS = {"osmel@osmelfabre.it", "osmel.fabre@gmail.com"}
+
 PLAN_LIMITS = {
-    "free": {"max_projects": 1, "max_contents_per_project": 7, "can_publish": False, "can_export_csv": False},
-    "creator": {"max_projects": 5, "max_contents_per_project": 30, "can_publish": True, "can_export_csv": True},
-    "strategist": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True},
-    "custom": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True},
+    "free":       {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
+    "trial":      {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": True,  "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
+    "pro":        {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
+    "creator":    {"max_projects": 3, "max_contents_per_project": 50,  "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": False, "max_duration_weeks": 4},
+    "strategist": {"max_projects": 4, "max_contents_per_project": 999, "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
+    "custom":     {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
+    "admin":      {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
 }
 
 async def check_plan_limit(user: dict, resource: str, project_id: str = None):
+    # Admin bypass
+    if user.get("role") == "admin" or user.get("email", "") in ADMIN_EMAILS:
+        return PLAN_LIMITS["admin"]
     plan = user.get("plan", "free")
     pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
     if pu:
@@ -1878,13 +1886,17 @@ async def check_plan_limit(user: dict, resource: str, project_id: str = None):
 @api.get("/plan/limits")
 async def get_plan_limits(request: Request):
     user = await get_current_user(request)
-    plan = user.get("plan", "free")
-    pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
-    if pu:
-        exp = pu.get("expires_at", "")
-        if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
-            plan = pu.get("plan", plan)
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    if user.get("role") == "admin" or user.get("email", "") in ADMIN_EMAILS:
+        plan = "admin"
+        limits = PLAN_LIMITS["admin"]
+    else:
+        plan = user.get("plan", "free")
+        pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
+        if pu:
+            exp = pu.get("expires_at", "")
+            if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
+                plan = pu.get("plan", plan)
+        limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
     project_count = await db.projects.count_documents({"user_id": user["_id"], "archived": False})
     return {**limits, "plan": plan, "projects_used": project_count}
 
