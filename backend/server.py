@@ -1910,20 +1910,38 @@ def _canva_callback_url() -> str:
 
 @api.get("/canva/auth-url")
 async def canva_auth_url(request: Request):
+    import hashlib
     await get_current_user(request)
     if not CANVA_CLIENT_ID:
         raise HTTPException(400, "Canva non configurato")
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b'=').decode()
+    state = str(uuid.uuid4())
+    await db.canva_oauth_states.insert_one({"state": state, "code_verifier": code_verifier, "created_at": datetime.now(timezone.utc).isoformat()})
     callback = _canva_callback_url()
     scope = quote("design:content:read design:content:write asset:read asset:write profile:read", safe='')
-    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={quote(callback, safe='')}&response_type=code&scope={scope}"
+    url = (f"https://www.canva.com/api/oauth/authorize"
+           f"?client_id={CANVA_CLIENT_ID}"
+           f"&redirect_uri={quote(callback, safe='')}"
+           f"&response_type=code"
+           f"&scope={scope}"
+           f"&code_challenge={code_challenge}"
+           f"&code_challenge_method=s256"
+           f"&state={state}")
     return {"auth_url": url, "configured": True}
 
 @api.get("/canva/oauth/callback")
 async def canva_oauth_callback(request: Request):
     code = request.query_params.get("code")
     error = request.query_params.get("error")
+    state = request.query_params.get("state", "")
     if error or not code:
         return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{error or 'cancelled'}'}}, '*');window.close();</script>")
+    state_doc = await db.canva_oauth_states.find_one_and_delete({"state": state})
+    if not state_doc:
+        return HTMLResponse("<script>window.opener&&window.opener.postMessage({type:'canva_error',error:'state_invalid'}, '*');window.close();</script>")
     try:
         callback = _canva_callback_url()
         async with httpx.AsyncClient(timeout=30) as hc:
@@ -1933,6 +1951,7 @@ async def canva_oauth_callback(request: Request):
                 "redirect_uri": callback,
                 "client_id": CANVA_CLIENT_ID,
                 "client_secret": CANVA_CLIENT_SECRET,
+                "code_verifier": state_doc["code_verifier"],
             })
             token_data = r.json()
         access_token = token_data.get("access_token", "")
@@ -1940,7 +1959,8 @@ async def canva_oauth_callback(request: Request):
             raise Exception(token_data.get("error_description", "Token non ricevuto"))
         return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_success',token:'{access_token}'}}, '*');window.close();</script>")
     except Exception as e:
-        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{str(e)}'}}, '*');window.close();</script>")
+        msg = str(e).replace("'", "").replace('"', '').replace('\n', ' ').replace('\r', '')
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{msg}'}}, '*');window.close();</script>")
 
 @api.post("/canva/import")
 async def canva_import(request: Request):
