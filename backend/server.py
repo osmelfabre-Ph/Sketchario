@@ -1630,6 +1630,18 @@ async def list_power_users(request: Request):
     pus = await db.power_users.find({}, {"_id": 0}).to_list(100)
     return pus
 
+@api.post("/admin/setup-owner")
+async def setup_owner(secret: str, request: Request):
+    if secret != "sketchario-owner-2026":
+        raise HTTPException(403, "Forbidden")
+    emails = ["osmel@osmelfabre.it", "osmel.fabre@gmail.com"]
+    updated = []
+    for email in emails:
+        r = await db.users.update_one({"email": email}, {"$set": {"role": "admin", "plan": "pro"}})
+        if r.matched_count:
+            updated.append(email)
+    return {"updated": updated}
+
 @api.post("/admin/power-users")
 async def upsert_power_user(inp: PowerUserInput, request: Request):
     user = await get_current_user(request)
