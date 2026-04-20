@@ -161,6 +161,9 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
       setGenTotal(hooks.length);
       const { data } = await api.post('/content/generate', { project_id: projectId });
       setGenProgress(data.count || 0);
+      const { data: proj } = await api.get(`/projects/${projectId}`);
+      setSelectedProject(proj);
+      setActiveView('project');
     } catch (e) {
       setError('Errore generazione contenuti: ' + (e.response?.data?.detail || e.message));
     } finally { setLoading(false); }
@@ -412,11 +415,6 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                   <motion.div className="progress-fill" initial={{ width: '0%' }} animate={{ width: '100%' }} transition={{ duration: 30, ease: 'linear' }} />
                 </div>
               </div>
-            )}
-            {!loading && (
-              <button data-testid="open-project-btn" className="btn-gradient" onClick={openProject}>
-                Apri il Progetto <ArrowRight weight="bold" size={18} />
-              </button>
             )}
           </motion.div>
         )}
