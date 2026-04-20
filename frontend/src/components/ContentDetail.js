@@ -64,7 +64,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     setSelectedSocials(prev => prev.includes(profId) ? prev.filter(id => id !== profId) : [...prev, profId]);
   };
 
-  const selectedProfiles = projectSocials.filter(p => selectedSocials.includes(p.id));
+  const selectedProfiles = socialProfiles.filter(p => selectedSocials.includes(p.id));
 
   const save = async () => {
     setSaving(true);
@@ -149,7 +149,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const SocialColumn = () => (
     <div className={isMobile ? 'p-4' : 'w-52 border-r border-[var(--border-color)] p-4 overflow-y-auto flex-shrink-0'}>
       <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3">Pubblica su</p>
-      {projectSocials.map(prof => {
+      {socialProfiles.map(prof => {
         const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#fff', name: prof.platform };
         const isSelected = selectedSocials.includes(prof.id);
         return (
@@ -168,7 +168,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           </div>
         );
       })}
-      {projectSocials.length === 0 && <p className="text-xs text-[var(--text-muted)]">Nessun social collegato al progetto</p>}
+      {socialProfiles.length === 0 && <p className="text-xs text-[var(--text-muted)]">Nessun social connesso. Vai su Social per collegare i tuoi account.</p>}
     </div>
   );
 
