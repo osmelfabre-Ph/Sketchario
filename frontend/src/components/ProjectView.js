@@ -492,7 +492,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
         </AnimatePresence>
 
         <motion.div
-          animate={{ x: showRightPanel ? 0 : rightPanelWidth }}
+          animate={{ x: showRightPanel ? 0 : rightPanelWidth - 24 }}
           initial={false}
           transition={{ type: 'tween', duration: 0.25 }}
           className="fixed top-0 right-0 bottom-0 z-50 flex"
