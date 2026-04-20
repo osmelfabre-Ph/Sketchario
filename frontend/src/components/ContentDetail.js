@@ -54,6 +54,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [publishing, setPublishing] = useState(false);
   const [mobileTab, setMobileTab] = useState('editor');
   const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
+  const [generatingImage, setGeneratingImage] = useState(false);
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
@@ -221,6 +222,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <p className="text-xs text-[var(--text-muted)] mt-1">Max 400 MB</p>
           <input type="file" accept="image/*,video/*" className="hidden" onChange={e => { if (e.target.files[0]) uploadMedia(e.target.files[0]); }} />
         </label>
+        {generatingImage && (
+          <div className="flex items-center gap-3 p-3 rounded-lg mb-3" style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)' }}>
+            <div className="w-4 h-4 border-2 border-[var(--accent-purple)] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <p className="text-xs text-[var(--accent-purple)]">Generazione immagine in corso...</p>
+          </div>
+        )}
         {content.media && content.media.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-3">
             {content.media.map(m => (
@@ -268,7 +275,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="DALL-E" onClick={() => {
             setInputModal({ title: 'Genera immagine con DALL-E', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true,
               onConfirm: async (prompt) => {
+                setGeneratingImage(true);
                 try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore DALL-E'); }
+                setGeneratingImage(false);
               }
             });
           }}>
