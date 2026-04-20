@@ -230,6 +230,24 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium mb-3">Formati contenuto</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'reel', label: 'Reel', emoji: '🎬' },
+                    { id: 'carousel', label: 'Carousel', emoji: '🖼️' },
+                    { id: 'post', label: 'Post', emoji: '📷' },
+                    { id: 'prompted_reel', label: 'Prompted Reel', emoji: '🤖' },
+                  ].map(f => (
+                    <button key={f.id}
+                      className={`preset-btn ${formats.includes(f.id) ? 'active' : ''}`}
+                      onClick={() => setFormats(prev => prev.includes(f.id) ? prev.filter(x => x !== f.id) : [...prev, f.id])}>
+                      {f.emoji} {f.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-2">L'AI distribuirà gli hook tra i formati selezionati</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-2">Note per l'AI</label>
                 <textarea className="input-dark" rows={2} placeholder="Es. Tono leggermente pi&ugrave; urgente, uscita corso online..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
               </div>
@@ -358,8 +376,8 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                         <span className="text-xs font-semibold text-[var(--text-muted)]">G{h.day_offset || i + 1}</span>
                       </div>
                       <div className="flex-1"><p className="text-sm">{h.hook_text}</p></div>
-                      <span className={`badge ${h.format === 'reel' ? 'pink' : 'blue'}`}>
-                        {h.format === 'reel' ? <Video size={12} /> : <Image size={12} />}
+                      <span className={`badge ${h.format === 'reel' ? 'pink' : h.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
+                        {h.format === 'reel' ? <Video size={12} /> : h.format === 'prompted_reel' ? <span>🤖</span> : <Image size={12} />}
                         <span className="ml-1">{h.format}</span>
                       </span>
                       <span className={`badge ${h.pillar === 'awareness' ? 'blue' : h.pillar === 'education' ? 'green' : 'orange'}`}>

@@ -602,12 +602,12 @@ Personas: {json.dumps([p.get('name','') + ' - ' + p.get('role','') for p in pers
 
 Per ogni hook restituisci:
 - hook_text: testo dell'hook (frase ad effetto)
-- format: "reel", "carousel" o "prompted_reel" (usa prompted_reel per contenuti che beneficiano di un avatar parlante)
+- format: uno tra {', '.join([f'"{f}"' for f in project.get('formats', ['reel', 'carousel'])])}
 - pillar: "awareness", "education" o "monetizing"
 - persona_target: nome della persona target
 - day_offset: giorno dalla partenza (0, 1, 2, ...)
 
-Distribuisci i formati e i pillar secondo gli obiettivi. Usa prompted_reel per circa il 20% degli hook se i formati del progetto lo includono. Rispondi con un array JSON di {num_hooks} oggetti."""
+Distribuisci i formati in modo equilibrato tra quelli disponibili. Se "prompted_reel" è disponibile usalo per circa il 20% degli hook. Rispondi con un array JSON di {num_hooks} oggetti."""
     try:
         result = await call_ai(system, prompt)
         hooks = extract_json(result)
