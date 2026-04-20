@@ -1510,8 +1510,8 @@ async def mark_published(content_id: str, request: Request):
     return {"ok": True}
 
 # ── MEDIA UPLOAD ──────────────────────────────────────
-UPLOAD_DIR = Path("/app/backend/uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR = Path("/app/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @api.post("/media/upload/{content_id}")
 async def upload_media(content_id: str, request: Request, file: UploadFile = File(...)):
