@@ -10,6 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os, logging, uuid, json, secrets, base64, shutil
+from urllib.parse import quote
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -1205,7 +1206,6 @@ async def social_oauth_start(platform: str, request: Request):
         "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
     })
     callback = _oauth_callback_url()
-    from urllib.parse import quote
     client_id_param = cfg.get("client_id_param", "client_id")
     auth_url = (f"{cfg['auth_url']}?{client_id_param}={client_id}"
                 f"&redirect_uri={quote(callback, safe='')}"
