@@ -683,7 +683,7 @@ Settore: {project['sector']}
 Restituisci un oggetto JSON con:
 - opening_hook: testo parlato dei primi 3-5 secondi (cattura immediatamente, max 2 frasi)
 - script: script completo per l'avatar (scritto come se stesse parlando, con indicazioni di ritmo tra parentesi quadre: [pausa], [enfasi], [veloce], [lento])
-- visual_direction: indicazioni visive per la generazione video (sfondo, espressione, gesti, abbigliamento, stile)
+- visual_direction: regia visiva dettagliata COERENTE con il tono e i contenuti dello script (sfondo consigliato, espressione facciale, gesti specifici che supportano le parole chiave, abbigliamento adatto al messaggio, ritmo visivo)
 - caption: caption ottimizzata per la pubblicazione social (lunghezza {caption_len})
 - hashtags: stringa di hashtag separati da spazi
 - slides: array vuoto"""
@@ -764,7 +764,7 @@ async def create_post(inp: PostCreate, request: Request):
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10." if tov else ""
         system = "Sei un copywriter. Genera contenuto social in italiano. Rispondi SOLO con JSON."
         if inp.format == 'prompted_reel':
-            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction, caption, hashtags, slides (array vuoto)."
+            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (regia visiva coerente col tono dello script: sfondo, espressione, gesti, abbigliamento), caption, hashtags, slides (array vuoto)."
         else:
             prompt = f"Genera script, caption e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
         try:
@@ -872,7 +872,7 @@ Script originale: {content.get('script', '') or ' '.join(content.get('slides', [
 Settore: {project.get('sector','')}
 {tov_desc}
 
-Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per avatar con [pausa][enfasi]), visual_direction (sfondo, gesti, stile), caption, hashtags, slides (array vuoto)"""
+Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per avatar con [pausa][enfasi]), visual_direction (regia visiva coerente con il tono dello script: sfondo, espressione, gesti specifici, abbigliamento), caption, hashtags, slides (array vuoto)"""
     elif inp.target_format == "carousel":
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Reel in un Carousel con slide numerate. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Reel in un Carousel strutturato.
