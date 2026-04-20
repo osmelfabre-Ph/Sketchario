@@ -88,13 +88,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
     setSaving(false);
   };
 
-  const convert = async () => {
-    const target = content.format === 'reel' ? 'carousel' : 'reel';
+  const convert = async (targetOverride) => {
+    const target = targetOverride || (content.format === 'reel' ? 'carousel' : 'reel');
     if (!window.confirm(`Convertire in ${target}?`)) return;
     setSaving(true);
     try {
       const { data } = await api.post('/contents/convert', { content_id: content.id, project_id: project.id, target_format: target });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
+      setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
     } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
     setSaving(false);
@@ -250,8 +251,13 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <Copy size={14} /> Copia
           </button>
         )}
-        {content.format !== 'prompted_reel' && (
-          <button className="btn-ghost text-xs py-1.5 px-3" onClick={convert}>
+        {content.format === 'prompted_reel' ? (
+          <>
+            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('reel')}><Video size={14} /> Reel</button>
+            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('carousel')}><Image size={14} /> Carousel</button>
+          </>
+        ) : (
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert()}>
             {content.format === 'reel' ? <><Image size={14} /> Carousel</> : <><Video size={14} /> Reel</>}
           </button>
         )}

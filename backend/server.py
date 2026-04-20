@@ -857,14 +857,23 @@ async def convert_content(inp: ContentConvertInput, request: Request):
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
-    if inp.target_format not in ("reel", "carousel"):
-        raise HTTPException(400, "target_format deve essere 'reel' o 'carousel'")
+    if inp.target_format not in ("reel", "carousel", "prompted_reel"):
+        raise HTTPException(400, "target_format non valido")
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     tov_desc = ""
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10. {tov.get('custom_instructions','')}"
-    if inp.target_format == "carousel":
+    if inp.target_format == "prompted_reel":
+        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un esperto di video marketing con avatar AI. Converti questo contenuto in un Prompted Reel. Rispondi SOLO con JSON valido. Scrivi in italiano."
+        prompt = f"""Converti questo contenuto in un Prompted Reel per avatar AI.
+Hook: {content.get('hook_text','')}
+Script originale: {content.get('script', '') or ' '.join(content.get('slides', []))}
+Settore: {project.get('sector','')}
+{tov_desc}
+
+Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per avatar con [pausa][enfasi]), visual_direction (sfondo, gesti, stile), caption, hashtags, slides (array vuoto)"""
+    elif inp.target_format == "carousel":
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Reel in un Carousel con slide numerate. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Reel in un Carousel strutturato.
 Hook: {content.get('hook_text','')}
@@ -893,7 +902,7 @@ Restituisci JSON con: hook_text, script (script parlato completo), caption, hash
         result = await call_ai(system, prompt)
         data = extract_json(result)
         updates = {"format": inp.target_format}
-        for k in ["hook_text", "script", "caption", "hashtags", "slides"]:
+        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook", "visual_direction"]:
             if k in data:
                 updates[k] = data[k]
         await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
