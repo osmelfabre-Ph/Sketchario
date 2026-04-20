@@ -231,11 +231,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           <button className="btn-ghost text-xs md:text-sm" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank')} data-testid="export-csv-btn">
             <Download size={14} /> <span className="hidden sm:inline">CSV</span>
           </button>
-          {isMobile && (
-            <button className="btn-ghost text-xs p-1.5" onClick={() => setShowRightPanel(!showRightPanel)} data-testid="toggle-right-panel">
-              <ChartBar size={16} />
-            </button>
-          )}
+          <button className="btn-ghost text-xs p-1.5" onClick={() => setShowRightPanel(!showRightPanel)} data-testid="toggle-right-panel">
+            <ChartBar size={16} />
+          </button>
         </div>
       </div>
 
@@ -484,47 +482,55 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           </div>
         </div>
 
-        {/* RIGHT PANEL — Desktop: inline, Mobile: overlay */}
-        {!isMobile && (
-          <div className="flex flex-shrink-0 relative" style={{ width: rightPanelWidth, zIndex: 20, marginLeft: -(rightPanelWidth - 280) > 0 ? -(rightPanelWidth - 280) : 0 }}>
-            <div className="w-1.5 cursor-col-resize hover:bg-[var(--gradient-start)] transition-colors flex-shrink-0"
-              style={{ background: 'var(--border-color)' }}
-              onMouseDown={e => {
-                e.preventDefault();
-                const startX = e.clientX;
-                const startW = rightPanelWidth;
-                const onMove = (ev) => { const diff = startX - ev.clientX; setRightPanelWidth(Math.max(200, Math.min(700, startW + diff))); };
-                const onUp = () => { document.body.style.cursor = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-                document.body.style.cursor = 'col-resize';
-                window.addEventListener('mousemove', onMove);
-                window.addEventListener('mouseup', onUp);
-              }}
-            />
-            <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--bg-secondary)' }}>
-              <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} project={project} />
-            </div>
-          </div>
-        )}
-
-        {/* Mobile Right Panel Overlay */}
+        {/* RIGHT PANEL — Overlay drawer (desktop + mobile) */}
         <AnimatePresence>
-          {isMobile && showRightPanel && (
+          {showRightPanel && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50" style={{ background: 'rgba(0,0,0,0.6)' }}
-              onClick={() => setShowRightPanel(false)}>
-              <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.25 }}
-                className="absolute right-0 top-0 bottom-0 w-[85vw] max-w-sm overflow-y-auto p-4"
-                style={{ background: 'var(--bg-secondary)' }}
-                onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold">Queue & Analytics</h3>
-                  <button className="btn-ghost p-1.5" onClick={() => setShowRightPanel(false)}><X size={16} /></button>
-                </div>
-                <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} project={project} />
-              </motion.div>
-            </motion.div>
+              className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.4)' }}
+              onClick={() => setShowRightPanel(false)} />
           )}
         </AnimatePresence>
+
+        <motion.div
+          animate={{ x: showRightPanel ? 0 : rightPanelWidth }}
+          initial={false}
+          transition={{ type: 'tween', duration: 0.25 }}
+          className="fixed top-0 right-0 bottom-0 z-50 flex"
+          style={{ width: rightPanelWidth }}
+        >
+          {/* Handle tab */}
+          <div
+            className="flex flex-col items-center justify-center w-6 cursor-pointer flex-shrink-0 select-none"
+            style={{ background: 'var(--bg-card)', borderLeft: '1px solid var(--border-color)', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', borderRadius: '8px 0 0 8px' }}
+            onClick={() => setShowRightPanel(!showRightPanel)}
+            onMouseDown={e => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              const startX = e.clientX;
+              const startW = rightPanelWidth;
+              const onMove = (ev) => { const diff = startX - ev.clientX; setRightPanelWidth(Math.max(220, Math.min(600, startW + diff))); };
+              const onUp = () => { document.body.style.cursor = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+              document.body.style.cursor = 'col-resize';
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            }}
+          >
+            <div className="flex flex-col gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="w-1 h-1 rounded-full" style={{ background: 'var(--text-muted)' }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Panel content */}
+          <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-color)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">Queue & Analytics</h3>
+              <button className="btn-ghost p-1.5" onClick={() => setShowRightPanel(false)}><X size={16} /></button>
+            </div>
+            <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} project={project} />
+          </div>
+        </motion.div>
       </div>
 
       {/* MODALS */}
