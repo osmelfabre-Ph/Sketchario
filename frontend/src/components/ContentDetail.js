@@ -56,6 +56,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
   const [generatingImage, setGeneratingImage] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [fluxStyle, setFluxStyle] = useState('fotorealistico');
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
@@ -279,7 +280,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </button>
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="FLUX AI" onClick={() => {
-            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true,
+            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true, isFlux: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
                 try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore DALL-E'); }
@@ -475,23 +476,46 @@ export default function ContentDetail({ content: initialContent, project, onClos
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
           <h3 className="font-semibold text-base mb-3">{inputModal.title}</h3>
           {inputModal.multiline
-            ? <textarea className="input-dark w-full mb-4" rows={5} placeholder={inputModal.placeholder}
+            ? <textarea className="input-dark w-full mb-3" rows={4} placeholder={inputModal.placeholder}
                 defaultValue={inputModal.value}
                 id="input-modal-field"
                 style={{ paddingLeft: '0.75rem', paddingTop: '0.5rem', resize: 'vertical' }} />
-            : <input className="input-dark w-full mb-4" placeholder={inputModal.placeholder}
+            : <input className="input-dark w-full mb-3" placeholder={inputModal.placeholder}
                 defaultValue={inputModal.value}
                 id="input-modal-field"
                 style={{ paddingLeft: '0.75rem' }} />
           }
+          {inputModal.isFlux && (
+            <div className="mb-4">
+              <p className="text-xs text-[var(--text-muted)] mb-2">Stile</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'fotorealistico', label: '📷 Fotorealistico', suffix: 'photorealistic, high quality photography, 8k, detailed, realistic lighting' },
+                  { id: 'pittorico', label: '🎨 Pittorico', suffix: 'oil painting, artistic painterly style, expressive brushstrokes' },
+                  { id: 'cartoon', label: '🖼️ Cartoon', suffix: 'cartoon illustration, vibrant colors, flat design, animated style' },
+                  { id: 'sketch', label: '✏️ Sketch', suffix: 'pencil sketch, hand drawn, black and white, detailed linework' },
+                ].map(s => (
+                  <button key={s.id} className={`preset-btn text-xs py-1 px-2 ${fluxStyle === s.id ? 'active' : ''}`}
+                    onClick={() => setFluxStyle(s.id)}>{s.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <button className="btn-ghost flex-1" onClick={() => setInputModal(null)}>Annulla</button>
             <button className="btn-gradient flex-1" onClick={() => {
               const val = document.getElementById('input-modal-field').value.trim();
               if (!val) return;
+              const styleMap = {
+                fotorealistico: 'photorealistic, high quality photography, 8k, detailed, realistic lighting',
+                pittorico: 'oil painting, artistic painterly style, expressive brushstrokes',
+                cartoon: 'cartoon illustration, vibrant colors, flat design, animated style',
+                sketch: 'pencil sketch, hand drawn, black and white, detailed linework',
+              };
+              const finalVal = inputModal.isFlux ? `${val}, ${styleMap[fluxStyle]}` : val;
               setInputModal(null);
-              inputModal.onConfirm(val);
-            }}>Conferma</button>
+              inputModal.onConfirm(finalVal);
+            }}>Genera</button>
           </div>
         </motion.div>
       </div>
