@@ -387,9 +387,10 @@ async def get_project(project_id: str, request: Request):
 @api.get("/projects/{project_id}/wizard-state")
 async def get_wizard_state(project_id: str, request: Request):
     user = await get_current_user(request)
-    p = await db.projects.find_one({"id": project_id, "user_id": user["_id"]}, {"_id": 0})
+    p = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if not p:
         raise HTTPException(404, "Progetto non trovato")
+    p["id"] = str(p.pop("_id"))
     wizard_step = p.get("wizard_step", 0)
     result = {"project": p, "personas": [], "tov": None, "hooks": []}
     if wizard_step >= 1:
