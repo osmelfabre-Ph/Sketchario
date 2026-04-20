@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Users, Palette, Lightning, Sparkle, ArrowRight, Check, PencilSimple, Video, Image, ArrowLeft
 } from '@phosphor-icons/react';
 
-export default function Wizard({ setActiveView, setSelectedProject }) {
+export default function Wizard({ setActiveView, setSelectedProject, resumeData, setWizardResumeData }) {
   const { api } = useAuth();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -59,6 +59,37 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
     { id: 'provocatorio', label: 'Provocatorio', f: 4, e: 9, em: 3, h: 7, s: 6 },
     { id: 'educativo', label: 'Educativo', f: 7, e: 5, em: 6, h: 3, s: 5 },
   ];
+
+  useEffect(() => {
+    if (!resumeData) return;
+    const { project, personas: p, tov, hooks: h } = resumeData;
+    setProjectId(project.id);
+    setProjectName(project.name || '');
+    setSector(project.sector || '');
+    setDescription(project.description || '');
+    setAwareness(project.objective_awareness ?? 60);
+    setEducation(project.objective_education ?? 30);
+    setMonetizing(project.objective_monetizing ?? 10);
+    setFormats(project.formats || ['reel', 'carousel']);
+    setDurationWeeks(project.duration_weeks || 1);
+    setGeo(project.geo || '');
+    setBriefNotes(project.brief_notes || '');
+    if (p?.length) setPersonas(p);
+    if (tov) {
+      setTovPreset(tov.preset || '');
+      setFormality(tov.formality ?? 5);
+      setEnergy(tov.energy ?? 5);
+      setEmpathy(tov.empathy ?? 5);
+      setHumor(tov.humor ?? 3);
+      setStorytelling(tov.storytelling ?? 5);
+      setCustomInstructions(tov.custom_instructions || '');
+      setCaptionLength(tov.caption_length || 'medium');
+    }
+    if (h?.length) setHooks(h);
+    const wizardStep = project.wizard_step || 0;
+    setStep(Math.min(wizardStep + 1, 4));
+    if (setWizardResumeData) setWizardResumeData(null);
+  }, [resumeData]);
 
   const applyPreset = (p) => {
     setTovPreset(p.id);

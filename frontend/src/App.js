@@ -18,6 +18,7 @@ function AppContent() {
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedProject, setSelectedProject] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [wizardResumeData, setWizardResumeData] = useState(null);
 
   useEffect(() => {
     if (user && api) {
@@ -53,9 +54,9 @@ function AppContent() {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard setActiveView={setActiveView} setSelectedProject={setSelectedProject} />;
+        return <Dashboard setActiveView={setActiveView} setSelectedProject={setSelectedProject} setWizardResumeData={setWizardResumeData} />;
       case 'wizard':
-        return <Wizard setActiveView={setActiveView} setSelectedProject={setSelectedProject} />;
+        return <Wizard setActiveView={setActiveView} setSelectedProject={setSelectedProject} resumeData={wizardResumeData} setWizardResumeData={setWizardResumeData} />;
       case 'project':
       case 'calendar':
       case 'personas':

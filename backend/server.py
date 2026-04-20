@@ -384,6 +384,22 @@ async def get_project(project_id: str, request: Request):
     p["id"] = str(p.pop("_id"))
     return p
 
+@api.get("/projects/{project_id}/wizard-state")
+async def get_wizard_state(project_id: str, request: Request):
+    user = await get_current_user(request)
+    p = await db.projects.find_one({"id": project_id, "user_id": user["_id"]}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Progetto non trovato")
+    wizard_step = p.get("wizard_step", 0)
+    result = {"project": p, "personas": [], "tov": None, "hooks": []}
+    if wizard_step >= 1:
+        result["personas"] = await db.personas.find({"project_id": project_id}, {"_id": 0}).to_list(20)
+    if wizard_step >= 2:
+        result["tov"] = await db.tov_profiles.find_one({"project_id": project_id}, {"_id": 0})
+    if wizard_step >= 3:
+        result["hooks"] = await db.hooks.find({"project_id": project_id}, {"_id": 0}).to_list(200)
+    return result
+
 @api.put("/projects/{project_id}")
 async def update_project(project_id: str, request: Request):
     user = await get_current_user(request)
