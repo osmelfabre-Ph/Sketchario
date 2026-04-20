@@ -9,8 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os, logging, uuid, json, secrets, base64, shutil
+import os, logging, uuid, json, secrets, base64, shutil, hashlib
 from urllib.parse import quote
+from starlette.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -1214,7 +1215,6 @@ async def social_oauth_start(platform: str, request: Request):
 
 @api.get("/social/oauth/callback")
 async def social_oauth_callback(request: Request):
-    from starlette.responses import HTMLResponse
     params = dict(request.query_params)
     code = params.get("code", "")
     state_id = params.get("state", "")
@@ -1910,7 +1910,6 @@ def _canva_callback_url() -> str:
 
 @api.get("/canva/auth-url")
 async def canva_auth_url(request: Request):
-    import hashlib
     await get_current_user(request)
     if not CANVA_CLIENT_ID:
         raise HTTPException(400, "Canva non configurato")
