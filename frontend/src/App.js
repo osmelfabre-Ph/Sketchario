@@ -41,12 +41,11 @@ function AppContent() {
 
   if (!user) return <AuthScreen />;
 
-  const isProjectView = ['project', 'calendar', 'personas', 'social'].includes(activeView);
+  const isProjectView = ['project', 'calendar', 'personas', 'social', 'analytics'].includes(activeView);
 
   const handleSetActiveView = (view) => {
-    // If switching to project sub-views, keep the project context
-    if (['calendar', 'personas', 'social'].includes(view) && !selectedProject) {
-      return; // Can't navigate to project sub-views without a project
+    if (['calendar', 'personas', 'social', 'analytics'].includes(view) && !selectedProject) {
+      return;
     }
     setActiveView(view);
   };
@@ -61,6 +60,7 @@ function AppContent() {
       case 'calendar':
       case 'personas':
       case 'social':
+      case 'analytics':
         return <ProjectView project={selectedProject} setActiveView={setActiveView} activeTab={activeView === 'project' ? 'list' : activeView} />;
       case 'profile':
         return <Profile />;

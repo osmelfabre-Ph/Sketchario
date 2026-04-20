@@ -37,6 +37,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
           { id: 'project', icon: CalendarBlank, label: 'Contenuti' },
           { id: 'personas', icon: Users, label: 'Personas' },
           { id: 'social', icon: Globe, label: 'Social' },
+          { id: 'analytics', icon: ChartBar, label: 'Analytics' },
           { id: 'profile', icon: User, label: 'Profilo' },
         ]
       : [
@@ -88,6 +89,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
     { id: 'calendar', icon: CalendarBlank, label: 'Calendario' },
     { id: 'personas', icon: Users, label: 'Personas' },
     { id: 'social', icon: Globe, label: 'Social' },
+    { id: 'analytics', icon: ChartBar, label: 'Analytics' },
   ];
 
   return (

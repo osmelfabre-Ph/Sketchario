@@ -73,7 +73,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   // Drag state for calendar
   const [dragContent, setDragContent] = useState(null);
 
-  useEffect(() => { if (activeTab) setTab(activeTab); }, [activeTab]);
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      setShowRightPanel(true);
+    } else if (activeTab) {
+      setTab(activeTab);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!project?.id) return;
@@ -253,6 +259,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 {t.label}
               </button>
             ))}
+            <button
+              data-testid="tab-analytics"
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${showRightPanel ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
+              onClick={() => setShowRightPanel(v => !v)}
+            >
+              Analytics
+            </button>
           </div>
 
           {/* Scrollable Content */}
