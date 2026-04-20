@@ -547,6 +547,13 @@ Rispondi con un array JSON di 6 oggetti."""
     try:
         result = await call_ai(system, prompt)
         personas = extract_json(result)
+        # Auto-save as draft immediately after generation
+        await db.personas.delete_many({"project_id": inp.project_id})
+        for p in personas:
+            p["project_id"] = inp.project_id
+            p["id"] = str(uuid.uuid4())
+            await db.personas.insert_one(p)
+        await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$set": {"wizard_step": 1}})
         return {"personas": personas}
     except Exception as e:
         logger.error(f"AI persona generation error: {e}")
@@ -603,6 +610,13 @@ Distribuisci i formati e i pillar secondo gli obiettivi. Rispondi con un array J
     try:
         result = await call_ai(system, prompt)
         hooks = extract_json(result)
+        # Auto-save as draft immediately after generation
+        await db.hooks.delete_many({"project_id": inp.project_id})
+        for h in hooks:
+            h["project_id"] = inp.project_id
+            h["id"] = str(uuid.uuid4())
+            await db.hooks.insert_one(h)
+        await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$set": {"wizard_step": 3}})
         return {"hooks": hooks}
     except Exception as e:
         logger.error(f"AI hook generation error: {e}")
