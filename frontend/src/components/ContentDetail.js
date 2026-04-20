@@ -57,6 +57,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [generatingImage, setGeneratingImage] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(null);
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
+  const [imageModel, setImageModel] = useState('flux');
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
@@ -283,7 +284,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true, isFlux: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
-                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore DALL-E'); }
+                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore generazione immagine: ' + (e.response?.data?.detail || e.message)); }
                 setGeneratingImage(false);
               },
 
@@ -487,6 +488,11 @@ export default function ContentDetail({ content: initialContent, project, onClos
           }
           {inputModal.isFlux && (
             <div className="mb-4">
+              <p className="text-xs text-[var(--text-muted)] mb-2">Motore</p>
+              <div className="flex gap-2 mb-3">
+                <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
+                <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
+              </div>
               <p className="text-xs text-[var(--text-muted)] mb-2">Stile</p>
               <div className="flex flex-wrap gap-2">
                 {[

@@ -1649,42 +1649,61 @@ async def media_library(project_id: str, request: Request):
             all_media.append(m)
     return all_media
 
-# ── IMAGE GENERATION (FLUX via fal.ai) ────────────────
+# ── IMAGE GENERATION (FLUX / Gemini Imagen) ───────────
 class DalleGenerateInput(BaseModel):
     content_id: str
     prompt: str
     project_id: str
+    model: str = "flux"
 
 @api.post("/media/generate-dalle")
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
     await get_current_user(request)
-    fal_key = os.environ.get("FAL_API_KEY", "")
-    if not fal_key:
-        raise HTTPException(400, "FAL_API_KEY non configurata")
     try:
-        async with httpx.AsyncClient(timeout=120) as hc:
-            r = await hc.post(
-                "https://fal.run/fal-ai/flux/dev",
-                headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
-                json={"prompt": inp.prompt, "image_size": "landscape_4_3", "num_images": 1, "output_format": "jpeg"}
+        if inp.model == "gemini":
+            gemini_key = os.environ.get("GEMINI_API_KEY", "")
+            if not gemini_key:
+                raise HTTPException(400, "GEMINI_API_KEY non configurata")
+            from google import genai as ggenai
+            from google.genai import types as gtypes
+            gclient = ggenai.Client(api_key=gemini_key)
+            resp = gclient.models.generate_images(
+                model="imagen-3.0-generate-002",
+                prompt=inp.prompt,
+                config=gtypes.GenerateImagesConfig(number_of_images=1, aspect_ratio="4:3")
             )
-            r.raise_for_status()
-            result = r.json()
-        image_url = result["images"][0]["url"]
-        async with httpx.AsyncClient(timeout=60) as hc:
-            img_r = await hc.get(image_url)
-            img_r.raise_for_status()
-            image_bytes = img_r.content
-        fname = f"flux_{uuid.uuid4().hex}.jpg"
+            image_bytes = resp.generated_images[0].image.image_bytes
+            fname = f"gemini_{uuid.uuid4().hex}.png"
+            source_label = "Nano Banana"
+        else:
+            fal_key = os.environ.get("FAL_API_KEY", "")
+            if not fal_key:
+                raise HTTPException(400, "FAL_API_KEY non configurata")
+            async with httpx.AsyncClient(timeout=120) as hc:
+                r = await hc.post(
+                    "https://fal.run/fal-ai/flux/dev",
+                    headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
+                    json={"prompt": inp.prompt, "image_size": "landscape_4_3", "num_images": 1, "output_format": "jpeg"}
+                )
+                r.raise_for_status()
+                image_url = r.json()["images"][0]["url"]
+            async with httpx.AsyncClient(timeout=60) as hc:
+                img_r = await hc.get(image_url)
+                img_r.raise_for_status()
+                image_bytes = img_r.content
+            fname = f"flux_{uuid.uuid4().hex}.jpg"
+            source_label = "FLUX"
         fpath = UPLOAD_DIR / fname
         with open(fpath, "wb") as f:
             f.write(image_bytes)
         media_url = f"/api/media/file/{fname}"
-        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"FLUX: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "flux", "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
+        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"{source_label}: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": inp.model, "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
         await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
         return media_doc
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"FLUX generation error: {e}")
+        logger.error(f"Image generation error ({inp.model}): {e}")
         raise HTTPException(500, f"Errore generazione immagine: {str(e)}")
 
 # ── ADMIN CONSOLE ─────────────────────────────────────
