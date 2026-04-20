@@ -52,8 +52,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('10:00');
   const [publishing, setPublishing] = useState(false);
-  // Mobile sub-view: 'editor' | 'social' | 'preview'
   const [mobileTab, setMobileTab] = useState('editor');
+  const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
@@ -265,9 +265,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <ArrowClockwise size={14} /> Rigenera
         </button>
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="DALL-E" onClick={async () => {
-            const prompt = window.prompt("Descrivi l'immagine:", content.hook_text); if (!prompt) return;
-            try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore DALL-E'); }
+          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="DALL-E" onClick={() => {
+            setInputModal({ title: 'Genera immagine con DALL-E', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true,
+              onConfirm: async (prompt) => {
+                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore DALL-E'); }
+              }
+            });
           }}>
             <Sparkle size={16} weight="fill" color="#a855f7" />
           </button>
@@ -298,9 +301,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
           }}>
             <PostNitroIcon size={16} />
           </button>
-          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Google Drive" onClick={async () => {
-            const url = window.prompt('URL diretto del file da Google Drive:'); if (!url) return;
-            try { const { data } = await api.post('/media/import-drive', { content_id: content.id, file_url: url }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore'); }
+          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Google Drive" onClick={() => {
+            setInputModal({ title: 'Importa da Google Drive', placeholder: 'Incolla qui il link diretto al file...', value: '', multiline: false,
+              onConfirm: async (url) => {
+                try { const { data } = await api.post('/media/import-drive', { content_id: content.id, file_url: url }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore'); }
+              }
+            });
           }}>
             <Download size={16} color="#34a853" />
           </button>
@@ -445,5 +451,33 @@ export default function ContentDetail({ content: initialContent, project, onClos
       )}
     </motion.div>
     </motion.div>
+
+    {/* Input Modal (replaces window.prompt) */}
+    {inputModal && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setInputModal(null)}>
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+          <h3 className="font-semibold text-base mb-3">{inputModal.title}</h3>
+          {inputModal.multiline
+            ? <textarea className="input-dark w-full mb-4" rows={5} placeholder={inputModal.placeholder}
+                defaultValue={inputModal.value}
+                id="input-modal-field"
+                style={{ paddingLeft: '0.75rem', paddingTop: '0.5rem', resize: 'vertical' }} />
+            : <input className="input-dark w-full mb-4" placeholder={inputModal.placeholder}
+                defaultValue={inputModal.value}
+                id="input-modal-field"
+                style={{ paddingLeft: '0.75rem' }} />
+          }
+          <div className="flex gap-2">
+            <button className="btn-ghost flex-1" onClick={() => setInputModal(null)}>Annulla</button>
+            <button className="btn-gradient flex-1" onClick={() => {
+              const val = document.getElementById('input-modal-field').value.trim();
+              if (!val) return;
+              setInputModal(null);
+              inputModal.onConfirm(val);
+            }}>Conferma</button>
+          </div>
+        </motion.div>
+      </div>
+    )}
   );
 }
