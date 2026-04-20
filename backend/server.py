@@ -1914,7 +1914,8 @@ async def canva_auth_url(request: Request):
     if not CANVA_CLIENT_ID:
         raise HTTPException(400, "Canva non configurato")
     callback = _canva_callback_url()
-    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={quote(callback, safe='')}&response_type=code&scope=design:content:read design:content:write asset:read asset:write"
+    scope = quote("design:content:read design:content:write asset:read asset:write profile:read", safe='')
+    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={quote(callback, safe='')}&response_type=code&scope={scope}"
     return {"auth_url": url, "configured": True}
 
 @api.get("/canva/oauth/callback")
