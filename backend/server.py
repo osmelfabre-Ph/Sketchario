@@ -982,7 +982,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "PINTEREST_CLIENT_ID",
         "client_secret_env": "PINTEREST_CLIENT_SECRET",
         "token_url": "https://api.pinterest.com/v5/oauth/token",
-        "scope": "boards:read,pins:read,pins:write",
+        "scope": "boards:read,pins:read,pins:write,user_accounts:read",
     },
 }
 
@@ -1252,7 +1252,7 @@ async def social_oauth_callback(request: Request):
         return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_success',platform:'{platform}',name:'{pname}'}}, '*');window.close();</script>")
     except Exception as e:
         logger.error(f"OAuth callback error {platform}: {e}")
-        msg = str(e).replace("'", "")
+        msg = str(e).replace("'", "").replace('"', '').replace('\n', ' ').replace('\r', '')
         return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_error',error:'{msg}'}}, '*');window.close();</script>")
 
 @api.get("/social/profiles")
