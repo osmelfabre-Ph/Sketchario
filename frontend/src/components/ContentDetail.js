@@ -352,6 +352,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   );
 
   return (
+    <>
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: isMobile ? 0 : 24 }}
@@ -479,5 +480,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </motion.div>
       </div>
     )}
+    </>
   );
 }
