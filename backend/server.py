@@ -602,12 +602,12 @@ Personas: {json.dumps([p.get('name','') + ' - ' + p.get('role','') for p in pers
 
 Per ogni hook restituisci:
 - hook_text: testo dell'hook (frase ad effetto)
-- format: "reel" o "carousel"
+- format: "reel", "carousel" o "prompted_reel" (usa prompted_reel per contenuti che beneficiano di un avatar parlante)
 - pillar: "awareness", "education" o "monetizing"
 - persona_target: nome della persona target
 - day_offset: giorno dalla partenza (0, 1, 2, ...)
 
-Distribuisci i formati e i pillar secondo gli obiettivi. Rispondi con un array JSON di {num_hooks} oggetti."""
+Distribuisci i formati e i pillar secondo gli obiettivi. Usa prompted_reel per circa il 20% degli hook se i formati del progetto lo includono. Rispondi con un array JSON di {num_hooks} oggetti."""
     try:
         result = await call_ai(system, prompt)
         hooks = extract_json(result)
@@ -672,9 +672,25 @@ async def generate_content(inp: GenerateContentInput, request: Request):
     generated = []
     for hook in hooks:
         system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
-        prompt = f"""Genera un contenuto social completo per questo hook:
+        fmt = hook.get('format', 'reel')
+        if fmt == 'prompted_reel':
+            prompt = f"""Sei un esperto di video marketing con avatar AI. Crea materiale completo per un Prompted Reel da usare con strumenti come HeyGen o D-ID.
+
 Hook: {hook.get('hook_text','')}
-Formato: {hook.get('format','reel')}
+Settore: {project['sector']}
+{tov_desc}
+
+Restituisci un oggetto JSON con:
+- opening_hook: testo parlato dei primi 3-5 secondi (cattura immediatamente, max 2 frasi)
+- script: script completo per l'avatar (scritto come se stesse parlando, con indicazioni di ritmo tra parentesi quadre: [pausa], [enfasi], [veloce], [lento])
+- visual_direction: indicazioni visive per la generazione video (sfondo, espressione, gesti, abbigliamento, stile)
+- caption: caption ottimizzata per la pubblicazione social (lunghezza {caption_len})
+- hashtags: stringa di hashtag separati da spazi
+- slides: array vuoto"""
+        else:
+            prompt = f"""Genera un contenuto social completo per questo hook:
+Hook: {hook.get('hook_text','')}
+Formato: {fmt}
 Settore: {project['sector']}
 {tov_desc}
 Lunghezza caption: {caption_len}
@@ -683,7 +699,9 @@ Restituisci un oggetto JSON con:
 - script: lo script completo del contenuto (per reel: script parlato; per carousel: testo di ogni slide separato da ---)
 - caption: la caption per il post
 - hashtags: stringa di hashtag separati da spazi
-- slides: se carousel, array di stringhe (testo per ogni slide); se reel, array vuoto"""
+- slides: se carousel, array di stringhe (testo per ogni slide); se reel, array vuoto
+- opening_hook: stringa vuota
+- visual_direction: stringa vuota"""
         try:
             result = await call_ai(system, prompt)
             content_data = extract_json(result)
@@ -692,11 +710,13 @@ Restituisci un oggetto JSON con:
                 "project_id": inp.project_id,
                 "hook_id": hook.get("id", ""),
                 "hook_text": hook.get("hook_text", ""),
-                "format": hook.get("format", "reel"),
+                "format": fmt,
                 "pillar": hook.get("pillar", ""),
                 "persona_target": hook.get("persona_target", ""),
                 "day_offset": hook.get("day_offset", 0),
                 "script": content_data.get("script", ""),
+                "opening_hook": content_data.get("opening_hook", ""),
+                "visual_direction": content_data.get("visual_direction", ""),
                 "caption": content_data.get("caption", ""),
                 "hashtags": content_data.get("hashtags", ""),
                 "slides": content_data.get("slides", []),
@@ -730,6 +750,8 @@ async def create_post(inp: PostCreate, request: Request):
         "persona_target": "",
         "day_offset": 0,
         "script": "",
+        "opening_hook": "",
+        "visual_direction": "",
         "caption": "",
         "hashtags": "",
         "slides": [],
@@ -739,15 +761,16 @@ async def create_post(inp: PostCreate, request: Request):
     }
     if inp.use_ai:
         tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
-        tov_desc = ""
-        if tov:
-            tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10."
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10." if tov else ""
         system = "Sei un copywriter. Genera contenuto social in italiano. Rispondi SOLO con JSON."
-        prompt = f"Genera script, caption e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array)."
+        if inp.format == 'prompted_reel':
+            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction, caption, hashtags, slides (array vuoto)."
+        else:
+            prompt = f"Genera script, caption e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
-            content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides"]})
+            content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook", "visual_direction"]})
         except Exception as e:
             logger.error(f"AI post creation error: {e}")
     await db.contents.insert_one({k: v for k, v in content_doc.items() if k != "_id"})
@@ -800,17 +823,25 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
     system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Rigenera questo contenuto migliorandolo. Rispondi SOLO con JSON valido. Scrivi in italiano."
-    prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
-Hook originale: {content.get('hook_text','')}
-Formato: {content.get('format','reel')}
+    fmt = content.get('format', 'reel')
+    if fmt == 'prompted_reel':
+        prompt = f"""Rigenera questo Prompted Reel migliorandolo:
+Hook: {content.get('hook_text','')}
 Settore: {project.get('sector','')}
 {tov_desc}
-Restituisci JSON con: hook_text, script, caption, hashtags, slides (array di stringhe per carousel, vuoto per reel)"""
+Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][enfasi]), visual_direction, caption, hashtags, slides (array vuoto)"""
+    else:
+        prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
+Hook originale: {content.get('hook_text','')}
+Formato: {fmt}
+Settore: {project.get('sector','')}
+{tov_desc}
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (array di stringhe per carousel, vuoto per reel), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
         updates = {}
-        for k in ["hook_text", "script", "caption", "hashtags", "slides"]:
+        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook", "visual_direction"]:
             if k in data:
                 updates[k] = data[k]
         if updates:

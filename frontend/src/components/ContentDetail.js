@@ -40,6 +40,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const isMobile = useIsMobile();
   const [content, setContent] = useState(initialContent);
   const [editScript, setEditScript] = useState(initialContent.script || '');
+  const [editOpeningHook, setEditOpeningHook] = useState(initialContent.opening_hook || '');
+  const [editVisualDirection, setEditVisualDirection] = useState(initialContent.visual_direction || '');
   const [editCaption, setEditCaption] = useState(initialContent.caption || '');
   const [editHashtags, setEditHashtags] = useState(String(initialContent.hashtags || ''));
   const [socialProfiles, setSocialProfiles] = useState([]);
@@ -67,8 +69,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const save = async () => {
     setSaving(true);
     try {
-      await api.put(`/contents/${content.id}`, { script: editScript, caption: editCaption, hashtags: editHashtags });
-      const updated = { ...content, script: editScript, caption: editCaption, hashtags: editHashtags };
+      await api.put(`/contents/${content.id}`, { script: editScript, caption: editCaption, hashtags: editHashtags, opening_hook: editOpeningHook, visual_direction: editVisualDirection });
+      const updated = { ...content, script: editScript, caption: editCaption, hashtags: editHashtags, opening_hook: editOpeningHook, visual_direction: editVisualDirection };
       setContent(updated); onUpdate?.(updated);
     } catch {}
     setSaving(false);
@@ -80,6 +82,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     try {
       const { data } = await api.post('/contents/regenerate', { content_id: content.id, project_id: project.id });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
+      setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
     } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
     setSaving(false);
@@ -170,10 +173,31 @@ export default function ContentDetail({ content: initialContent, project, onClos
 
   const EditorColumn = () => (
     <div className={isMobile ? 'p-4' : 'flex-1 overflow-y-auto p-6'}>
-      <div className="mb-4">
-        <textarea className="input-dark w-full text-sm" rows={isMobile ? 4 : 6} value={editScript} onChange={e => setEditScript(e.target.value)}
-          placeholder="Script del contenuto..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
-      </div>
+      {content.format === 'prompted_reel' && (
+        <>
+          <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: '#a855f7' }}>⚡ OPENING HOOK (primi 3-5 secondi)</p>
+            <textarea className="input-dark w-full text-sm" rows={2} value={editOpeningHook} onChange={e => setEditOpeningHook(e.target.value)}
+              placeholder="Testo di apertura ad impatto..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+          </div>
+          <div className="mb-4">
+            <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">Script Avatar</p>
+            <textarea className="input-dark w-full text-sm" rows={isMobile ? 6 : 8} value={editScript} onChange={e => setEditScript(e.target.value)}
+              placeholder="Script per l'avatar (usa [pausa], [enfasi], [veloce]...)..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+          </div>
+          <div className="mb-4">
+            <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">Regia Visiva</p>
+            <textarea className="input-dark w-full text-sm" rows={isMobile ? 3 : 4} value={editVisualDirection} onChange={e => setEditVisualDirection(e.target.value)}
+              placeholder="Sfondo, gesti, abbigliamento, stile..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+          </div>
+        </>
+      )}
+      {content.format !== 'prompted_reel' && (
+        <div className="mb-4">
+          <textarea className="input-dark w-full text-sm" rows={isMobile ? 4 : 6} value={editScript} onChange={e => setEditScript(e.target.value)}
+            placeholder="Script del contenuto..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+        </div>
+      )}
       <div className="mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">Caption</p>
         <textarea className="input-dark w-full text-sm" rows={isMobile ? 3 : 5} value={editCaption} onChange={e => setEditCaption(e.target.value)}
@@ -214,12 +238,23 @@ export default function ContentDetail({ content: initialContent, project, onClos
         )}
       </div>
       <div className="flex gap-2 flex-wrap items-center">
-        <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${editCaption}\n\n${editHashtags}`); alert('Copiato!'); }}>
-          <Copy size={14} /> Copia
-        </button>
-        <button className="btn-ghost text-xs py-1.5 px-3" onClick={convert}>
-          {content.format === 'reel' ? <><Image size={14} /> Carousel</> : <><Video size={14} /> Reel</>}
-        </button>
+        {content.format === 'prompted_reel' ? (
+          <button className="btn-gradient text-xs py-1.5 px-3" onClick={() => {
+            const avatarScript = `OPENING:\n${editOpeningHook}\n\nSCRIPT:\n${editScript}\n\nREGIA:\n${editVisualDirection}`;
+            navigator.clipboard.writeText(avatarScript); alert('Script avatar copiato!');
+          }}>
+            🤖 Copia Script Avatar
+          </button>
+        ) : (
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${editCaption}\n\n${editHashtags}`); alert('Copiato!'); }}>
+            <Copy size={14} /> Copia
+          </button>
+        )}
+        {content.format !== 'prompted_reel' && (
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={convert}>
+            {content.format === 'reel' ? <><Image size={14} /> Carousel</> : <><Video size={14} /> Reel</>}
+          </button>
+        )}
         <button className="btn-ghost text-xs py-1.5 px-3" onClick={regenerate} disabled={saving}>
           <ArrowClockwise size={14} /> Rigenera
         </button>
@@ -301,9 +336,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
       {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-[var(--border-color)] flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`badge text-[10px] ${content.format === 'reel' ? 'pink' : 'blue'}`}>
-            {content.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
-            <span className="ml-1">{content.format}</span>
+          <span className={`badge text-[10px] ${content.format === 'reel' ? 'pink' : content.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
+            {content.format === 'reel' ? <Video size={10} /> : content.format === 'prompted_reel' ? <span>🤖</span> : <Image size={10} />}
+            <span className="ml-1">{content.format === 'prompted_reel' ? 'prompted reel' : content.format}</span>
           </span>
           <h2 className="font-semibold text-xs md:text-sm truncate">{content.hook_text}</h2>
         </div>

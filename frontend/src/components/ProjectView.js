@@ -271,12 +271,12 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                         <img src={`${process.env.REACT_APP_BACKEND_URL}${c.media[0].url}`} alt="" className="w-full h-full object-cover" />
                       </div>
                     ) : (
-                      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-16 md:h-20 rounded-t-[0.9rem] flex items-center justify-center" style={{ background: c.format === 'reel' ? 'rgba(236,72,153,0.08)' : 'rgba(99,102,241,0.08)' }}>
-                        {c.format === 'reel' ? <Video size={24} className="text-[var(--accent-pink)] opacity-40" /> : <Image size={24} className="text-[var(--gradient-start)] opacity-40" />}
+                      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-16 md:h-20 rounded-t-[0.9rem] flex items-center justify-center" style={{ background: c.format === 'reel' ? 'rgba(236,72,153,0.08)' : c.format === 'prompted_reel' ? 'rgba(168,85,247,0.08)' : 'rgba(99,102,241,0.08)' }}>
+                        {c.format === 'reel' ? <Video size={24} className="text-[var(--accent-pink)] opacity-40" /> : c.format === 'prompted_reel' ? <span style={{ fontSize: 24, opacity: 0.4 }}>🤖</span> : <Image size={24} className="text-[var(--gradient-start)] opacity-40" />}
                       </div>
                     )}
                     <div className="flex items-start gap-2 mb-2">
-                      <span className={`badge text-[9px] ${c.format === 'reel' ? 'pink' : 'blue'}`}>{c.format}</span>
+                      <span className={`badge text-[9px] ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>{c.format === 'prompted_reel' ? '🤖 prompted reel' : c.format}</span>
                       <span className={`badge text-[9px] ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
                     </div>
                     <h4 className="text-sm font-semibold mb-1 line-clamp-2">{c.hook_text}</h4>
@@ -539,6 +539,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div className="flex gap-2">
                   <button className={`preset-btn flex-1 ${newPostFormat === 'reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('reel')}><Video size={14} /> Reel</button>
                   <button className={`preset-btn flex-1 ${newPostFormat === 'carousel' ? 'active' : ''}`} onClick={() => setNewPostFormat('carousel')}><Image size={14} /> Carousel</button>
+                  <button className={`preset-btn flex-1 ${newPostFormat === 'prompted_reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('prompted_reel')}>🤖 Prompted Reel</button>
                 </div>
                 <div className="flex gap-2">
                   <button className={`preset-btn flex-1 ${!newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(false)}>Da zero</button>
