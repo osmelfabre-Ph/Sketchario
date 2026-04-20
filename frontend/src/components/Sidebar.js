@@ -96,7 +96,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
       <div className="flex items-center gap-2 mb-6" style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
         {collapsed
           ? <img src="/assets/favicon.jpg" alt="Sketchario" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
-          : <img src="/assets/logo-sketchario.jpg" alt="Sketchario" style={{ height: 32, maxWidth: '140px', objectFit: 'contain', flexShrink: 0 }} />
+          : <img src="/assets/LOGO-sketchario.jpg" alt="Sketchario" style={{ height: 32, maxWidth: '140px', objectFit: 'contain', flexShrink: 0 }} />
         }
         {!collapsed && (
           <button data-testid="sidebar-toggle" className="ml-auto p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(true)}>
