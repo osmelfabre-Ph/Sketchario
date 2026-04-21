@@ -411,7 +411,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               </div>
               <span className="text-[9px] font-bold px-2 py-0.5 rounded" style={{ background: `${pi.color}20`, color: pi.color }}>{pi.name.toUpperCase()}</span>
             </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-2">{previewCaption}</p>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-2" style={{ whiteSpace: 'pre-wrap' }}>{previewCaption}</p>
             {content.media && content.media[0] && content.media[0].type === 'image' && (
               <img src={`${process.env.REACT_APP_BACKEND_URL}${content.media[0].url}`} alt="" className="w-full h-32 md:h-40 object-cover rounded-lg mb-2" />
             )}

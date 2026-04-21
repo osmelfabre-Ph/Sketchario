@@ -71,6 +71,11 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const [savingTovLibrary, setSavingTovLibrary] = useState(false);
   const [applyingTovId, setApplyingTovId] = useState(null);
 
+  // Feed item modal + pinning
+  const [selectedFeedItem, setSelectedFeedItem] = useState(null);
+  const [pinnedItemIds, setPinnedItemIds] = useState(new Set());
+  const [pinningItemId, setPinningItemId] = useState(null);
+
   // Queue + Analytics
   const [queueItems, setQueueItems] = useState([]);
   const [rightPanelWidth, setRightPanelWidth] = useState(280);
@@ -102,6 +107,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {}),
       api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {}),
       api.get(`/feeds/${project.id}`).then(r => setFeeds(r.data)).catch(() => {}),
+      api.get(`/feeds/${project.id}/pinned`).then(r => setPinnedItemIds(new Set(r.data.map(p => p.item_id)))).catch(() => {}),
       api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
       api.post(`/feeds/ai-suggestions/${project.id}`).then(r => setAiFeedItems(r.data || [])).catch(() => {}),
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {}),
@@ -274,6 +280,25 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       toast.success('Programmazione annullata', { id: tid });
     } catch (e) { toast.error('Errore annullamento', { id: tid }); }
     setCancellingQueueId(null);
+  };
+
+  const pinFeedItem = async (item, itemType) => {
+    const itemId = item.id;
+    setPinningItemId(itemId);
+    try {
+      const { data } = await api.post(`/feeds/items/${itemId}/pin`, {
+        project_id: project.id,
+        item_data: item,
+        item_type: itemType
+      });
+      setPinnedItemIds(prev => {
+        const next = new Set(prev);
+        if (data.pinned) { next.add(itemId); toast.success('Salvato — sopravvive alla rigenerazione'); }
+        else { next.delete(itemId); toast.success('Pin rimosso'); }
+        return next;
+      });
+    } catch { toast.error('Errore pin'); }
+    setPinningItemId(null);
   };
 
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -524,8 +549,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   </div>
                   <div className="space-y-2">
                     {feedItems.slice(0, 8).map(item => (
-                      <div key={item.id} className="card cursor-pointer hover:border-[var(--gradient-start)] transition-colors" onClick={() => feedToPost(item)}>
-                        <p className="text-sm font-medium mb-1">{item.title}</p>
+                      <div key={item.id} className="card cursor-pointer hover:border-[var(--gradient-start)] transition-colors relative" onClick={() => setSelectedFeedItem({ ...item, _type: 'rss' })}>
+                        {pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
+                        <p className="text-sm font-medium mb-1 pr-5">{item.title}</p>
                         <p className="text-xs text-[var(--text-muted)]">{item.feed_name}</p>
                       </div>
                     ))}
@@ -547,15 +573,16 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   </div>
                   <div className="space-y-2">
                     {aiFeedItems.map(item => (
-                      <div key={item.id} className="card cursor-pointer hover:border-[var(--accent-purple)] transition-colors"
+                      <div key={item.id} className="card cursor-pointer hover:border-[var(--accent-purple)] transition-colors relative"
                         style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: '1px solid rgba(99,102,241,0.15)' }}
-                        onClick={() => feedToPost({ title: item.title, summary: item.summary })}>
+                        onClick={() => setSelectedFeedItem({ ...item, _type: 'ai' })}>
+                        {pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className={`w-2 h-2 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
                           <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase">{item.format || 'reel'}</span>
                           {item.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
                         </div>
-                        <p className="text-sm font-medium mb-1">{item.title}</p>
+                        <p className="text-sm font-medium mb-1 pr-5">{item.title}</p>
                         <p className="text-xs text-[var(--text-muted)]">{item.summary}</p>
                       </div>
                     ))}
@@ -583,10 +610,11 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
                 {feedItems.slice(0, 6).map(item => (
-                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--gradient-start)] transition-colors"
-                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-                    onClick={() => feedToPost(item)}>
-                    <p className="text-xs font-medium line-clamp-2 mb-1">{item.title}</p>
+                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--gradient-start)] transition-colors relative"
+                    style={{ background: 'var(--bg-card)', border: `1px solid ${pinnedItemIds.has(item.id) ? 'var(--gradient-start)' : 'var(--border-color)'}` }}
+                    onClick={() => setSelectedFeedItem({ ...item, _type: 'rss' })}>
+                    {pinnedItemIds.has(item.id) && <span className="absolute top-1 right-1 text-[9px]">📌</span>}
+                    <p className="text-xs font-medium line-clamp-2 mb-1 pr-3">{item.title}</p>
                     <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.feed_name}</p>
                   </div>
                 ))}
@@ -609,15 +637,16 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
                 {aiFeedItems.map(item => (
-                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--accent-purple)] transition-colors"
-                    style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: '1px solid rgba(99,102,241,0.15)' }}
-                    onClick={() => feedToPost({ title: item.title, summary: item.summary })}>
+                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--accent-purple)] transition-colors relative"
+                    style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: `1px solid ${pinnedItemIds.has(item.id) ? 'rgba(168,85,247,0.6)' : 'rgba(99,102,241,0.15)'}` }}
+                    onClick={() => setSelectedFeedItem({ ...item, _type: 'ai' })}>
+                    {pinnedItemIds.has(item.id) && <span className="absolute top-1 right-1 text-[9px]">📌</span>}
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <span className={`w-1.5 h-1.5 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
                       <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase">{item.format || 'reel'}</span>
                       {item.trend_tag && <span className="text-[9px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
                     </div>
-                    <p className="text-xs font-medium line-clamp-2 mb-1">{item.title}</p>
+                    <p className="text-xs font-medium line-clamp-2 mb-1 pr-3">{item.title}</p>
                     <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.summary}</p>
                   </div>
                 ))}
@@ -711,6 +740,76 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       <AnimatePresence>
         {selectedContent && (
           <ContentDetail content={selectedContent} project={project} onClose={() => setSelectedContent(null)} onUpdate={handleContentUpdate} />
+        )}
+
+        {/* Feed Item Modal */}
+        {selectedFeedItem && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setSelectedFeedItem(null)}>
+            <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+              className="w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl overflow-hidden flex flex-col"
+              style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', maxHeight: '85vh' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div className="flex items-start justify-between p-4 md:p-5 border-b border-[var(--border-color)] flex-shrink-0">
+                <div className="flex-1 min-w-0 pr-3">
+                  {selectedFeedItem._type === 'ai' && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="badge purple text-[10px]">✨ Idea AI</span>
+                      {selectedFeedItem.format && <span className="badge text-[10px]" style={{ background: 'var(--bg-card)' }}>{selectedFeedItem.format}</span>}
+                      {selectedFeedItem.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{selectedFeedItem.trend_tag}</span>}
+                    </div>
+                  )}
+                  {selectedFeedItem._type === 'rss' && selectedFeedItem.feed_name && (
+                    <p className="text-[10px] text-[var(--text-muted)] mb-1 uppercase font-semibold">{selectedFeedItem.feed_name}</p>
+                  )}
+                  <h2 className="text-base font-bold leading-snug">{selectedFeedItem.title}</h2>
+                </div>
+                <button className="btn-ghost p-1.5 flex-shrink-0" onClick={() => setSelectedFeedItem(null)}><X size={18} /></button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-5">
+                {selectedFeedItem.summary && (
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-4" style={{ whiteSpace: 'pre-wrap' }}>{selectedFeedItem.summary}</p>
+                )}
+                {selectedFeedItem.link && (
+                  <a href={selectedFeedItem.link} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-[var(--accent-purple)] hover:underline flex items-center gap-1 mb-4">
+                    <Globe size={12} /> Leggi articolo originale →
+                  </a>
+                )}
+                {selectedFeedItem.published && (
+                  <p className="text-[10px] text-[var(--text-muted)]">Pubblicato: {selectedFeedItem.published}</p>
+                )}
+              </div>
+
+              {/* Footer actions */}
+              <div className="flex items-center gap-3 p-4 border-t border-[var(--border-color)] flex-shrink-0" style={{ background: 'var(--bg-secondary)' }}>
+                <button
+                  className={`btn-ghost text-xs py-2 px-3 flex items-center gap-1.5 ${pinnedItemIds.has(selectedFeedItem.id) ? 'text-[var(--accent-purple)]' : ''}`}
+                  disabled={pinningItemId === selectedFeedItem.id}
+                  onClick={() => pinFeedItem(selectedFeedItem, selectedFeedItem._type)}
+                  title={pinnedItemIds.has(selectedFeedItem.id) ? 'Rimuovi pin' : 'Salva (sopravvive alla rigenerazione)'}
+                >
+                  {pinningItemId === selectedFeedItem.id
+                    ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    : <span>{pinnedItemIds.has(selectedFeedItem.id) ? '📌' : '📍'}</span>}
+                  {pinnedItemIds.has(selectedFeedItem.id) ? 'Salvato' : 'Salva'}
+                </button>
+                <button
+                  className="btn-gradient flex-1 text-sm py-2"
+                  disabled={feedLoading}
+                  onClick={() => { setSelectedFeedItem(null); feedToPost(selectedFeedItem); }}
+                >
+                  {feedLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" />Generazione...</> : '✦ Crea Post →'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

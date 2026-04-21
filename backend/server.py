@@ -108,6 +108,19 @@ GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIA
 - Emoji: massimo 3-4, strategicamente posizionate, mai a caso
 - Paragrafi brevi con spazi per leggibilità mobile
 
+## FORMATTAZIONE TESTO (OBBLIGATORIA — non negoziabile)
+- Script: SEMPRE strutturato in 4 blocchi VISIVAMENTE SEPARATI con una riga vuota (\n\n) tra ogni blocco:
+  Blocco 1 (Problema/Hook): 2-3 frasi brevi
+  \n\n
+  Blocco 2 (Risonanza): 2-3 frasi empatiche
+  \n\n
+  Blocco 3 (Soluzione/Valore): 2-4 frasi concrete
+  \n\n
+  Blocco 4 (CTA): 1-2 frasi di chiusura
+- Caption: SEMPRE strutturata in 3 blocchi separati da \n\n: Hook → Corpo → CTA
+- MAI scrivere script o caption come flusso unico di testo senza interruzioni di paragrafo.
+- Il \n\n DEVE essere presente nella stringa JSON come sequenza \\n\\n.
+
 ## QUALITÀ MINIMA RICHIESTA
 - Ogni pezzo deve creare TENSIONE PSICOLOGICA (FOMO, curiosità, empatia, sfida)
 - Specifico batte generico SEMPRE. Numeri concreti, esempi reali, situazioni riconoscibili
@@ -813,7 +826,7 @@ async def create_post(inp: PostCreate, request: Request):
         if inp.format == 'prompted_reel':
             prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."
         else:
-            prompt = f"Genera script, caption e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
+            prompt = f"Genera script (con paragrafi separati da \\n\\n), caption (con paragrafi separati da \\n\\n) e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
@@ -1589,6 +1602,38 @@ async def refresh_feeds(project_id: str, request: Request):
     items = await get_feed_items(project_id, request)
     return {"ok": True, "count": len(items)}
 
+class PinItemInput(BaseModel):
+    project_id: str
+    item_data: dict
+    item_type: str = "rss"  # "rss" or "ai"
+
+@api.post("/feeds/items/{item_id}/pin")
+async def pin_feed_item(item_id: str, inp: PinItemInput, request: Request):
+    user = await get_current_user(request)
+    existing = await db.pinned_feed_items.find_one({"item_id": item_id, "user_id": user["_id"]})
+    if existing:
+        await db.pinned_feed_items.delete_one({"item_id": item_id, "user_id": user["_id"]})
+        return {"pinned": False}
+    doc = {
+        "item_id": item_id,
+        "user_id": user["_id"],
+        "project_id": inp.project_id,
+        "item_data": inp.item_data,
+        "item_type": inp.item_type,
+        "pinned_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.pinned_feed_items.insert_one(doc)
+    doc.pop("_id", None)
+    return {"pinned": True}
+
+@api.get("/feeds/{project_id}/pinned")
+async def get_pinned_items(project_id: str, request: Request):
+    user = await get_current_user(request)
+    items = await db.pinned_feed_items.find(
+        {"project_id": project_id, "user_id": user["_id"]}, {"_id": 0}
+    ).to_list(50)
+    return items
+
 @api.post("/feeds/generate-content")
 async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     user = await get_current_user(request)
@@ -1606,7 +1651,7 @@ Sommario: {inp.feed_item_summary}
 Settore progetto: {project['sector']}
 {tov_desc}
 
-Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script, caption, hashtags, format ("reel" o "carousel")"""
+Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script (paragrafi separati da \n\n: Problema → Risonanza → Soluzione → CTA), caption (paragrafi separati da \n\n: Hook → Corpo → CTA), hashtags, format ("reel" o "carousel")"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
@@ -1679,20 +1724,28 @@ Restituisci un JSON array di 5 oggetti con:
             s["id"] = f"ai_{project_id}_{i}"
             s["source"] = "ai"
 
+        # Merge pinned AI items back (pinned items survive regeneration)
+        pinned = await db.pinned_feed_items.find(
+            {"project_id": project_id, "user_id": user["_id"], "item_type": "ai"}, {"_id": 0}
+        ).to_list(20)
+        pinned_data = [p["item_data"] for p in pinned]
+        pinned_ids = {p["item_data"].get("id") for p in pinned}
+        all_suggestions = pinned_data + [s for s in suggestions if s.get("id") not in pinned_ids]
+
         # Cache the result
         await db.ai_feed_cache.update_one(
             {"cache_key": cache_key},
-            {"$set": {"cache_key": cache_key, "suggestions": suggestions, "cached_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"cache_key": cache_key, "suggestions": all_suggestions, "cached_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True
         )
-        return suggestions
+        return all_suggestions
     except Exception as e:
         logger.error(f"AI feed suggestions error: {e}")
         return []
 
 @api.post("/feeds/ai-suggestions/{project_id}/refresh")
 async def refresh_ai_feed_suggestions(project_id: str, request: Request):
-    """Force refresh AI feed suggestions by clearing cache."""
+    """Force refresh AI feed suggestions, keeping pinned items."""
     user = await get_current_user(request)
     cache_key = f"ai_feed_{project_id}"
     await db.ai_feed_cache.delete_one({"cache_key": cache_key})
