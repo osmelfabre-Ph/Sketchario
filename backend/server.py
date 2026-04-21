@@ -226,6 +226,12 @@ class ContentUpdate(BaseModel):
     caption: Optional[str] = None
     hashtags: Optional[str] = None
     slides: Optional[list] = None
+    opening_hook: Optional[str] = None
+    visual_direction: Optional[str] = None
+    hook_text: Optional[str] = None
+    day_offset: Optional[int] = None
+    status: Optional[str] = None
+    urgent: Optional[bool] = None
 
 class TovProfileInput(BaseModel):
     project_id: str
@@ -817,6 +823,7 @@ async def create_post(inp: PostCreate, request: Request):
         "slides": [],
         "media": [],
         "status": "draft",
+        "urgent": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     if inp.use_ai:
