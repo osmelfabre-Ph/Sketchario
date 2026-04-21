@@ -6,7 +6,7 @@ import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
   CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check,
-  Presentation, GoogleLogo, XCircle
+  XCircle
 } from '@phosphor-icons/react';
 
 const PLATFORM_ICONS = {
@@ -34,7 +34,6 @@ function useIsMobile() {
 
 export default function ContentDetail({ content: initialContent, project, onClose, onUpdate }) {
   const { api } = useAuth();
-  const [creatingSlides, setCreatingSlides] = useState(false);
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaLoading, setCanvaLoading] = useState(false);
   const isMobile = useIsMobile();
@@ -88,11 +87,15 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const openCanvaEditor = async () => {
     setCanvaLoading(true);
     const tid = toast.loading('Creazione design Canva...');
+    // Open window immediately on user click to bypass popup blockers
+    const win = window.open('about:blank', '_blank');
     try {
       const { data } = await api.post('/canva/create-design', { content_id: content.id, format: content.format });
-      window.open(data.edit_url, '_blank', 'noopener');
+      if (win) win.location.href = data.edit_url;
+      else window.open(data.edit_url, '_blank');
       toast.success('Design aperto in Canva — torna qui per importare le immagini', { id: tid, duration: 6000 });
     } catch (e) {
+      if (win) win.close();
       if (e.response?.status === 401) { setCanvaConnected(false); }
       toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message), { id: tid });
     }
@@ -156,23 +159,41 @@ export default function ContentDetail({ content: initialContent, project, onClos
       toast.dismiss(tid);
       await loadGooglePickerApi();
       const { PickerBuilder, Action } = window.google.picker;
+      // No MIME filter: filtering causes flat global search instead of tree navigation.
+      // Users see the full folder tree and can navigate normally.
       const view = new window.google.picker.DocsView()
         .setIncludeFolders(true)
-        .setSelectFolderEnabled(false)
-        .setMimeTypes('image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/avi,video/x-msvideo');
+        .setSelectFolderEnabled(false);
+      const pickerToken = data.token;
       new PickerBuilder()
         .addView(view)
-        .setOAuthToken(data.token)
+        .setOAuthToken(pickerToken)
         .setCallback(async (pickerData) => {
           if (pickerData.action !== Action.PICKED) return;
           const doc = pickerData.docs[0];
-          const importTid = toast.loading(`Importazione ${doc.name}...`);
+          // Only accept images and videos
+          const allowed = ['image/', 'video/'];
+          if (!allowed.some(t => (doc.mimeType || '').startsWith(t))) {
+            toast.error('Seleziona un\'immagine o un video, non un documento.');
+            return;
+          }
+          const importTid = toast.loading(`Download di "${doc.name}" in corso...`);
           try {
-            const { data: media } = await api.post('/media/import-drive', { content_id: content.id, file_id: doc.id, file_name: doc.name });
+            // Download client-side with the picker token (avoids server-side scope issues)
+            const dlResp = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${doc.id}?alt=media`,
+              { headers: { Authorization: `Bearer ${pickerToken}` } }
+            );
+            if (!dlResp.ok) throw new Error(`Google Drive ha rifiutato il download (${dlResp.status})`);
+            const blob = await dlResp.blob();
+            const file = new File([blob], doc.name, { type: doc.mimeType || blob.type });
+            const fd = new FormData();
+            fd.append('file', file);
+            const { data: media } = await api.post(`/media/upload/${content.id}`, fd);
             const updated = { ...content, media: [...(content.media || []), media] };
             setContent(updated); onUpdate?.(updated);
             toast.success(`"${doc.name}" importato da Drive`, { id: importTid });
-          } catch (e) { toast.error('Errore importazione: ' + (e.response?.data?.detail || e.message), { id: importTid }); }
+          } catch (e) { toast.error('Errore importazione: ' + e.message, { id: importTid }); }
         })
         .build()
         .setVisible(true);
@@ -473,32 +494,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
               : <CanvaIcon size={16} />}
             {canvaConnected && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400 border border-[var(--bg-primary)]" />}
           </button>
-          {['carousel', 'prompted_reel'].includes(content.format) && (
-            <button
-              className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors"
-              title="Esporta su Google Slides"
-              disabled={creatingSlides}
-              onClick={async () => {
-                setCreatingSlides(true);
-                try {
-                  const { data } = await api.post('/slides/create-google', { content_id: content.id, project_id: project.id });
-                  window.open(data.url, '_blank');
-                } catch(e) {
-                  const msg = e.response?.data?.detail || e.message;
-                  if (msg?.includes('Google non connesso')) {
-                    toast.error('Collega prima il tuo account Google nella sezione Social del progetto.');
-                  } else {
-                    toast.error('Errore Google Slides: ' + msg);
-                  }
-                }
-                setCreatingSlides(false);
-              }}
-            >
-              {creatingSlides
-                ? <div className="w-4 h-4 border-2 border-[#4285F4] border-t-transparent rounded-full animate-spin" />
-                : <Presentation size={16} color="#4285F4" />}
-            </button>
-          )}
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Importa da Google Drive" onClick={openDrivePicker}>
             <Download size={16} color="#34a853" />
           </button>
