@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   CalendarBlank, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
-  Eye, Sparkle, Trash, Globe,
+  Eye, Sparkle, Trash, Globe, Presentation,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
   BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp
 } from '@phosphor-icons/react';
@@ -18,6 +18,7 @@ const PLATFORM_ICONS = {
   linkedin: { Icon: LinkedinLogo, color: '#0A66C2', name: 'LinkedIn' },
   tiktok: { Icon: TiktokLogo, color: '#ffffff', name: 'TikTok' },
   pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
+  google_slides: { Icon: Presentation, color: '#4285F4', name: 'Google Slides' },
 };
 
 function useIsMobile() {

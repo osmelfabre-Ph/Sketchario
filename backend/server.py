@@ -1016,6 +1016,15 @@ SOCIAL_PLATFORMS = {
         "token_url": "https://api.pinterest.com/v5/oauth/token",
         "scope": "boards:read,pins:read,pins:write,user_accounts:read",
     },
+    "google_slides": {
+        "name": "Google Slides",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "client_id_env": "GOOGLE_CLIENT_ID",
+        "client_secret_env": "GOOGLE_CLIENT_SECRET",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scope": "https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive.file openid email",
+        "extra_params": "access_type=offline&prompt=consent",
+    },
 }
 
 def _app_url() -> str:
@@ -1112,6 +1121,29 @@ async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
         pr.raise_for_status()
         profile = pr.json()
         return {"access_token": token, "profile_id": profile.get("username", ""), "profile_name": profile.get("username", "Pinterest")}
+
+async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id, "client_secret": client_secret,
+            "code": code, "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+        })
+        r.raise_for_status()
+        token_data = r.json()
+        access_token = token_data["access_token"]
+        refresh_token = token_data.get("refresh_token", "")
+        ui_r = await c.get("https://www.googleapis.com/oauth2/v2/userinfo",
+                           headers={"Authorization": f"Bearer {access_token}"})
+        ui_r.raise_for_status()
+        ui = ui_r.json()
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "profile_id": ui.get("id", ""),
+            "profile_name": ui.get("email", ui.get("name", "Google")),
+        }
 
 async def _publish_facebook(token: str, text: str, image_url: Optional[str] = None) -> str:
     async with httpx.AsyncClient(timeout=30) as c:
@@ -1238,9 +1270,12 @@ async def social_oauth_start(platform: str, request: Request):
     })
     callback = _oauth_callback_url()
     client_id_param = cfg.get("client_id_param", "client_id")
+    scope_encoded = quote(cfg['scope'], safe=',')
     auth_url = (f"{cfg['auth_url']}?{client_id_param}={client_id}"
                 f"&redirect_uri={quote(callback, safe='')}"
-                f"&scope={cfg['scope']}&response_type=code&state={state_id}")
+                f"&scope={scope_encoded}&response_type=code&state={state_id}")
+    if cfg.get("extra_params"):
+        auth_url += f"&{cfg['extra_params']}"
     return {"auth_url": auth_url}
 
 @api.get("/social/oauth/callback")
@@ -1265,6 +1300,7 @@ async def social_oauth_callback(request: Request):
             "linkedin": _exchange_token_linkedin,
             "tiktok": _exchange_token_tiktok,
             "pinterest": _exchange_token_pinterest,
+            "google_slides": _exchange_token_google_slides,
         }
         exchanger = exchangers.get(platform)
         if not exchanger:
@@ -1276,6 +1312,8 @@ async def social_oauth_callback(request: Request):
             "access_token": result["access_token"], "connection_mode": "oauth", "connected": True,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
+        if result.get("refresh_token"):
+            doc["refresh_token"] = result["refresh_token"]
         await db.social_accounts.delete_many({"user_id": user_id, "platform": platform, "profile_id": result["profile_id"]})
         await db.social_accounts.insert_one(doc)
         pname = result["profile_name"]
@@ -2425,179 +2463,154 @@ async def import_from_cloud(inp: CloudImportInput, request: Request):
     except Exception as e:
         raise HTTPException(500, f"Errore import {inp.source}: {str(e)}")
 
-# ── POSTNITRO INTEGRATION ─────────────────────────────
-POSTNITRO_API_URL = "https://embed-api.postnitro.ai"
-POSTNITRO_API_KEY = os.environ.get("POSTNITRO_API_KEY", "")
-POSTNITRO_TEMPLATE_ID = os.environ.get("POSTNITRO_TEMPLATE_ID", "")
-POSTNITRO_BRAND_ID = os.environ.get("POSTNITRO_BRAND_ID", "")
-POSTNITRO_PRESET_ID = os.environ.get("POSTNITRO_PRESET_ID", "")
+# ── GOOGLE SLIDES INTEGRATION ────────────────────────
 
-class PostNitroGenerateInput(BaseModel):
+async def _get_google_access_token(user_id) -> str:
+    account = await db.social_accounts.find_one({"user_id": user_id, "platform": "google_slides"})
+    if not account:
+        raise HTTPException(400, "Google non connesso. Collega il tuo account Google nella sezione Social.")
+    access_token = account["access_token"]
+    # Try a lightweight token check; refresh if needed
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get("https://www.googleapis.com/oauth2/v3/tokeninfo",
+                        params={"access_token": access_token})
+        if r.status_code != 200:
+            refresh_token = account.get("refresh_token", "")
+            if not refresh_token:
+                raise HTTPException(401, "Token Google scaduto. Ricollega il tuo account Google.")
+            client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+            client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+            rr = await c.post("https://oauth2.googleapis.com/token", data={
+                "client_id": client_id, "client_secret": client_secret,
+                "refresh_token": refresh_token, "grant_type": "refresh_token",
+            })
+            rr.raise_for_status()
+            access_token = rr.json()["access_token"]
+            await db.social_accounts.update_one(
+                {"user_id": user_id, "platform": "google_slides"},
+                {"$set": {"access_token": access_token}}
+            )
+    return access_token
+
+async def _build_google_slides(access_token: str, content: dict) -> str:
+    W, H, M = 9144000, 5143500, 500000  # width, height, margin in EMU
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    title = content.get("hook_text", "Carousel")[:60]
+
+    raw_slides = content.get("slides") or []
+    if not raw_slides:
+        raw_slides = [s.strip() for s in content.get("script", "").split("---") if s.strip()]
+    if not raw_slides:
+        raw_slides = [content.get("script", "")]
+
+    # Build logical slides: cover + numbered + cta
+    logical = [{"kind": "cover", "text": title}]
+    for i, s in enumerate(raw_slides):
+        logical.append({"kind": "body", "num": str(i + 1).zfill(2), "text": str(s)})
+    logical.append({"kind": "cta", "text": "Seguimi per altri contenuti!", "sub": content.get("hashtags", "")[:120]})
+
+    async with httpx.AsyncClient(timeout=45) as c:
+        r = await c.post("https://slides.googleapis.com/v1/presentations",
+                         headers=headers, json={"title": title})
+        r.raise_for_status()
+        pres = r.json()
+        pres_id = pres["presentationId"]
+        default_sid = pres["slides"][0]["objectId"]
+
+        requests = []
+        BG_DARK   = {"red": 0.11, "green": 0.107, "blue": 0.18}
+        BG_COVER  = {"red": 0.07, "green": 0.065, "blue": 0.13}
+        C_WHITE   = {"red": 1.0,  "green": 1.0,   "blue": 1.0}
+        C_PURPLE  = {"red": 0.66, "green": 0.41,  "blue": 1.0}
+        C_LPURPLE = {"red": 0.88, "green": 0.66,  "blue": 1.0}
+        C_MUTED   = {"red": 0.6,  "green": 0.6,   "blue": 0.8}
+        C_BODY    = {"red": 0.9,  "green": 0.9,   "blue": 0.95}
+
+        def _emu(v): return {"magnitude": v, "unit": "EMU"}
+        def _pt(v):  return {"magnitude": v, "unit": "PT"}
+        def _rgb(c): return {"opaqueColor": {"rgbColor": c}}
+
+        def add_shape(sid, oid, x, y, w, h):
+            return {"createShape": {"objectId": oid, "shapeType": "TEXT_BOX",
+                "elementProperties": {"pageObjectId": sid,
+                    "size": {"width": _emu(w), "height": _emu(h)},
+                    "transform": {"scaleX": 1, "scaleY": 1, "translateX": x, "translateY": y, "unit": "EMU"}}}}
+
+        def style_text(oid, size, color, bold=False, center=False, font="Roboto"):
+            reqs = [{"updateTextStyle": {"objectId": oid,
+                "style": {"fontSize": _pt(size), "foregroundColor": _rgb(color),
+                          "bold": bold, "fontFamily": font},
+                "fields": "fontSize,foregroundColor,bold,fontFamily"}}]
+            if center:
+                reqs.append({"updateParagraphStyle": {"objectId": oid,
+                    "style": {"alignment": "CENTER"}, "fields": "alignment"}})
+            return reqs
+
+        for i, sl in enumerate(logical):
+            sid = f"slide_{i}_{uuid.uuid4().hex[:6]}"
+            requests.append({"createSlide": {"objectId": sid, "insertionIndex": i,
+                "slideLayoutReference": {"predefinedLayout": "BLANK"}}})
+            bg = BG_COVER if sl["kind"] == "cover" else BG_DARK
+            requests.append({"updatePageProperties": {"objectId": sid,
+                "pageProperties": {"pageBackgroundFill": {"solidFill": {"color": {"rgbColor": bg}}}},
+                "fields": "pageBackgroundFill"}})
+
+            if sl["kind"] == "cover":
+                oid = f"o_{i}_t_{uuid.uuid4().hex[:6]}"
+                requests.append(add_shape(sid, oid, M, int(H*0.25), W-2*M, int(H*0.55)))
+                requests.append({"insertText": {"objectId": oid, "text": sl["text"]}})
+                requests += style_text(oid, 42, C_WHITE, bold=True, center=True, font="Montserrat")
+
+            elif sl["kind"] == "body":
+                nid = f"o_{i}_n_{uuid.uuid4().hex[:6]}"
+                requests.append(add_shape(sid, nid, M, int(H*0.07), int(W*0.18), int(H*0.22)))
+                requests.append({"insertText": {"objectId": nid, "text": sl["num"]}})
+                requests += style_text(nid, 52, C_PURPLE, bold=True, font="Montserrat")
+
+                bid = f"o_{i}_b_{uuid.uuid4().hex[:6]}"
+                requests.append(add_shape(sid, bid, M, int(H*0.32), W-2*M, int(H*0.6)))
+                requests.append({"insertText": {"objectId": bid, "text": sl["text"]}})
+                requests += style_text(bid, 22, C_BODY)
+
+            elif sl["kind"] == "cta":
+                tid = f"o_{i}_t_{uuid.uuid4().hex[:6]}"
+                requests.append(add_shape(sid, tid, M, int(H*0.2), W-2*M, int(H*0.35)))
+                requests.append({"insertText": {"objectId": tid, "text": sl["text"]}})
+                requests += style_text(tid, 34, C_LPURPLE, bold=True, center=True, font="Montserrat")
+                if sl.get("sub"):
+                    sid2 = f"o_{i}_s_{uuid.uuid4().hex[:6]}"
+                    requests.append(add_shape(sid, sid2, M, int(H*0.62), W-2*M, int(H*0.22)))
+                    requests.append({"insertText": {"objectId": sid2, "text": sl["sub"]}})
+                    requests += style_text(sid2, 13, C_MUTED, center=True)
+
+        requests.append({"deleteObject": {"objectId": default_sid}})
+
+        r2 = await c.post(
+            f"https://slides.googleapis.com/v1/presentations/{pres_id}:batchUpdate",
+            headers=headers, json={"requests": requests})
+        if r2.status_code != 200:
+            raise HTTPException(500, f"Google Slides API error: {r2.text[:300]}")
+
+        return f"https://docs.google.com/presentation/d/{pres_id}/edit"
+
+class GoogleSlidesCreateInput(BaseModel):
     content_id: str
     project_id: str
-    mode: str = "ai"
-    slides: Optional[list] = None
 
-@api.get("/postnitro/status")
-async def postnitro_status(request: Request):
-    await get_current_user(request)
-    configured = bool(POSTNITRO_API_KEY)
-    embed_sdk_ready = configured
-    api_ready = configured and bool(POSTNITRO_TEMPLATE_ID) and bool(POSTNITRO_BRAND_ID)
-    return {
-        "available": configured, "configured": configured, "ready": embed_sdk_ready,
-        "api_ready": api_ready,
-        "missing_config": [],
-        "message": "" if embed_sdk_ready else "PostNitro API key mancante"
-    }
-
-@api.post("/postnitro/generate")
-async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
+@api.post("/slides/create-google")
+async def create_google_slides(inp: GoogleSlidesCreateInput, request: Request):
     user = await get_current_user(request)
-    if not POSTNITRO_API_KEY:
-        raise HTTPException(400, "PostNitro non configurato")
-    if not POSTNITRO_TEMPLATE_ID:
-        raise HTTPException(400, "PostNitro templateId mancante")
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
-    project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
-    headers = {"Content-Type": "application/json", "embed-api-key": POSTNITRO_API_KEY}
+    access_token = await _get_google_access_token(user["_id"])
     try:
-        # Strategy: Use our AI (Gemini) to generate slide content, then import into PostNitro for rendering
-        context_text = f"{content.get('hook_text', '')}. {content.get('script', '')}. {content.get('caption', '')}"
-
-        if inp.mode == "ai":
-            # Generate slides content using Gemini
-            system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un esperto di social media carousel. Genera il contenuto per le slide di un carousel. Rispondi SOLO con JSON array."
-            prompt = f"""Genera 5-7 slide per un carousel social media basato su questo contenuto:
-{context_text[:1500]}
-
-Restituisci un JSON array con queste slide in ordine:
-1. Prima slide (starting_slide): heading (titolo accattivante), description (sottotitolo breve), cta_button ("Scorri per scoprire")
-2. 3-5 slide centrali (body_slide): heading (titolo punto chiave), description (spiegazione 1-2 frasi)
-3. Ultima slide (ending_slide): heading (call to action), description (messaggio finale), cta_button ("Seguimi per altri contenuti")
-
-Ogni oggetto deve avere: type, heading, description. cta_button solo per starting_slide e ending_slide."""
-
-            result = await call_ai(system, prompt)
-            slides = extract_json(result)
-            if not isinstance(slides, list):
-                slides = [slides]
-        else:
-            # Use existing slides from content
-            slides_data = inp.slides or content.get("slides", [])
-            if not slides_data:
-                slides_data = [s.strip() for s in content.get("script", "").split("---") if s.strip()]
-            slides = []
-            for i, slide in enumerate(slides_data):
-                if isinstance(slide, str):
-                    if i == 0:
-                        slides.append({"type": "starting_slide", "heading": slide[:100], "description": "", "cta_button": "Scorri"})
-                    elif i == len(slides_data) - 1:
-                        slides.append({"type": "ending_slide", "heading": slide[:100], "description": "", "cta_button": "Seguimi"})
-                    else:
-                        slides.append({"type": "body_slide", "heading": f"Punto {i}", "description": slide[:200]})
-                elif isinstance(slide, dict):
-                    slides.append(slide)
-
-        # Ensure proper slide structure for PostNitro
-        formatted_slides = []
-        for i, s in enumerate(slides):
-            slide_type = s.get("type", "body_slide")
-            if i == 0:
-                slide_type = "starting_slide"
-            elif i == len(slides) - 1:
-                slide_type = "ending_slide"
-            formatted = {"type": slide_type, "heading": s.get("heading", s.get("title", f"Slide {i+1}"))}
-            if s.get("description"):
-                formatted["description"] = s["description"]
-            if s.get("cta_button") and slide_type in ("starting_slide", "ending_slide"):
-                formatted["cta_button"] = s["cta_button"]
-            if s.get("sub_heading"):
-                formatted["sub_heading"] = s["sub_heading"]
-            formatted_slides.append(formatted)
-
-        # Use import endpoint (doesn't require presetId)
-        payload = {
-            "postType": "CAROUSEL",
-            "responseType": "PNG",
-            "templateId": POSTNITRO_TEMPLATE_ID,
-            "slides": formatted_slides
-        }
-        if POSTNITRO_BRAND_ID:
-            payload["brandId"] = POSTNITRO_BRAND_ID
-
-        async with httpx.AsyncClient(timeout=30) as hc:
-            resp = await hc.post(f"{POSTNITRO_API_URL}/post/initiate/import", headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise HTTPException(resp.status_code, f"PostNitro errore: {resp.text}")
-            data = resp.json()
-            embed_post_id = data.get("embedPostId", "")
-            await db.postnitro_jobs.insert_one({
-                "embed_post_id": embed_post_id, "content_id": inp.content_id,
-                "project_id": inp.project_id, "user_id": user["_id"],
-                "status": "processing", "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            return {"embed_post_id": embed_post_id, "status": "processing"}
+        url = await _build_google_slides(access_token, content)
+        return {"url": url}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"PostNitro generation error: {e}")
-        raise HTTPException(500, f"Errore PostNitro: {str(e)}")
-
-@api.get("/postnitro/status/{embed_post_id}")
-async def postnitro_job_status(embed_post_id: str, request: Request):
-    await get_current_user(request)
-    if not POSTNITRO_API_KEY:
-        raise HTTPException(400, "PostNitro non configurato")
-    headers = {"embed-api-key": POSTNITRO_API_KEY}
-    try:
-        async with httpx.AsyncClient(timeout=15) as hc:
-            resp = await hc.get(f"{POSTNITRO_API_URL}/post/status/{embed_post_id}", headers=headers)
-            if resp.status_code != 200:
-                return {"status": "error", "message": resp.text}
-            data = resp.json()
-            status = data.get("status", "processing")
-            await db.postnitro_jobs.update_one({"embed_post_id": embed_post_id}, {"$set": {"status": status}})
-            return {"status": status, "data": data}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@api.get("/postnitro/output/{embed_post_id}")
-async def postnitro_output(embed_post_id: str, request: Request):
-    user = await get_current_user(request)
-    if not POSTNITRO_API_KEY:
-        raise HTTPException(400, "PostNitro non configurato")
-    headers = {"embed-api-key": POSTNITRO_API_KEY}
-    try:
-        async with httpx.AsyncClient(timeout=15) as hc:
-            resp = await hc.get(f"{POSTNITRO_API_URL}/post/output/{embed_post_id}", headers=headers)
-            if resp.status_code != 200:
-                raise HTTPException(resp.status_code, f"PostNitro output error: {resp.text}")
-            data = resp.json()
-            slide_urls = data.get("slideImageUrls", [])
-            job = await db.postnitro_jobs.find_one({"embed_post_id": embed_post_id}, {"_id": 0})
-            if job and slide_urls:
-                for i, url in enumerate(slide_urls):
-                    try:
-                        img_resp = await hc.get(url)
-                        if img_resp.status_code == 200:
-                            fname = f"postnitro_{uuid.uuid4().hex}_{i}.png"
-                            fpath = UPLOAD_DIR / fname
-                            with open(fpath, "wb") as f:
-                                f.write(img_resp.content)
-                            media_url = f"/api/media/file/{fname}"
-                            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"PostNitro Slide {i+1}", "url": media_url, "type": "image", "source": "postnitro", "size": len(img_resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
-                            await db.contents.update_one({"id": job["content_id"]}, {"$push": {"media": media_doc}})
-                    except Exception as e:
-                        logger.error(f"PostNitro slide download error: {e}")
-                await db.postnitro_jobs.update_one({"embed_post_id": embed_post_id}, {"$set": {"status": "completed"}})
-            return {"slide_urls": slide_urls, "pdf_url": data.get("pdfUrl", ""), "status": "completed"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Errore output PostNitro: {str(e)}")
+        raise HTTPException(500, f"Errore Google Slides: {str(e)}")
 
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/csv")

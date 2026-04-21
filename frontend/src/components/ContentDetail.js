@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import usePostNitro from './usePostNitro';
 import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
-  CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check
+  CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check,
+  Presentation, GoogleLogo
 } from '@phosphor-icons/react';
 
 const PLATFORM_ICONS = {
@@ -20,9 +20,6 @@ const CanvaIcon = ({ size = 16 }) => (
   <img src="https://www.canva.com/favicon.ico" alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
-const PostNitroIcon = ({ size = 16 }) => (
-  <img src="https://postnitro.ai/favicon.ico" alt="PostNitro" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
-);
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -36,7 +33,7 @@ function useIsMobile() {
 
 export default function ContentDetail({ content: initialContent, project, onClose, onUpdate }) {
   const { api } = useAuth();
-  const { openEditor: openPostNitro } = usePostNitro();
+  const [creatingSlides, setCreatingSlides] = useState(false);
   const isMobile = useIsMobile();
   const [content, setContent] = useState(initialContent);
   const [editScript, setEditScript] = useState(initialContent.script || '');
@@ -320,12 +317,32 @@ export default function ContentDetail({ content: initialContent, project, onClos
           }}>
             <CanvaIcon size={16} />
           </button>
-          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="PostNitro" onClick={async () => {
-            const result = await openPostNitro(content.id, project.id, content.hook_text);
-            if (result?.success) { const { data } = await api.get(`/contents/${project.id}`); const u = data.find(c => c.id === content.id); if (u) { setContent(u); onUpdate?.(u); } }
-          }}>
-            <PostNitroIcon size={16} />
-          </button>
+          {['carousel', 'prompted_reel'].includes(content.format) && (
+            <button
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors"
+              title="Esporta su Google Slides"
+              disabled={creatingSlides}
+              onClick={async () => {
+                setCreatingSlides(true);
+                try {
+                  const { data } = await api.post('/slides/create-google', { content_id: content.id, project_id: project.id });
+                  window.open(data.url, '_blank');
+                } catch(e) {
+                  const msg = e.response?.data?.detail || e.message;
+                  if (msg?.includes('Google non connesso')) {
+                    alert('Collega prima il tuo account Google nella sezione Social del progetto.');
+                  } else {
+                    alert('Errore Google Slides: ' + msg);
+                  }
+                }
+                setCreatingSlides(false);
+              }}
+            >
+              {creatingSlides
+                ? <span className="text-[10px]">...</span>
+                : <Presentation size={16} color="#4285F4" />}
+            </button>
+          )}
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Google Drive" onClick={() => {
             setInputModal({ title: 'Importa da Google Drive', placeholder: 'Incolla qui il link diretto al file...', value: '', multiline: false,
               onConfirm: async (url) => {
