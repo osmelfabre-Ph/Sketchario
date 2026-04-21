@@ -524,6 +524,18 @@ def extract_json(text: str):
             return json.loads(text[start:end+1])
         raise
 
+def coerce_str(val) -> str:
+    """Ensure a field that should be a plain string actually is one.
+    If the AI returns an object/dict (e.g. visual_direction as structured JSON),
+    flatten it to a readable string so the UI never shows [object Object]."""
+    if isinstance(val, str):
+        return val
+    if isinstance(val, dict):
+        return " — ".join(f"{v}" for v in val.values() if v)
+    if isinstance(val, list):
+        return " ".join(str(i) for i in val)
+    return str(val) if val is not None else ""
+
 # ── PERSONAS ─────────────────────────────────────────
 @api.post("/personas/generate")
 async def generate_personas(inp: GeneratePersonasInput, request: Request):
@@ -717,7 +729,7 @@ Restituisci un oggetto JSON con:
                 "day_offset": hook.get("day_offset", 0),
                 "script": content_data.get("script", ""),
                 "opening_hook": content_data.get("opening_hook", ""),
-                "visual_direction": content_data.get("visual_direction", ""),
+                "visual_direction": coerce_str(content_data.get("visual_direction", "")),
                 "caption": content_data.get("caption", ""),
                 "hashtags": content_data.get("hashtags", ""),
                 "slides": content_data.get("slides", []),
@@ -771,7 +783,9 @@ async def create_post(inp: PostCreate, request: Request):
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
-            content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook", "visual_direction"]})
+            content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook"]})
+            if "visual_direction" in data:
+                content_doc["visual_direction"] = coerce_str(data["visual_direction"])
         except Exception as e:
             logger.error(f"AI post creation error: {e}")
     await db.contents.insert_one({k: v for k, v in content_doc.items() if k != "_id"})
@@ -842,9 +856,11 @@ Restituisci JSON con: hook_text, script, caption, hashtags, slides (array di str
         result = await call_ai(system, prompt)
         data = extract_json(result)
         updates = {}
-        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook", "visual_direction"]:
+        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
                 updates[k] = data[k]
+        if "visual_direction" in data:
+            updates["visual_direction"] = coerce_str(data["visual_direction"])
         if updates:
             await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
         updated = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
@@ -903,9 +919,11 @@ Restituisci JSON con: hook_text, script (script parlato completo), caption, hash
         result = await call_ai(system, prompt)
         data = extract_json(result)
         updates = {"format": inp.target_format}
-        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook", "visual_direction"]:
+        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
                 updates[k] = data[k]
+        if "visual_direction" in data:
+            updates["visual_direction"] = coerce_str(data["visual_direction"])
         await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
         updated = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
         return updated
