@@ -281,7 +281,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </button>
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="FLUX AI" onClick={() => {
-            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi il soggetto e l'ambientazione (es. 'un professionista sorridente in un ufficio moderno')", value: '', multiline: true, isFlux: true,
+            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi il soggetto e l'ambientazione...", value: editVisualDirection || editScript || '', multiline: true, isFlux: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
                 try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore generazione immagine: ' + (e.response?.data?.detail || e.message)); }
