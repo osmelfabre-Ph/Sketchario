@@ -281,7 +281,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </button>
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="FLUX AI" onClick={() => {
-            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi l'immagine che vuoi generare...", value: content.hook_text || '', multiline: true, isFlux: true,
+            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi il soggetto e l'ambientazione (es. 'un professionista sorridente in un ufficio moderno')", value: '', multiline: true, isFlux: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
                 try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore generazione immagine: ' + (e.response?.data?.detail || e.message)); }
@@ -496,10 +496,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <p className="text-xs text-[var(--text-muted)] mb-2">Stile</p>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: 'fotorealistico', label: '📷 Fotorealistico', suffix: 'photorealistic, high quality photography, 8k, detailed, realistic lighting' },
-                  { id: 'pittorico', label: '🎨 Pittorico', suffix: 'oil painting, artistic painterly style, expressive brushstrokes' },
-                  { id: 'cartoon', label: '🖼️ Cartoon', suffix: 'cartoon illustration, vibrant colors, flat design, animated style' },
-                  { id: 'sketch', label: '✏️ Sketch', suffix: 'pencil sketch, hand drawn, black and white, detailed linework' },
+                  { id: 'fotorealistico', label: '📷 Fotorealistico' },
+                  { id: 'pittorico', label: '🎨 Pittorico' },
+                  { id: 'cartoon', label: '🖼️ Cartoon' },
+                  { id: 'ink', label: '✒️ Ink & Pen' },
                 ].map(s => (
                   <button key={s.id} className={`preset-btn text-xs py-1 px-2 ${fluxStyle === s.id ? 'active' : ''}`}
                     onClick={() => setFluxStyle(s.id)}>{s.label}</button>
@@ -510,15 +510,15 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <div className="flex gap-2">
             <button className="btn-ghost flex-1" onClick={() => setInputModal(null)}>Annulla</button>
             <button className="btn-gradient flex-1" onClick={() => {
-              const val = document.getElementById('input-modal-field').value.trim();
-              if (!val) return;
-              const styleMap = {
-                fotorealistico: 'photorealistic, high quality photography, 8k, detailed, realistic lighting',
-                pittorico: 'oil painting, artistic painterly style, expressive brushstrokes',
-                cartoon: 'cartoon illustration, vibrant colors, flat design, animated style',
-                sketch: 'pencil sketch, hand drawn, black and white, detailed linework',
+              const soggetto = document.getElementById('input-modal-field').value.trim();
+              if (!soggetto) return;
+              const stylePrompts = {
+                fotorealistico: `A hyper-realistic, high-resolution professional photograph of ${soggetto}. The subject has natural skin textures, visible pores, and realistic eye reflections. Lighting: cinematic softbox lighting with subtle rim light to separate the subject from the background. Camera: shot on Sony A7R IV, 35mm lens, f/1.8 aperture for a soft bokeh background. Details: 8k resolution, highly detailed textures, masterpiece, sharp focus, natural colors, no distortion.`,
+                pittorico: `An exquisite oil painting of ${soggetto}. Style: contemporary fine art with visible, expressive brushstrokes and rich impasto textures. Lighting: chiaroscuro technique, dramatic light and shadow inspired by Caravaggio. Details: canvas texture visible, artistic blur, masterpiece, emotional atmosphere, hand-painted aesthetic. No digital smoothness, no photorealism.`,
+                cartoon: `A professional 2D vector illustration of ${soggetto}. Style: clean flat design, bold outlines, solid colors, minimalist background. Aesthetic: modern corporate Memphis or classic cel-shaded animation. Details: high contrast, sharp edges, no gradients, simple shapes, playful vibe.`,
+                ink: `A professional ink pen drawing of ${soggetto}. Style: clean black ink lines, minimalist aesthetic, stippling and linework for depth. Background: plain parchment or white background. High contrast, sharp architectural lines, elegant and sophisticated hand-drawn style.`,
               };
-              const finalVal = inputModal.isFlux ? `${val}, ${styleMap[fluxStyle]}` : val;
+              const finalVal = inputModal.isFlux ? stylePrompts[fluxStyle] : soggetto;
               setInputModal(null);
               inputModal.onConfirm(finalVal);
             }}>Genera</button>
