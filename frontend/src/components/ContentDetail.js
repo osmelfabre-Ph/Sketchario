@@ -35,6 +35,8 @@ function useIsMobile() {
 export default function ContentDetail({ content: initialContent, project, onClose, onUpdate }) {
   const { api } = useAuth();
   const [creatingSlides, setCreatingSlides] = useState(false);
+  const [canvaConnected, setCanvaConnected] = useState(false);
+  const [canvaLoading, setCanvaLoading] = useState(false);
   const isMobile = useIsMobile();
   const [content, setContent] = useState(initialContent);
   const [editScript, setEditScript] = useState(initialContent.script || '');
@@ -65,7 +67,102 @@ export default function ContentDetail({ content: initialContent, project, onClos
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
+    api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
   }, [api, project.id]);
+
+  // ── CANVA ─────────────────────────────────────────────
+  const openCanvaEditor = async () => {
+    setCanvaLoading(true);
+    const tid = toast.loading('Creazione design Canva...');
+    try {
+      const { data } = await api.post('/canva/create-design', { content_id: content.id, format: content.format });
+      window.open(data.edit_url, '_blank', 'noopener');
+      toast.success('Design aperto in Canva — torna qui per importare le immagini', { id: tid, duration: 6000 });
+    } catch (e) {
+      if (e.response?.status === 401) { setCanvaConnected(false); }
+      toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message), { id: tid });
+    }
+    setCanvaLoading(false);
+  };
+
+  const handleCanvaClick = async () => {
+    if (canvaConnected) { await openCanvaEditor(); return; }
+    setCanvaLoading(true);
+    const popup = window.open('about:blank', 'canva_oauth', 'width=600,height=700,left=200,top=100');
+    try {
+      const { data } = await api.get('/canva/auth-url');
+      if (!data.auth_url) { popup?.close(); setCanvaLoading(false); return; }
+      popup.location.href = data.auth_url;
+      const handler = async (e) => {
+        if (e.data?.type === 'canva_success') {
+          window.removeEventListener('message', handler);
+          popup?.close();
+          setCanvaConnected(true);
+          setCanvaLoading(false);
+          await openCanvaEditor();
+        } else if (e.data?.type === 'canva_error') {
+          window.removeEventListener('message', handler);
+          popup?.close();
+          toast.error('Errore connessione Canva: ' + e.data.error);
+          setCanvaLoading(false);
+        }
+      };
+      window.addEventListener('message', handler);
+    } catch (e) {
+      popup?.close();
+      toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message));
+      setCanvaLoading(false);
+    }
+  };
+
+  // ── GOOGLE DRIVE PICKER ───────────────────────────────
+  const loadGooglePickerApi = () => new Promise((resolve, reject) => {
+    if (window.google?.picker) { resolve(); return; }
+    if (document.getElementById('gapi-script')) {
+      const poll = setInterval(() => { if (window.google?.picker) { clearInterval(poll); resolve(); } }, 100);
+      setTimeout(() => { clearInterval(poll); reject(new Error('Timeout')); }, 10000);
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'gapi-script';
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => window.gapi.load('picker', resolve);
+    script.onerror = () => reject(new Error('Impossibile caricare Google API'));
+    document.head.appendChild(script);
+  });
+
+  const openDrivePicker = async () => {
+    const tid = toast.loading('Apertura Google Drive...');
+    try {
+      const { data } = await api.get('/google/picker-token');
+      if (!data.connected) {
+        toast.error('Collega il tuo account Google nella sezione Social del progetto.', { id: tid, duration: 5000 });
+        return;
+      }
+      toast.dismiss(tid);
+      await loadGooglePickerApi();
+      const { PickerBuilder, ViewId, Action } = window.google.picker;
+      new PickerBuilder()
+        .addView(ViewId.DOCS_IMAGES_AND_VIDEOS)
+        .addView(new window.google.picker.DocsView().setParent('root').setSelectFolderEnabled(false))
+        .setOAuthToken(data.token)
+        .setCallback(async (pickerData) => {
+          if (pickerData.action !== Action.PICKED) return;
+          const doc = pickerData.docs[0];
+          const importTid = toast.loading(`Importazione ${doc.name}...`);
+          try {
+            const { data: media } = await api.post('/media/import-drive', { content_id: content.id, file_id: doc.id, file_name: doc.name });
+            const updated = { ...content, media: [...(content.media || []), media] };
+            setContent(updated); onUpdate?.(updated);
+            toast.success(`"${doc.name}" importato da Drive`, { id: importTid });
+          } catch (e) { toast.error('Errore importazione: ' + (e.response?.data?.detail || e.message), { id: importTid }); }
+        })
+        .build()
+        .setVisible(true);
+    } catch (e) {
+      toast.error('Errore Google Drive: ' + (e.response?.data?.detail || e.message), { id: tid });
+    }
+  };
 
   const toggleSocial = (profId) => {
     setSelectedSocials(prev => prev.includes(profId) ? prev.filter(id => id !== profId) : [...prev, profId]);
@@ -328,26 +425,16 @@ export default function ContentDetail({ content: initialContent, project, onClos
           }}>
             <Sparkle size={16} weight="fill" color="#a855f7" />
           </button>
-          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Canva" onClick={async () => {
-            const popup = window.open('about:blank', 'canva_oauth', 'width=600,height=700,left=200,top=100');
-            try {
-              const { data } = await api.get('/canva/auth-url');
-              if (!data.auth_url) { popup?.close(); return; }
-              popup.location.href = data.auth_url;
-              const handler = async (e) => {
-                if (e.data?.type === 'canva_success') {
-                  window.removeEventListener('message', handler);
-                  popup?.close();
-                } else if (e.data?.type === 'canva_error') {
-                  window.removeEventListener('message', handler);
-                  popup?.close();
-                  toast.error('Errore Canva: ' + e.data.error);
-                }
-              };
-              window.addEventListener('message', handler);
-            } catch(e) { popup?.close(); toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message)); }
-          }}>
-            <CanvaIcon size={16} />
+          <button
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors relative"
+            title={canvaConnected ? 'Apri in Canva' : 'Connetti Canva e apri editor'}
+            onClick={handleCanvaClick}
+            disabled={canvaLoading}
+          >
+            {canvaLoading
+              ? <div className="w-4 h-4 border-2 border-[#7D2AE8] border-t-transparent rounded-full animate-spin" />
+              : <CanvaIcon size={16} />}
+            {canvaConnected && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400 border border-[var(--bg-primary)]" />}
           </button>
           {['carousel', 'prompted_reel'].includes(content.format) && (
             <button
@@ -375,14 +462,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 : <Presentation size={16} color="#4285F4" />}
             </button>
           )}
-          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Google Drive" onClick={() => {
-            setInputModal({ title: 'Importa da Google Drive', placeholder: 'Incolla qui il link diretto al file...', value: '', multiline: false,
-              onConfirm: async (url) => {
-                const tid = toast.loading('Importazione in corso...');
-                try { const { data } = await api.post('/media/import-drive', { content_id: content.id, file_url: url }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success('File importato', { id: tid }); } catch(e) { toast.error('Errore importazione', { id: tid }); }
-              }
-            });
-          }}>
+          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Importa da Google Drive" onClick={openDrivePicker}>
             <Download size={16} color="#34a853" />
           </button>
         </div>

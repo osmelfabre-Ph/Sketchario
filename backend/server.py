@@ -2250,7 +2250,7 @@ def _canva_callback_url() -> str:
 
 @api.get("/canva/auth-url")
 async def canva_auth_url(request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
     if not CANVA_CLIENT_ID:
         raise HTTPException(400, "Canva non configurato")
     code_verifier = secrets.token_urlsafe(64)
@@ -2258,7 +2258,7 @@ async def canva_auth_url(request: Request):
         hashlib.sha256(code_verifier.encode()).digest()
     ).rstrip(b'=').decode()
     state = str(uuid.uuid4())
-    await db.canva_oauth_states.insert_one({"state": state, "code_verifier": code_verifier, "created_at": datetime.now(timezone.utc).isoformat()})
+    await db.canva_oauth_states.insert_one({"state": state, "code_verifier": code_verifier, "user_id": str(user["_id"]), "created_at": datetime.now(timezone.utc).isoformat()})
     callback = _canva_callback_url()
     scope = quote("design:content:read design:content:write asset:read asset:write profile:read", safe='')
     url = (f"https://www.canva.com/api/oauth/authorize"
@@ -2296,10 +2296,67 @@ async def canva_oauth_callback(request: Request):
         access_token = token_data.get("access_token", "")
         if not access_token:
             raise Exception(token_data.get("error_description", "Token non ricevuto"))
-        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_success',token:'{access_token}'}}, '*');window.close();</script>")
+        # Save token to DB so user stays connected across sessions
+        user_id = state_doc.get("user_id")
+        if user_id:
+            await db.canva_tokens.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "user_id": user_id,
+                    "access_token": access_token,
+                    "refresh_token": token_data.get("refresh_token", ""),
+                    "expires_in": token_data.get("expires_in", 3600),
+                    "connected_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_success'}}, '*');window.close();</script>")
     except Exception as e:
         msg = str(e).replace("'", "").replace('"', '').replace('\n', ' ').replace('\r', '')
         return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{msg}'}}, '*');window.close();</script>")
+
+@api.get("/canva/status")
+async def canva_status(request: Request):
+    user = await get_current_user(request)
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    return {"connected": bool(token_doc and token_doc.get("access_token"))}
+
+@api.post("/canva/create-design")
+async def canva_create_design(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    content_format = body.get("format", "carousel")
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(400, "Canva non connesso")
+    access_token = token_doc["access_token"]
+    # Map format to Canva preset name
+    preset = "InstagramPost" if content_format in ("reel", "prompted_reel") else "InstagramPost"
+    async with httpx.AsyncClient(timeout=30) as hc:
+        r = await hc.post(
+            "https://api.canva.com/rest/v1/designs",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={"design_type": {"type": "preset", "name": preset}}
+        )
+        data = r.json()
+    if r.status_code == 401:
+        # Token expired, clear it
+        await db.canva_tokens.delete_one({"user_id": str(user["_id"])})
+        raise HTTPException(401, "Sessione Canva scaduta, riconnettiti")
+    design = data.get("design", {})
+    edit_url = design.get("urls", {}).get("edit_url", "")
+    if not edit_url:
+        raise HTTPException(400, f"Canva non ha restituito un URL di editing: {data}")
+    return {"edit_url": edit_url, "design_id": design.get("id", "")}
+
+@api.get("/google/picker-token")
+async def google_picker_token(request: Request):
+    user = await get_current_user(request)
+    try:
+        token = await _get_google_access_token(user["_id"])
+        return {"token": token, "connected": True}
+    except Exception:
+        return {"token": "", "connected": False}
 
 @api.post("/canva/import")
 async def canva_import(request: Request):
@@ -2437,14 +2494,24 @@ async def reset_password(inp: ResetPasswordInput):
 # ── GOOGLE DRIVE IMPORT ───────────────────────────────
 class DriveImportInput(BaseModel):
     content_id: str
-    file_url: str
+    file_url: Optional[str] = ""
+    file_id: Optional[str] = ""   # from Google Picker
+    file_name: Optional[str] = ""
 
 @api.post("/media/import-drive")
 async def import_from_drive(inp: DriveImportInput, request: Request):
     user = await get_current_user(request)
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
-            resp = await hc.get(inp.file_url)
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
+            if inp.file_id:
+                # Download via Drive API using stored Google OAuth token
+                token = await _get_google_access_token(user["_id"])
+                resp = await hc.get(
+                    f"https://www.googleapis.com/drive/v3/files/{inp.file_id}?alt=media",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+            else:
+                resp = await hc.get(inp.file_url)
             if resp.status_code != 200:
                 raise HTTPException(400, "Impossibile scaricare il file da Google Drive")
             ct = resp.headers.get("content-type", "")
@@ -2460,7 +2527,8 @@ async def import_from_drive(inp: DriveImportInput, request: Request):
                 f.write(resp.content)
             media_url = f"/api/media/file/{fname}"
             ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
-            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"Google Drive Import", "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
+            display_name = inp.file_name or "Google Drive Import"
+            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": display_name, "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
             await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
             return media_doc
     except HTTPException:
