@@ -20,6 +20,25 @@ services:
     restart: always
     env_file:
       - ./backend/.env.production
+    environment:
+      - RENDERER_URL=http://sketchario-renderer:3001
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      - mongodb
+      - renderer
+    networks:
+      - sketchario
+
+  renderer:
+    build:
+      context: ./renderer
+      dockerfile: Dockerfile
+    container_name: sketchario-renderer
+    restart: always
+    environment:
+      - UPLOADS_DIR=/app/uploads
+      - NODE_OPTIONS=--max-old-space-size=2048
     volumes:
       - uploads:/app/uploads
     depends_on:

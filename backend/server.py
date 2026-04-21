@@ -2543,6 +2543,50 @@ async def import_from_drive(inp: DriveImportInput, request: Request):
     except Exception as e:
         raise HTTPException(500, f"Errore import Drive: {str(e)}")
 
+# ── HYPERFRAMES VIDEO RENDER ──────────────────────────
+class RenderVideoInput(BaseModel):
+    content_id: str
+
+@api.post("/media/render-video")
+async def render_video(inp: RenderVideoInput, request: Request):
+    user = await get_current_user(request)
+    content = await db.contents.find_one({"id": inp.content_id, "user_id": user["_id"]}, {"_id": 0})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    renderer_url = os.environ.get("RENDERER_URL", "http://sketchario-renderer:3001")
+    try:
+        async with httpx.AsyncClient(timeout=180) as c:
+            r = await c.post(f"{renderer_url}/render", json={
+                "content_id": inp.content_id,
+                "format": content.get("format", "reel"),
+                "hook_text": content.get("hook_text", ""),
+                "script": content.get("script", ""),
+                "caption": content.get("caption", ""),
+                "opening_hook": content.get("opening_hook", ""),
+                "slides": content.get("slides", []),
+            })
+            if r.status_code != 200:
+                raise HTTPException(500, f"Renderer error: {r.text[:300]}")
+            data = r.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, "Timeout rendering video (>3 min). Riprova con uno script più corto.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore renderer: {str(e)}")
+    media_doc = {
+        "id": str(uuid.uuid4()),
+        "filename": data["filename"],
+        "original_name": f"video_{(content.get('hook_text') or '')[:40]}.mp4",
+        "url": data["url"],
+        "type": "video",
+        "source": "hyperframes",
+        "size": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
+    return media_doc
+
 # ── NOTIFICATIONS (Release Note Reads) ────────────────
 @api.get("/notifications/unread-count")
 async def unread_count(request: Request):
