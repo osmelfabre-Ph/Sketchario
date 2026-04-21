@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Toaster } from 'sonner';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -107,6 +108,12 @@ function App() {
           </Routes>
         </AuthProvider>
       </BrowserRouter>
+      <Toaster
+        theme="dark"
+        position="top-right"
+        richColors
+        toastOptions={{ duration: 4000 }}
+      />
     </div>
   );
 }

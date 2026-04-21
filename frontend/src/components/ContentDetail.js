@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
@@ -48,7 +49,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('10:00');
+  const [scheduling, setScheduling] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [deletingMediaId, setDeletingMediaId] = useState(null);
   const [mobileTab, setMobileTab] = useState('editor');
   const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -82,12 +86,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const regenerate = async () => {
     if (!window.confirm('Rigenerare questo contenuto?')) return;
     setSaving(true);
+    const tid = toast.loading('Rigenerazione in corso...');
     try {
       const { data } = await api.post('/contents/regenerate', { content_id: content.id, project_id: project.id });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
       setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+      toast.success('Contenuto rigenerato', { id: tid });
+    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     setSaving(false);
   };
 
@@ -95,18 +101,21 @@ export default function ContentDetail({ content: initialContent, project, onClos
     const target = targetOverride || (content.format === 'reel' ? 'carousel' : 'reel');
     if (!window.confirm(`Convertire in ${target}?`)) return;
     setSaving(true);
+    const tid = toast.loading(`Conversione in ${target}...`);
     try {
       const { data } = await api.post('/contents/convert', { content_id: content.id, project_id: project.id, target_format: target });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
       setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+      toast.success(`Convertito in ${target}`, { id: tid });
+    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     setSaving(false);
   };
 
   const publish = async () => {
-    if (selectedSocials.length === 0) { alert('Seleziona almeno un social dalla colonna sinistra.'); return; }
+    if (selectedSocials.length === 0) { toast.warning('Seleziona almeno un social dalla colonna sinistra.'); return; }
     setPublishing(true);
+    const tid = toast.loading('Pubblicazione in corso...');
     try {
       await save();
       const now = new Date().toISOString();
@@ -114,36 +123,48 @@ export default function ContentDetail({ content: initialContent, project, onClos
       await api.post(`/publish/mark-published/${content.id}`);
       const updated = { ...content, status: 'published' };
       setContent(updated); onUpdate?.(updated);
-      alert('Contenuto pubblicato!');
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+      toast.success('Contenuto pubblicato con successo!', { id: tid });
+    } catch (e) { toast.error('Errore pubblicazione: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     setPublishing(false);
   };
 
   const schedule = async () => {
-    if (!scheduleDate || selectedSocials.length === 0) { alert('Seleziona data e almeno un social.'); return; }
+    if (!scheduleDate || selectedSocials.length === 0) { toast.warning('Seleziona data e almeno un social.'); return; }
+    setScheduling(true);
+    const tid = toast.loading('Programmazione in corso...');
     try {
       await save();
       await api.post('/publish/schedule', { content_id: content.id, project_id: project.id, social_profile_ids: selectedSocials, scheduled_at: `${scheduleDate}T${scheduleTime}:00Z` });
       const updated = { ...content, status: 'scheduled' };
       setContent(updated); onUpdate?.(updated);
       setShowSchedule(false);
-      alert('Contenuto programmato!');
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+      toast.success(`Programmato per il ${scheduleDate} alle ${scheduleTime}`, { id: tid });
+    } catch (e) { toast.error('Errore programmazione: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+    setScheduling(false);
   };
 
   const uploadMedia = async (file) => {
     const fd = new FormData(); fd.append('file', file);
+    setUploadingMedia(true);
+    const tid = toast.loading('Upload in corso...');
     try {
       const { data } = await api.post(`/media/upload/${content.id}`, fd);
       const updated = { ...content, media: [...(content.media || []), data] };
       setContent(updated); onUpdate?.(updated);
-    } catch (e) { alert('Errore upload: ' + (e.response?.data?.detail || e.message)); }
+      toast.success('File caricato', { id: tid });
+    } catch (e) { toast.error('Errore upload: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+    setUploadingMedia(false);
   };
 
   const deleteMedia = async (mediaId) => {
-    await api.delete(`/media/${content.id}/${mediaId}`);
-    const updated = { ...content, media: (content.media || []).filter(m => m.id !== mediaId) };
-    setContent(updated); onUpdate?.(updated);
+    setDeletingMediaId(mediaId);
+    try {
+      await api.delete(`/media/${content.id}/${mediaId}`);
+      const updated = { ...content, media: (content.media || []).filter(m => m.id !== mediaId) };
+      setContent(updated); onUpdate?.(updated);
+      toast.success('File eliminato');
+    } catch (e) { toast.error('Errore eliminazione'); }
+    setDeletingMediaId(null);
   };
 
   const hashtagList = String(editHashtags || '').split(/[\s,]+/).filter(h => h.length > 1).map(h => h.startsWith('#') ? h : `#${h}`);
@@ -219,10 +240,19 @@ export default function ContentDetail({ content: initialContent, project, onClos
       </div>
       <div className="mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">Media</p>
-        <label className="block p-4 md:p-6 rounded-lg border border-dashed border-[var(--border-color)] text-center cursor-pointer hover:border-[var(--gradient-start)] transition-colors mb-3">
-          <p className="font-medium text-sm">Allega un media</p>
-          <p className="text-xs text-[var(--text-muted)] mt-1">Max 400 MB</p>
-          <input type="file" accept="image/*,video/*" className="hidden" onChange={e => { if (e.target.files[0]) uploadMedia(e.target.files[0]); }} />
+        <label className="block p-4 md:p-6 rounded-lg border border-dashed border-[var(--border-color)] text-center cursor-pointer hover:border-[var(--gradient-start)] transition-colors mb-3" style={uploadingMedia ? { opacity: 0.6, pointerEvents: 'none' } : {}}>
+          {uploadingMedia ? (
+            <>
+              <div className="w-5 h-5 border-2 border-[var(--gradient-start)] border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+              <p className="font-medium text-sm text-[var(--accent-purple)]">Upload in corso...</p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-sm">Allega un media</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">Max 400 MB</p>
+            </>
+          )}
+          <input type="file" accept="image/*,video/*" className="hidden" disabled={uploadingMedia} onChange={e => { if (e.target.files[0]) uploadMedia(e.target.files[0]); }} />
         </label>
         {generatingImage && (
           <div className="flex items-center gap-3 p-3 rounded-lg mb-3" style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)' }}>
@@ -244,8 +274,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     <Eye size={18} color="white" />
                   </button>
                 )}
-                <button className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-pink)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteMedia(m.id)}>
-                  <X size={8} color="white" />
+                <button className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-pink)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteMedia(m.id)} disabled={deletingMediaId === m.id}>
+                  {deletingMediaId === m.id
+                    ? <div className="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin" />
+                    : <X size={8} color="white" />}
                 </button>
               </div>
             ))}
@@ -256,12 +288,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
         {content.format === 'prompted_reel' ? (
           <button className="btn-gradient text-xs py-1.5 px-3" onClick={() => {
             const avatarScript = `OPENING:\n${editOpeningHook}\n\nSCRIPT:\n${editScript}\n\nREGIA:\n${editVisualDirection}`;
-            navigator.clipboard.writeText(avatarScript); alert('Script avatar copiato!');
+            navigator.clipboard.writeText(avatarScript); toast.success('Script avatar copiato!');
           }}>
             🤖 Copia Script Avatar
           </button>
         ) : (
-          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${editCaption}\n\n${editHashtags}`); alert('Copiato!'); }}>
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${editCaption}\n\n${editHashtags}`); toast.success('Copiato!'); }}>
             <Copy size={14} /> Copia
           </button>
         )}
@@ -288,7 +320,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi il soggetto e l'ambientazione...", value: editVisualDirection || editScript || '', multiline: true, isFlux: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
-                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore generazione immagine: ' + (e.response?.data?.detail || e.message)); }
+                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success('Immagine generata!'); } catch(e) { toast.error('Errore generazione immagine: ' + (e.response?.data?.detail || e.message)); }
                 setGeneratingImage(false);
               },
 
@@ -309,11 +341,11 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 } else if (e.data?.type === 'canva_error') {
                   window.removeEventListener('message', handler);
                   popup?.close();
-                  alert('Errore Canva: ' + e.data.error);
+                  toast.error('Errore Canva: ' + e.data.error);
                 }
               };
               window.addEventListener('message', handler);
-            } catch(e) { popup?.close(); alert('Errore Canva: ' + (e.response?.data?.detail || e.message)); }
+            } catch(e) { popup?.close(); toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message)); }
           }}>
             <CanvaIcon size={16} />
           </button>
@@ -330,23 +362,24 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 } catch(e) {
                   const msg = e.response?.data?.detail || e.message;
                   if (msg?.includes('Google non connesso')) {
-                    alert('Collega prima il tuo account Google nella sezione Social del progetto.');
+                    toast.error('Collega prima il tuo account Google nella sezione Social del progetto.');
                   } else {
-                    alert('Errore Google Slides: ' + msg);
+                    toast.error('Errore Google Slides: ' + msg);
                   }
                 }
                 setCreatingSlides(false);
               }}
             >
               {creatingSlides
-                ? <span className="text-[10px]">...</span>
+                ? <div className="w-4 h-4 border-2 border-[#4285F4] border-t-transparent rounded-full animate-spin" />
                 : <Presentation size={16} color="#4285F4" />}
             </button>
           )}
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Google Drive" onClick={() => {
             setInputModal({ title: 'Importa da Google Drive', placeholder: 'Incolla qui il link diretto al file...', value: '', multiline: false,
               onConfirm: async (url) => {
-                try { const { data } = await api.post('/media/import-drive', { content_id: content.id, file_url: url }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); } catch(e) { alert('Errore'); }
+                const tid = toast.loading('Importazione in corso...');
+                try { const { data } = await api.post('/media/import-drive', { content_id: content.id, file_url: url }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success('File importato', { id: tid }); } catch(e) { toast.error('Errore importazione', { id: tid }); }
               }
             });
           }}>
@@ -468,10 +501,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
           </button>
           <button className="btn-ghost text-xs py-1.5" onClick={publish} disabled={publishing || selectedSocials.length === 0} data-testid="publish-btn"
             style={selectedSocials.length === 0 ? { opacity: 0.4 } : {}}>
-            <PaperPlaneTilt size={14} /> Pubblica
+            {publishing ? <><span className="animate-spin inline-block">⏳</span> Invio...</> : <><PaperPlaneTilt size={14} /> Pubblica</>}
           </button>
           <button className="btn-gradient text-xs py-1.5" onClick={() => setShowSchedule(!showSchedule)} data-testid="schedule-btn"
-            disabled={selectedSocials.length === 0} style={selectedSocials.length === 0 ? { opacity: 0.5 } : {}}>
+            disabled={selectedSocials.length === 0 || scheduling} style={selectedSocials.length === 0 ? { opacity: 0.5 } : {}}>
             <CalendarBlank size={14} /> Programma
           </button>
         </div>
@@ -487,8 +520,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <input type="time" className="input-dark text-sm py-1.5 w-24" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ paddingLeft: '0.5rem' }} />
           </div>
           <div className="flex gap-2">
-            <button className="btn-ghost flex-1 text-xs" onClick={() => setShowSchedule(false)}>Annulla</button>
-            <button className="btn-gradient flex-1 text-xs" onClick={schedule}>Conferma</button>
+            <button className="btn-ghost flex-1 text-xs" onClick={() => setShowSchedule(false)} disabled={scheduling}>Annulla</button>
+            <button className="btn-gradient flex-1 text-xs" onClick={schedule} disabled={scheduling}>
+              {scheduling ? <><span className="animate-spin inline-block mr-1">⏳</span>Invio...</> : 'Conferma'}
+            </button>
           </div>
         </div>
       )}
@@ -516,7 +551,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     project_id: project.id,
                   });
                   el.value = data.prompt;
-                } catch(e) { alert('Errore ottimizzazione: ' + (e.response?.data?.detail || e.message)); }
+                } catch(e) { toast.error('Errore ottimizzazione: ' + (e.response?.data?.detail || e.message)); }
                 setOptimizingPrompt(false);
               }}
             >

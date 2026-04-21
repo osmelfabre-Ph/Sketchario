@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import {
   CalendarBlank, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
@@ -59,6 +60,16 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const [feedItems, setFeedItems] = useState([]);
   const [feedLoading, setFeedLoading] = useState(false);
   const [aiFeedItems, setAiFeedItems] = useState([]);
+  const [refreshingFeeds, setRefreshingFeeds] = useState(false);
+  const [refreshingAi, setRefreshingAi] = useState(false);
+
+  // Action loading states
+  const [deletingContentId, setDeletingContentId] = useState(null);
+  const [cancellingQueueId, setCancellingQueueId] = useState(null);
+  const [connectingPlatformId, setConnectingPlatformId] = useState(null);
+  const [removingProfileId, setRemovingProfileId] = useState(null);
+  const [savingTovLibrary, setSavingTovLibrary] = useState(false);
+  const [applyingTovId, setApplyingTovId] = useState(null);
 
   // Queue + Analytics
   const [queueItems, setQueueItems] = useState([]);
@@ -131,30 +142,40 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const handleContentUpdate = (updated) => setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
 
   const deleteContent = async (id) => {
-    if (!window.confirm('Eliminare?')) return;
-    await api.delete(`/contents/${id}`);
-    setContents(prev => prev.filter(c => c.id !== id));
+    if (!window.confirm('Eliminare questo contenuto?')) return;
+    setDeletingContentId(id);
+    const tid = toast.loading('Eliminazione in corso...');
+    try {
+      await api.delete(`/contents/${id}`);
+      setContents(prev => prev.filter(c => c.id !== id));
+      toast.success('Contenuto eliminato', { id: tid });
+    } catch (e) { toast.error('Errore eliminazione', { id: tid }); }
+    setDeletingContentId(null);
   };
 
   const createNewPost = async () => {
     if (!newPostHook.trim()) return;
     setNewPostLoading(true);
+    const tid = toast.loading('Creazione post in corso...');
     try {
       const { data } = await api.post('/content/create-post', { project_id: project.id, hook_text: newPostHook, format: newPostFormat, use_ai: newPostUseAi });
       setContents(prev => [...prev, data]);
       setShowNewPost(false); setNewPostHook('');
+      toast.success('Post creato!', { id: tid });
       if (data.caption || data.script) openContentDetail(data);
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     finally { setNewPostLoading(false); }
   };
 
   const feedToPost = async (item) => {
     setFeedLoading(true);
+    const tid = toast.loading('Generazione contenuto dal feed...');
     try {
       const { data } = await api.post('/feeds/generate-content', { project_id: project.id, feed_item_title: item.title, feed_item_summary: item.summary });
       setContents(prev => [...prev, data]);
+      toast.success('Contenuto generato!', { id: tid });
       openContentDetail(data);
-    } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     finally { setFeedLoading(false); }
   };
 
@@ -167,6 +188,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   };
 
   const connectSocial = async (platform) => {
+    setConnectingPlatformId(platform.id);
+    const tid = toast.loading(`Connessione ${platform.name} in corso...`);
     try {
       const { data } = await api.get(`/social/oauth/start/${platform.id}`);
       const popup = window.open(data.auth_url, 'oauth_popup', 'width=600,height=700,left=200,top=100');
@@ -175,46 +198,82 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           window.removeEventListener('message', handler);
           popup?.close();
           api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
-          alert(`✓ ${e.data.name} collegato con successo!`);
+          toast.success(`${e.data.name} collegato con successo!`, { id: tid });
+          setConnectingPlatformId(null);
         } else if (e.data?.type === 'oauth_error') {
           window.removeEventListener('message', handler);
           popup?.close();
-          alert(`Errore connessione: ${e.data.error}`);
+          toast.error(`Errore connessione: ${e.data.error}`, { id: tid });
+          setConnectingPlatformId(null);
         }
       };
       window.addEventListener('message', handler);
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid });
+      setConnectingPlatformId(null);
     }
   };
   const addManualProfile = async (platformId) => {
     if (!manualName.trim()) return;
-    const { data } = await api.post('/social/profiles', { platform: platformId, profile_name: manualName, connection_mode: 'manual' });
-    setSocialProfiles(prev => [...prev, data]); setShowAddManual(null); setManualName('');
+    const tid = toast.loading('Aggiunta profilo...');
+    try {
+      const { data } = await api.post('/social/profiles', { platform: platformId, profile_name: manualName, connection_mode: 'manual' });
+      setSocialProfiles(prev => [...prev, data]); setShowAddManual(null); setManualName('');
+      toast.success('Profilo aggiunto', { id: tid });
+    } catch (e) { toast.error('Errore aggiunta profilo', { id: tid }); }
   };
-  const removeSocialProfile = async (id) => { await api.delete(`/social/profiles/${id}`); setSocialProfiles(prev => prev.filter(p => p.id !== id)); };
+  const removeSocialProfile = async (id) => {
+    setRemovingProfileId(id);
+    const tid = toast.loading('Rimozione profilo...');
+    try {
+      await api.delete(`/social/profiles/${id}`);
+      setSocialProfiles(prev => prev.filter(p => p.id !== id));
+      toast.success('Profilo rimosso', { id: tid });
+    } catch (e) { toast.error('Errore rimozione profilo', { id: tid }); }
+    setRemovingProfileId(null);
+  };
   const toggleProjectLink = async (profileId) => {
-    const isLinked = projectSocials.some(p => p.id === profileId);
-    const newIds = isLinked ? projectSocials.filter(p => p.id !== profileId).map(p => p.id) : [...projectSocials.map(p => p.id), profileId];
-    await api.post('/social/project/link', { project_id: project.id, social_profile_ids: newIds });
-    const { data } = await api.get(`/social/project/${project.id}`);
-    setProjectSocials(data);
+    try {
+      const isLinked = projectSocials.some(p => p.id === profileId);
+      const newIds = isLinked ? projectSocials.filter(p => p.id !== profileId).map(p => p.id) : [...projectSocials.map(p => p.id), profileId];
+      await api.post('/social/project/link', { project_id: project.id, social_profile_ids: newIds });
+      const { data } = await api.get(`/social/project/${project.id}`);
+      setProjectSocials(data);
+    } catch (e) { toast.error('Errore aggiornamento link'); }
   };
 
   const saveToTovLibrary = async () => {
     if (!tovSaveName.trim()) return;
-    const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
-    setTovLibrary(prev => [...prev, data]); setShowTovSave(false); setTovSaveName('');
+    setSavingTovLibrary(true);
+    const tid = toast.loading('Salvataggio template...');
+    try {
+      const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
+      setTovLibrary(prev => [...prev, data]); setShowTovSave(false); setTovSaveName('');
+      toast.success('Template salvato nella libreria', { id: tid });
+    } catch (e) { toast.error('Errore salvataggio template', { id: tid }); }
+    setSavingTovLibrary(false);
   };
   const applyTovTemplate = async (itemId) => {
-    await api.post(`/tov-library/${itemId}/apply/${project.id}`);
-    const { data } = await api.get(`/tov/${project.id}`);
-    setTov(data || {});
+    setApplyingTovId(itemId);
+    const tid = toast.loading('Applicazione template...');
+    try {
+      await api.post(`/tov-library/${itemId}/apply/${project.id}`);
+      const { data } = await api.get(`/tov/${project.id}`);
+      setTov(data || {});
+      toast.success('Template applicato', { id: tid });
+    } catch (e) { toast.error('Errore applicazione template', { id: tid }); }
+    setApplyingTovId(null);
   };
 
   const cancelQueueItem = async (id) => {
-    await api.delete(`/publish/queue/${id}`);
-    setQueueItems(prev => prev.filter(q => q.id !== id));
+    setCancellingQueueId(id);
+    const tid = toast.loading('Annullamento programmazione...');
+    try {
+      await api.delete(`/publish/queue/${id}`);
+      setQueueItems(prev => prev.filter(q => q.id !== id));
+      toast.success('Programmazione annullata', { id: tid });
+    } catch (e) { toast.error('Errore annullamento', { id: tid }); }
+    setCancellingQueueId(null);
   };
 
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -295,7 +354,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                     <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
                       <span className="text-[10px] text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1 rounded hover:bg-[var(--bg-secondary)]" onClick={e => { e.stopPropagation(); deleteContent(c.id); }}><Trash size={12} /></button>
+                        <button className="p-1 rounded hover:bg-[var(--bg-secondary)]" disabled={deletingContentId === c.id} onClick={e => { e.stopPropagation(); deleteContent(c.id); }}>
+                          {deletingContentId === c.id ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> : <Trash size={12} />}
+                        </button>
                       </div>
                     </div>
                   </motion.div>
@@ -372,7 +433,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                     <div className="card mb-4 p-4">
                       <div className="flex gap-2 items-end">
                         <input className="input-dark text-sm py-2 flex-1" placeholder="Nome template" value={tovSaveName} onChange={e => setTovSaveName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
-                        <button className="btn-gradient text-xs py-2" onClick={saveToTovLibrary}>Salva</button>
+                        <button className="btn-gradient text-xs py-2" onClick={saveToTovLibrary} disabled={savingTovLibrary}>
+                          {savingTovLibrary ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-1" />Salvataggio...</> : 'Salva'}
+                        </button>
                         <button className="btn-ghost text-xs py-2" onClick={() => setShowTovSave(false)}>X</button>
                       </div>
                     </div>
@@ -384,7 +447,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                           <p className="text-sm font-medium truncate">{item.name}</p>
                           <p className="text-[10px] text-[var(--text-muted)]">F:{item.formality} E:{item.energy} Em:{item.empathy} H:{item.humor}</p>
                         </div>
-                        <button className="btn-gradient text-[10px] py-1 px-2" onClick={() => applyTovTemplate(item.id)}>Applica</button>
+                        <button className="btn-gradient text-[10px] py-1 px-2" onClick={() => applyTovTemplate(item.id)} disabled={applyingTovId === item.id}>
+                          {applyingTovId === item.id ? <div className="w-2.5 h-2.5 border border-white border-t-transparent rounded-full animate-spin" /> : 'Applica'}
+                        </button>
                         <button className="text-[var(--accent-pink)]" onClick={() => { api.delete(`/tov-library/${item.id}`); setTovLibrary(prev => prev.filter(t => t.id !== item.id)); }}><Trash size={12} /></button>
                       </div>
                     ))}
@@ -414,7 +479,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                             <span className="text-xs truncate">{prof.profile_name}</span>
                             <div className="flex gap-1 flex-shrink-0">
                               <span className="badge green text-[8px]">Attivo</span>
-                              <button className="text-[var(--accent-pink)]" onClick={() => removeSocialProfile(prof.id)}><Trash size={10} /></button>
+                              <button className="text-[var(--accent-pink)]" disabled={removingProfileId === prof.id} onClick={() => removeSocialProfile(prof.id)}>
+                                {removingProfileId === prof.id ? <div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" /> : <Trash size={10} />}
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -446,8 +513,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold flex items-center gap-2"><RssSimple size={16} /> News & Reddit — {project.sector}</p>
-                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" onClick={() => { api.post(`/feeds/refresh/${project.id}`).then(() => api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data))).catch(() => {}); }}>
-                      <ArrowClockwise size={12} /> Refresh
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingFeeds} onClick={async () => {
+                      setRefreshingFeeds(true); const tid = toast.loading('Aggiornamento feed...');
+                      try { await api.post(`/feeds/refresh/${project.id}`); const r = await api.get(`/feeds/${project.id}/items`); setFeedItems(r.data); toast.success('Feed aggiornati', { id: tid }); }
+                      catch { toast.error('Errore aggiornamento feed', { id: tid }); }
+                      setRefreshingFeeds(false);
+                    }}>
+                      <ArrowClockwise size={12} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : 'Refresh'}
                     </button>
                   </div>
                   <div className="space-y-2">
@@ -464,8 +536,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold flex items-center gap-2"><Sparkle size={16} weight="fill" /> Idee AI — {project.sector}</p>
-                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" onClick={() => { api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {}); }}>
-                      <ArrowClockwise size={12} /> Rigenera
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingAi} onClick={async () => {
+                      setRefreshingAi(true); const tid = toast.loading('Generazione idee AI...');
+                      try { const r = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`); setAiFeedItems(r.data || []); toast.success('Idee AI aggiornate', { id: tid }); }
+                      catch { toast.error('Errore generazione idee AI', { id: tid }); }
+                      setRefreshingAi(false);
+                    }}>
+                      <ArrowClockwise size={12} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : 'Rigenera'}
                     </button>
                   </div>
                   <div className="space-y-2">
@@ -495,8 +572,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             <div className="px-4 md:px-6 pt-3 pb-2">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1 truncate"><RssSimple size={12} /> News & Reddit — {project.sector}</p>
-                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" onClick={() => { api.post(`/feeds/refresh/${project.id}`).then(() => api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data))).catch(() => {}); }}>
-                  <ArrowClockwise size={10} /> Refresh
+                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" disabled={refreshingFeeds} onClick={async () => {
+                  setRefreshingFeeds(true); const tid = toast.loading('Aggiornamento feed...');
+                  try { await api.post(`/feeds/refresh/${project.id}`); const r = await api.get(`/feeds/${project.id}/items`); setFeedItems(r.data); toast.success('Feed aggiornati', { id: tid }); }
+                  catch { toast.error('Errore', { id: tid }); }
+                  setRefreshingFeeds(false);
+                }}>
+                  <ArrowClockwise size={10} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : 'Refresh'}
                 </button>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
@@ -516,10 +598,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             <div className="px-4 md:px-6 pt-1 pb-3 border-t border-[var(--border-color)]" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1 truncate"><Sparkle size={12} weight="fill" /> Idee AI — {project.sector}</p>
-                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" onClick={() => {
-                  api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {});
+                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" disabled={refreshingAi} onClick={async () => {
+                  setRefreshingAi(true); const tid = toast.loading('Generazione idee AI...');
+                  try { const r = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`); setAiFeedItems(r.data || []); toast.success('Idee aggiornate', { id: tid }); }
+                  catch { toast.error('Errore', { id: tid }); }
+                  setRefreshingAi(false);
                 }}>
-                  <ArrowClockwise size={10} /> Rigenera
+                  <ArrowClockwise size={10} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : 'Rigenera'}
                 </button>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
@@ -588,7 +673,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               <h3 className="text-sm font-semibold">Queue & Analytics</h3>
               <button className="btn-ghost p-1.5" onClick={() => setShowRightPanel(false)}><X size={16} /></button>
             </div>
-            <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} project={project} />
+            <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} cancellingQueueId={cancellingQueueId} project={project} />
           </div>
         </motion.div>
       </div>
@@ -633,7 +718,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 }
 
 /* Extracted right panel content to reuse in desktop inline + mobile overlay */
-function RightPanelContent({ queueItems, contents, cancelQueueItem, project }) {
+function RightPanelContent({ queueItems, contents, cancelQueueItem, cancellingQueueId, project }) {
   return (
     <>
       <div className="mb-6">
@@ -645,7 +730,13 @@ function RightPanelContent({ queueItems, contents, cancelQueueItem, project }) {
               <pi.Icon weight="fill" size={12} color={pi.color} />
               <p className="text-[10px] flex-1 truncate">{contents.find(c => c.id === item.content_id)?.hook_text?.slice(0, 30) || '...'}</p>
               <span className={`text-[8px] font-semibold ${item.status === 'queued' ? 'text-[var(--accent-blue)]' : item.status === 'published' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-orange)]'}`}>{item.status}</span>
-              {item.status === 'queued' && <button onClick={() => cancelQueueItem(item.id)}><X size={10} /></button>}
+              {item.status === 'queued' && (
+                <button onClick={() => cancelQueueItem(item.id)} disabled={cancellingQueueId === item.id}>
+                  {cancellingQueueId === item.id
+                    ? <div className="w-2 h-2 border border-current border-t-transparent rounded-full animate-spin" />
+                    : <X size={10} />}
+                </button>
+              )}
             </div>
           );
         })}
