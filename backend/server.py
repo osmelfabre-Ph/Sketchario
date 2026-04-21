@@ -1217,6 +1217,9 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     title = content.get("title") or content.get("hook_text") or "Post"
     media = content.get("media", [])
     image_url = media[0].get("url") if media else None
+    if image_url and image_url.startswith("/"):
+        app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
+        image_url = f"{app_url}{image_url}"
     if platform == "facebook":
         return await _publish_facebook(token, text, image_url)
     elif platform == "instagram":
