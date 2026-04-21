@@ -61,24 +61,36 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
         return False
 
 # ── GLOBAL PROMPTING ─────────────────────────────────
-GLOBAL_CONTENT_PROMPT = """GLOBAL RULES FOR SOCIAL CONTENT GENERATION:
-Every content must: Stop the scroll. Keep attention. Deliver concrete value. Trigger emotion. Push toward action.
-Avoid: bland, generic, overly safe, forgettable content. Prefer: specificity, tension, clarity, usefulness.
+GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIAL (da rispettare sempre, senza eccezioni):
 
-HOOKS: Max 5 words. Bold, negative, challenging, or curiosity-driven. Create tension, urgency, emotional reaction.
+## HOOK (max 5 parole)
+- MAI iniziare con "Ciao", "Ciao a tutti", saluti o presentazioni generiche
+- MAI iniziare con il nome del brand o del prodotto
+- Usare SOLO: domande provocatorie, affermazioni negative/controintuitive, numeri specifici, gap di curiosità, sfide dirette
+- Esempi VIETATI: "Ciao a tutti! Oggi vi presento..." / "Siamo qui per..."
+- Esempi CORRETTI: "Stai perdendo soldi ogni giorno." / "Perché nessuno te lo dice?" / "3 errori che tutti fanno."
 
-REEL STRUCTURE: HOOK (max 5 words, bold, emotionally charged) → SETUP (why it matters) → VALUE (practical, concrete, actionable) → CTA (clear next action)
+## SCRIPT (corpo del contenuto)
+- STRUTTURA NARRATIVA OBBLIGATORIA: Tensione/Problema → Risonanza emotiva ("lo conosco, lo capisco") → Soluzione/Valore concreto → Urgenza/CTA
+- ZERO emoji nello script. Le emoji vanno SOLO nella caption.
+- NON parlare del prodotto/servizio direttamente nelle prime 2/3 dello script: parla del PROBLEMA o DESIDERIO del lettore
+- NON usare linguaggio promozionale generico: no "offerte imperdibili", "non perdere questa occasione", "visitate il nostro sito"
+- Usa linguaggio specifico, personale, concreto. "La tua auto ti aspetta" → "Ogni giorno che aspetti è un giorno in meno da vivere il viaggio che meriti"
+- Ritmo: frasi corte. Max 15 parole per frase. Alterni con frasi più lunghe per creare respiro.
 
-CAROUSEL STRUCTURE: SLIDE 1: bold hook | SLIDE 2: real problem/tension | SLIDES 3-6: practical steps/insights | FINAL SLIDE: direct CTA
-Each slide must be clearly numbered and self-contained.
+## CAPTION
+- OBBLIGATORIAMENTE diversa dallo script per angolazione e tono (non è un riassunto!)
+- Prima riga: hook autonomo che funziona senza contesto
+- Corpo: valore aggiuntivo, storytelling complementare, o prospettiva diversa
+- Chiusura: CTA specifico e personale (non generico "clicca qui")
+- Emoji: massimo 3-4, strategicamente posizionate, mai a caso
+- Paragrafi brevi con spazi per leggibilità mobile
 
-SINGLE POST: TITLE (clear promise) → VALUE (strong central idea) → CTA (one clear action)
-
-CAPTION: FIRST LINE HOOK (attention-grabbing) → BODY (real value, short paragraphs, strong rhythm) → CTA (comment, save, share)
-Use strategic emojis. Line breaks for readability.
-
-WRITING STYLE: Direct. Clear. Concise. No fluff. No cliches. No generic AI tone. No vague motivational filler.
-QUALITY: Every piece must be specific, tension-filled, clear, and useful."""
+## QUALITÀ MINIMA RICHIESTA
+- Ogni pezzo deve creare TENSIONE PSICOLOGICA (FOMO, curiosità, empatia, sfida)
+- Specifico batte generico SEMPRE. Numeri concreti, esempi reali, situazioni riconoscibili
+- Vietato: tono da spot pubblicitario anni '90, frasi motivazionali vuote, ottimismo generico
+- Il lettore deve riconoscersi nella situazione descritta entro le prime 2 frasi"""
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
