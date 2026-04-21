@@ -616,7 +616,7 @@ async def generate_hooks(inp: GenerateHooksInput, request: Request):
     tov_desc = ""
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
-    system = "Sei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
+    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
     prompt = f"""Genera {num_hooks} hook per un progetto nel settore: {project['sector']}.
 Descrizione: {project.get('description','')}
 Area: {project.get('geo','Italia')}
@@ -787,7 +787,7 @@ async def create_post(inp: PostCreate, request: Request):
     if inp.use_ai:
         tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10." if tov else ""
-        system = "Sei un copywriter. Genera contenuto social in italiano. Rispondi SOLO con JSON."
+        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social in italiano. Rispondi SOLO con JSON."
         if inp.format == 'prompted_reel':
             prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."
         else:
@@ -1436,7 +1436,7 @@ async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     tov_desc = ""
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10."
-    system = "Sei un copywriter professionista per social media. Genera contenuto ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
+    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
     prompt = f"""Genera un contenuto social ispirato a questo articolo:
 Titolo: {inp.feed_item_title}
 Sommario: {inp.feed_item_summary}
@@ -2469,7 +2469,7 @@ async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
 
         if inp.mode == "ai":
             # Generate slides content using Gemini
-            system = "Sei un esperto di social media carousel. Genera il contenuto per le slide di un carousel. Rispondi SOLO con JSON array."
+            system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un esperto di social media carousel. Genera il contenuto per le slide di un carousel. Rispondi SOLO con JSON array."
             prompt = f"""Genera 5-7 slide per un carousel social media basato su questo contenuto:
 {context_text[:1500]}
 
