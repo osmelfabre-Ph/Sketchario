@@ -272,9 +272,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('carousel')}><Image size={14} /> Carousel</button>
           </>
         ) : (
-          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert()}>
-            {content.format === 'reel' ? <><Image size={14} /> Carousel</> : <><Video size={14} /> Reel</>}
-          </button>
+          <>
+            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert()}>
+              {content.format === 'reel' ? <><Image size={14} /> Carousel</> : <><Video size={14} /> Reel</>}
+            </button>
+            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('prompted_reel')}>
+              🤖 Prompted Reel
+            </button>
+          </>
         )}
         <button className="btn-ghost text-xs py-1.5 px-3" onClick={regenerate} disabled={saving}>
           <ArrowClockwise size={14} /> Rigenera
