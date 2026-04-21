@@ -55,6 +55,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [mobileTab, setMobileTab] = useState('editor');
   const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [optimizingPrompt, setOptimizingPrompt] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(null);
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
   const [imageModel, setImageModel] = useState('flux');
@@ -481,6 +482,29 @@ export default function ContentDetail({ content: initialContent, project, onClos
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setInputModal(null)}>
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
           <h3 className="font-semibold text-base mb-3">{inputModal.title}</h3>
+          {inputModal.isFlux && (
+            <button
+              className="btn-ghost text-xs py-1 px-2 mb-2 w-full"
+              disabled={optimizingPrompt}
+              onClick={async () => {
+                const el = document.getElementById('input-modal-field');
+                const current = el.value.trim();
+                if (!current) return;
+                setOptimizingPrompt(true);
+                try {
+                  const { data } = await api.post('/media/optimize-prompt', {
+                    visual_direction: current,
+                    script: editScript || '',
+                    project_id: project.id,
+                  });
+                  el.value = data.prompt;
+                } catch(e) { alert('Errore ottimizzazione: ' + (e.response?.data?.detail || e.message)); }
+                setOptimizingPrompt(false);
+              }}
+            >
+              {optimizingPrompt ? '...' : '🤖 Ottimizza per AI'}
+            </button>
+          )}
           {inputModal.multiline
             ? <textarea className="input-dark w-full mb-3" rows={4} placeholder={inputModal.placeholder}
                 defaultValue={inputModal.value}
