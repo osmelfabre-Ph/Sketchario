@@ -1232,17 +1232,28 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
 async def _publish_instagram(token: str, ig_id: str, text: str, image_url: Optional[str] = None) -> str:
     if not ig_id:
         raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
-    async with httpx.AsyncClient(timeout=30) as c:
-        if image_url:
-            container_r = await c.post(f"https://graph.facebook.com/v19.0/{ig_id}/media",
-                params={"image_url": image_url, "caption": text, "access_token": token})
-            container_r.raise_for_status()
-            container_id = container_r.json()["id"]
-        else:
-            raise ValueError("Instagram richiede un'immagine per pubblicare. Carica prima un'immagine sul contenuto.")
-        pub_r = await c.post(f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
-            params={"creation_id": container_id, "access_token": token})
-        pub_r.raise_for_status()
+    if not image_url:
+        raise ValueError("Instagram richiede un'immagine. Carica prima un media sul contenuto.")
+    async with httpx.AsyncClient(timeout=60) as c:
+        # Step 1: create media container
+        container_r = await c.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media",
+            data={"image_url": image_url, "caption": text, "access_token": token}
+        )
+        if container_r.status_code != 200:
+            fb_err = container_r.json().get("error", {})
+            raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}")
+        container_id = container_r.json().get("id", "")
+        if not container_id:
+            raise ValueError("IG container creation returned no ID")
+        # Step 2: publish
+        pub_r = await c.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
+            data={"creation_id": container_id, "access_token": token}
+        )
+        if pub_r.status_code != 200:
+            fb_err = pub_r.json().get("error", {})
+            raise ValueError(f"IG publish error: {fb_err.get('message', pub_r.text[:200])}")
         return pub_r.json().get("id", "")
 
 async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
