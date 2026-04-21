@@ -7,7 +7,8 @@ import {
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
   Eye, Sparkle, Trash, Globe,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
-  BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp
+  BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp,
+  SquaresFour, ListBullets, Flag
 } from '@phosphor-icons/react';
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
@@ -70,6 +71,10 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const [removingProfileId, setRemovingProfileId] = useState(null);
   const [savingTovLibrary, setSavingTovLibrary] = useState(false);
   const [applyingTovId, setApplyingTovId] = useState(null);
+
+  // List view
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'list'
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
 
   // Feed item modal + pinning
   const [selectedFeedItem, setSelectedFeedItem] = useState(null);
@@ -282,6 +287,21 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setCancellingQueueId(null);
   };
 
+  const toggleUrgent = async (c) => {
+    const newVal = !c.urgent;
+    setContents(prev => prev.map(x => x.id === c.id ? { ...x, urgent: newVal } : x));
+    try { await api.put(`/contents/${c.id}`, { urgent: newVal }); }
+    catch { setContents(prev => prev.map(x => x.id === c.id ? { ...x, urgent: c.urgent } : x)); }
+  };
+
+  const toggleGroupCollapse = (status) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status); else next.add(status);
+      return next;
+    });
+  };
+
   const pinFeedItem = async (item, itemType) => {
     const itemId = item.id;
     setPinningItemId(itemId);
@@ -350,13 +370,31 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             >
               Analytics
             </button>
+            {tab === 'list' && (
+              <div className="flex items-center gap-0.5 ml-2 border-l border-[var(--border-color)] pl-2 flex-shrink-0">
+                <button
+                  className={`p-1.5 rounded transition-colors ${viewMode === 'cards' ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
+                  onClick={() => setViewMode('cards')}
+                  title="Vista schede"
+                >
+                  <SquaresFour size={15} />
+                </button>
+                <button
+                  className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
+                  onClick={() => setViewMode('list')}
+                  title="Vista elenco"
+                >
+                  <ListBullets size={15} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-4">
 
             {/* LIST VIEW — CARDS */}
-            {tab === 'list' && (
+            {tab === 'list' && viewMode === 'cards' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 pt-2">
                 {contents.map((c, i) => (
                   <motion.div key={c.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
@@ -394,6 +432,86 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 )}
               </div>
             )}
+
+            {/* LIST VIEW — COMPACT LIST */}
+            {tab === 'list' && viewMode === 'list' && (() => {
+              const groups = [
+                { key: 'published', label: 'Pubblicati', items: contents.filter(c => c.status === 'published') },
+                { key: 'scheduled', label: 'Programmati', items: contents.filter(c => c.status === 'scheduled') },
+                { key: 'draft', label: 'Bozze', items: contents.filter(c => !c.status || c.status === 'draft') },
+              ].filter(g => g.items.length > 0);
+              return (
+                <div className="pt-2 space-y-5">
+                  {groups.map(group => (
+                    <div key={group.key}>
+                      <button
+                        className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1.5 hover:text-white transition-colors w-full text-left"
+                        onClick={() => toggleGroupCollapse(group.key)}
+                      >
+                        {collapsedGroups.has(group.key) ? <CaretDown size={11} /> : <CaretUp size={11} />}
+                        {group.label}
+                        <span className="font-normal opacity-60 ml-0.5">({group.items.length})</span>
+                      </button>
+                      {!collapsedGroups.has(group.key) && (
+                        <div className="space-y-0.5">
+                          {group.items.map(c => {
+                            const hasContent = !!(c.script || c.caption);
+                            const dotColor = c.status === 'published' ? '#22c55e'
+                              : (c.status === 'scheduled' || hasContent) ? '#f97316'
+                              : '#6b7280';
+                            const queueItem = queueItems.find(q => q.content_id === c.id);
+                            let dateLabel;
+                            if (c.status === 'published') dateLabel = 'Pubblicato';
+                            else if (queueItem?.scheduled_at) dateLabel = new Date(queueItem.scheduled_at).toLocaleDateString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                            else dateLabel = `G${(c.day_offset || 0) + 1}`;
+                            return (
+                              <div key={c.id}
+                                className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer group hover:bg-[var(--bg-card)] transition-colors"
+                                onClick={() => openContentDetail(c)}>
+                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: dotColor }} />
+                                <div className="flex-shrink-0 text-[var(--text-muted)]">
+                                  {c.format === 'reel' ? <Video size={13} /> : c.format === 'prompted_reel' ? <span style={{ fontSize: 12 }}>🤖</span> : <Image size={13} />}
+                                </div>
+                                <p className="flex-1 text-sm truncate min-w-0">
+                                  {c.hook_text || <span className="text-[var(--text-muted)] italic text-xs">Senza titolo</span>}
+                                </p>
+                                <span className={`badge text-[9px] flex-shrink-0 hidden sm:inline-flex ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
+                                  {c.format === 'prompted_reel' ? 'prompted' : c.format}
+                                </span>
+                                <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 w-20 text-right">{dateLabel}</span>
+                                <button
+                                  className="flex-shrink-0 transition-opacity opacity-40 group-hover:opacity-100"
+                                  style={{ color: c.urgent ? '#ef4444' : 'var(--text-muted)' }}
+                                  onClick={e => { e.stopPropagation(); toggleUrgent(c); }}
+                                  title={c.urgent ? 'Urgente — clicca per rimuovere' : 'Segna urgente'}
+                                >
+                                  <Flag size={14} weight={c.urgent ? 'fill' : 'regular'} />
+                                </button>
+                                <button
+                                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--accent-pink)]"
+                                  disabled={deletingContentId === c.id}
+                                  onClick={e => { e.stopPropagation(); deleteContent(c.id); }}
+                                >
+                                  {deletingContentId === c.id
+                                    ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                                    : <Trash size={13} />}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {contents.length === 0 && (
+                    <div className="text-center py-12">
+                      <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
+                      <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* CALENDAR — with drag & drop */}
             {tab === 'calendar' && (
