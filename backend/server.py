@@ -2340,6 +2340,203 @@ async def global_analytics(request: Request):
     queued = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "queued"})
     return {"projects": projects, "total_contents": contents, "published": published, "queued": queued}
 
+# ── SOCIAL ENGAGEMENT METRICS ────────────────────────
+
+async def _fetch_facebook_metrics(token: str, post_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as c:
+        pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts",
+                               params={"access_token": token})
+        if pages_r.status_code != 200:
+            return {}
+        pages = pages_r.json().get("data", [])
+        if not pages:
+            return {}
+        page_token = pages[0]["access_token"]
+        r = await c.get(f"https://graph.facebook.com/v19.0/{post_id}/insights",
+                        params={"metric": "post_impressions,post_engaged_users,post_clicks,post_reactions_by_type_total",
+                                "access_token": page_token})
+        if r.status_code != 200:
+            return {}
+        result = {}
+        for item in r.json().get("data", []):
+            name = item.get("name", "")
+            values = item.get("values", [])
+            val = values[-1].get("value", 0) if values else 0
+            if name == "post_impressions":
+                result["impressions"] = val if isinstance(val, int) else 0
+            elif name == "post_engaged_users":
+                result["reach"] = val if isinstance(val, int) else 0
+            elif name == "post_clicks":
+                result["clicks"] = val if isinstance(val, int) else 0
+            elif name == "post_reactions_by_type_total":
+                result["likes"] = sum(val.values()) if isinstance(val, dict) else 0
+        return result
+
+async def _fetch_instagram_metrics(token: str, media_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://graph.facebook.com/v19.0/{media_id}/insights",
+                        params={"metric": "impressions,reach,saved,likes,comments,shares",
+                                "access_token": token})
+        if r.status_code != 200:
+            return {}
+        result = {}
+        for item in r.json().get("data", []):
+            name = item.get("name", "")
+            val = item.get("values", [{}])[-1].get("value", 0) if item.get("values") else item.get("value", 0)
+            if name in ("impressions", "reach", "saved", "likes", "comments", "shares"):
+                result[name] = val if isinstance(val, (int, float)) else 0
+        return result
+
+async def _fetch_linkedin_metrics(token: str, post_urn: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as c:
+        encoded = quote(post_urn, safe="")
+        r = await c.get(f"https://api.linkedin.com/v2/socialActions/{encoded}",
+                        headers={"Authorization": f"Bearer {token}",
+                                 "X-Restli-Protocol-Version": "2.0.0"})
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+        return {
+            "likes": data.get("likesSummary", {}).get("totalLikes", 0),
+            "comments": data.get("commentsSummary", {}).get("totalFirstLevelComments", 0),
+        }
+
+@api.post("/analytics/{project_id}/sync")
+async def sync_analytics(project_id: str, request: Request):
+    user = await get_current_user(request)
+    published = await db.publish_queue.find(
+        {"project_id": project_id, "status": "published", "post_id": {"$exists": True, "$ne": ""}},
+        {"_id": 0}
+    ).to_list(500)
+    if not published:
+        return {"synced": 0, "message": "Nessun post pubblicato trovato"}
+
+    synced = 0
+    errors = []
+    for item in published:
+        platform = item.get("platform")
+        post_id = item.get("post_id", "")
+        content_id = item.get("content_id", "")
+        if not post_id or not platform in ("facebook", "instagram", "linkedin"):
+            continue
+        account = await db.social_accounts.find_one({"id": item.get("social_profile_id")})
+        if not account:
+            account = await db.social_accounts.find_one({"user_id": user["_id"], "platform": platform})
+        if not account:
+            continue
+        token = account.get("access_token", "")
+        try:
+            metrics = {}
+            if platform == "facebook":
+                metrics = await _fetch_facebook_metrics(token, post_id)
+            elif platform == "instagram":
+                metrics = await _fetch_instagram_metrics(token, post_id)
+            elif platform == "linkedin":
+                metrics = await _fetch_linkedin_metrics(token, post_id)
+            if metrics:
+                await db.content_metrics.update_one(
+                    {"content_id": content_id, "platform": platform},
+                    {"$set": {
+                        "content_id": content_id, "project_id": project_id,
+                        "platform": platform, "post_id": post_id,
+                        "metrics": metrics,
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True
+                )
+                synced += 1
+        except Exception as e:
+            errors.append(f"{platform}: {str(e)[:80]}")
+    return {"synced": synced, "errors": errors}
+
+@api.get("/analytics/{project_id}/post-metrics")
+async def get_post_metrics(project_id: str, request: Request):
+    await get_current_user(request)
+    metrics = await db.content_metrics.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+    result = []
+    for m in metrics:
+        content = await db.contents.find_one(
+            {"id": m["content_id"]}, {"_id": 0, "hook_text": 1, "format": 1, "pillar": 1})
+        result.append({**m,
+            "hook_text": content.get("hook_text", "") if content else "",
+            "format": content.get("format", "") if content else "",
+            "pillar": content.get("pillar", "") if content else "",
+        })
+    return result
+
+@api.get("/analytics/{project_id}/ai-insights")
+async def get_ai_insights(project_id: str, request: Request):
+    await get_current_user(request)
+    metrics_docs = await db.content_metrics.find({"project_id": project_id}, {"_id": 0}).to_list(200)
+    contents = await db.contents.find({"project_id": project_id},
+        {"_id": 0, "id": 1, "hook_text": 1, "format": 1, "pillar": 1}).to_list(200)
+    project = await db.projects.find_one({"_id": ObjectId(project_id)}, {"_id": 0})
+
+    def _eng(m): return sum(v for v in m.get("metrics", {}).values() if isinstance(v, (int, float)))
+    def _reach(m): return m.get("metrics", {}).get("reach", 0) or m.get("metrics", {}).get("impressions", 0) or 0
+
+    total_reach = sum(_reach(m) for m in metrics_docs)
+    total_likes = sum(m.get("metrics", {}).get("likes", 0) or 0 for m in metrics_docs)
+    total_comments = sum(m.get("metrics", {}).get("comments", 0) or 0 for m in metrics_docs)
+
+    by_format: dict = {}
+    by_pillar: dict = {}
+    content_map = {c["id"]: c for c in contents}
+    for m in metrics_docs:
+        c = content_map.get(m.get("content_id"), {})
+        fmt = c.get("format", "unknown")
+        pil = c.get("pillar", "unknown")
+        eng = _eng(m)
+        reach = _reach(m)
+        for bucket, key in [(by_format, fmt), (by_pillar, pil)]:
+            if key not in bucket:
+                bucket[key] = {"engagement": 0, "reach": 0, "count": 0}
+            bucket[key]["engagement"] += eng
+            bucket[key]["reach"] += reach
+            bucket[key]["count"] += 1
+
+    top_posts = []
+    for m in sorted(metrics_docs, key=_eng, reverse=True)[:5]:
+        c = content_map.get(m.get("content_id"), {})
+        top_posts.append({"hook_text": c.get("hook_text", ""), "format": c.get("format", ""),
+                          "platform": m.get("platform", ""), "metrics": m.get("metrics", {})})
+
+    aggregate = {"total_reach": total_reach, "total_likes": total_likes,
+                 "total_comments": total_comments, "by_format": by_format, "by_pillar": by_pillar}
+
+    if not metrics_docs:
+        return {"insights": "Nessun dato disponibile. Pubblica dei contenuti e sincronizza le metriche.",
+                "recommendations": [], "best_format": "", "best_pillar": "",
+                "top_posts": [], "aggregate": aggregate}
+
+    summary = f"""Settore: {project.get('sector','')} | Post con metriche: {len(metrics_docs)}
+Reach totale: {total_reach:,} | Like: {total_likes:,} | Commenti: {total_comments:,}
+Per formato: {json.dumps(by_format, ensure_ascii=False)}
+Per pillar: {json.dumps(by_pillar, ensure_ascii=False)}
+Top 3: {json.dumps([{"hook": p["hook_text"][:60], "format": p["format"], "metrics": p["metrics"]} for p in top_posts[:3]], ensure_ascii=False)}"""
+
+    try:
+        ai_result = await call_ai(
+            "Sei un esperto di social media analytics. Analizza i dati e rispondi in italiano con insights strategici concreti. Rispondi SOLO con JSON valido.",
+            f"""Analizza e restituisci JSON con:
+- insights: stringa con 2-3 osservazioni strategiche sui dati
+- recommendations: array di 3 azioni concrete da fare subito
+- best_format: formato che performa meglio con breve spiegazione
+- best_pillar: pillar con miglior engagement con breve spiegazione
+
+Dati: {summary}"""
+        )
+        data = extract_json(ai_result)
+        return {**data, "top_posts": top_posts, "aggregate": aggregate}
+    except Exception:
+        return {
+            "insights": f"Reach totale {total_reach:,} — {len(metrics_docs)} post analizzati.",
+            "recommendations": ["Sincronizza le metriche regolarmente", "Analizza i post top e replica il formato", "Testa pillar diversi"],
+            "best_format": max(by_format, key=lambda f: by_format[f]["engagement"], default=""),
+            "best_pillar": max(by_pillar, key=lambda p: by_pillar[p]["engagement"], default=""),
+            "top_posts": top_posts, "aggregate": aggregate
+        }
+
 # ── ONBOARDING ────────────────────────────────────────
 @api.get("/onboarding/status")
 async def onboarding_status(request: Request):
