@@ -518,10 +518,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
               const soggetto = document.getElementById('input-modal-field').value.trim();
               if (!soggetto) return;
               const stylePrompts = {
-                fotorealistico: `A hyper-realistic, high-resolution professional photograph of ${soggetto}. The subject has natural skin textures, visible pores, and realistic eye reflections. Lighting: cinematic softbox lighting with subtle rim light to separate the subject from the background. Camera: shot on Sony A7R IV, 35mm lens, f/1.8 aperture for a soft bokeh background. Details: 8k resolution, highly detailed textures, masterpiece, sharp focus, natural colors, no distortion.`,
-                pittorico: `An exquisite oil painting of ${soggetto}. Style: contemporary fine art with visible, expressive brushstrokes and rich impasto textures. Lighting: chiaroscuro technique, dramatic light and shadow inspired by Caravaggio. Details: canvas texture visible, artistic blur, masterpiece, emotional atmosphere, hand-painted aesthetic. No digital smoothness, no photorealism.`,
-                cartoon: `A professional 2D vector illustration of ${soggetto}. Style: clean flat design, bold outlines, solid colors, minimalist background. Aesthetic: modern corporate Memphis or classic cel-shaded animation. Details: high contrast, sharp edges, no gradients, simple shapes, playful vibe.`,
-                ink: `A professional ink pen drawing of ${soggetto}. Style: clean black ink lines, minimalist aesthetic, stippling and linework for depth. Background: plain parchment or white background. High contrast, sharp architectural lines, elegant and sophisticated hand-drawn style.`,
+                fotorealistico: `${soggetto}. Photorealistic, high-resolution, cinematic lighting, shot on Sony A7R IV, 8K ultra-detailed, sharp focus, natural colors, masterpiece quality photography.`,
+                pittorico: `${soggetto}. Fine art oil painting, expressive visible brushstrokes, rich impasto texture, chiaroscuro dramatic lighting inspired by Caravaggio, canvas texture, masterpiece, no photorealism.`,
+                cartoon: `${soggetto}. Professional 2D vector illustration, clean flat design, bold outlines, solid colors, modern cel-shaded animation style, high contrast, sharp edges.`,
+                ink: `${soggetto}. Professional ink pen drawing, clean black ink lines, stippling and crosshatch linework for depth, high contrast, elegant hand-drawn style, white background.`,
               };
               const finalVal = inputModal.isFlux ? stylePrompts[fluxStyle] : soggetto;
               setInputModal(null);
