@@ -53,7 +53,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [scheduleTime, setScheduleTime] = useState('10:00');
   const [scheduling, setScheduling] = useState(false);
   const [cancellingSchedule, setCancellingSchedule] = useState(false);
-  const [contentQueueItem, setContentQueueItem] = useState(null);
+  const [contentQueueItems, setContentQueueItems] = useState([]);
   const [publishing, setPublishing] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [deletingMediaId, setDeletingMediaId] = useState(null);
@@ -71,12 +71,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
     api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
     api.get(`/publish/queue/${project.id}`).then(r => {
-      const item = r.data.find(q => q.content_id === initialContent.id && q.status === 'queued');
-      if (item) {
-        setContentQueueItem(item);
-        const dt = new Date(item.scheduled_at);
+      const items = r.data.filter(q => q.content_id === initialContent.id && q.status === 'queued');
+      setContentQueueItems(items);
+      if (items.length > 0) {
+        const dt = new Date(items[0].scheduled_at);
         setScheduleDate(dt.toISOString().slice(0, 10));
         setScheduleTime(dt.toISOString().slice(11, 16));
+        // Pre-select the social profiles that are already scheduled
+        setSelectedSocials(items.map(q => q.social_profile_id).filter(Boolean));
       }
     }).catch(() => {});
   }, [api, project.id, initialContent.id]);
@@ -152,10 +154,13 @@ export default function ContentDetail({ content: initialContent, project, onClos
       }
       toast.dismiss(tid);
       await loadGooglePickerApi();
-      const { PickerBuilder, ViewId, Action } = window.google.picker;
+      const { PickerBuilder, Action } = window.google.picker;
+      const view = new window.google.picker.DocsView()
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(false)
+        .setMimeTypes('image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/avi,video/x-msvideo');
       new PickerBuilder()
-        .addView(ViewId.DOCS_IMAGES_AND_VIDEOS)
-        .addView(new window.google.picker.DocsView().setParent('root').setSelectFolderEnabled(false))
+        .addView(view)
         .setOAuthToken(data.token)
         .setCallback(async (pickerData) => {
           if (pickerData.action !== Action.PICKED) return;
@@ -237,12 +242,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
   };
 
   const cancelSchedule = async () => {
-    if (!contentQueueItem) return;
+    if (contentQueueItems.length === 0) return;
     setCancellingSchedule(true);
     const tid = toast.loading('Annullamento programmazione...');
     try {
-      await api.delete(`/publish/queue/${contentQueueItem.id}`);
-      setContentQueueItem(null);
+      await Promise.all(contentQueueItems.map(item => api.delete(`/publish/queue/${item.id}`).catch(() => {})));
+      setContentQueueItems([]);
       const updated = { ...content, status: 'draft' };
       setContent(updated); onUpdate?.(updated);
       toast.success('Programmazione annullata', { id: tid });
@@ -253,16 +258,16 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const schedule = async () => {
     if (!scheduleDate || selectedSocials.length === 0) { toast.warning('Seleziona data e almeno un social.'); return; }
     setScheduling(true);
-    const tid = toast.loading(contentQueueItem ? 'Riprogrammazione in corso...' : 'Programmazione in corso...');
+    const tid = toast.loading(contentQueueItems.length > 0 ? 'Riprogrammazione in corso...' : 'Programmazione in corso...');
     try {
       await save();
-      if (contentQueueItem) {
-        try { await api.delete(`/publish/queue/${contentQueueItem.id}`); } catch {}
+      if (contentQueueItems.length > 0) {
+        await Promise.all(contentQueueItems.map(item => api.delete(`/publish/queue/${item.id}`).catch(() => {})));
       }
       await api.post('/publish/schedule', { content_id: content.id, project_id: project.id, social_profile_ids: selectedSocials, scheduled_at: `${scheduleDate}T${scheduleTime}:00Z` });
       const { data: queueData } = await api.get(`/publish/queue/${project.id}`);
-      const newItem = queueData.find(q => q.content_id === content.id && q.status === 'queued');
-      setContentQueueItem(newItem || null);
+      const newItems = queueData.filter(q => q.content_id === content.id && q.status === 'queued');
+      setContentQueueItems(newItems);
       const updated = { ...content, status: 'scheduled' };
       setContent(updated); onUpdate?.(updated);
       setShowSchedule(false);
@@ -604,9 +609,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <span className={`text-xs font-semibold ${content.status === 'published' ? 'text-[var(--accent-green)]' : content.status === 'scheduled' ? 'text-[var(--accent-orange)]' : 'text-[var(--accent-purple)]'}`}>
             {content.status === 'published' ? 'Pubblicato' : content.status === 'scheduled' ? 'Programmato' : 'Bozza'}
           </span>
-          {content.status === 'scheduled' && contentQueueItem?.scheduled_at && (
+          {content.status === 'scheduled' && contentQueueItems[0]?.scheduled_at && (
             <span className="text-[10px] font-medium" style={{ color: 'var(--accent-orange)' }}>
-              {new Date(contentQueueItem.scheduled_at).toLocaleString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              {new Date(contentQueueItems[0].scheduled_at).toLocaleString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           {selectedSocials.length > 0 && <span className="text-[10px] text-[var(--text-muted)]">{selectedSocials.length} social</span>}
@@ -619,7 +624,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             style={selectedSocials.length === 0 ? { opacity: 0.4 } : {}}>
             {publishing ? <><span className="animate-spin inline-block">⏳</span> Invio...</> : <><PaperPlaneTilt size={14} /> Pubblica</>}
           </button>
-          {content.status === 'scheduled' && (
+          {(content.status === 'scheduled' || contentQueueItems.length > 0) && (
             <button className="btn-ghost text-xs py-1.5" onClick={cancelSchedule} disabled={cancellingSchedule}
               style={{ color: 'var(--accent-pink)' }} title="Annulla programmazione e riporta a bozza">
               {cancellingSchedule
@@ -628,8 +633,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
             </button>
           )}
           <button className="btn-gradient text-xs py-1.5" onClick={() => setShowSchedule(!showSchedule)} data-testid="schedule-btn"
-            disabled={selectedSocials.length === 0 || scheduling} style={selectedSocials.length === 0 ? { opacity: 0.5 } : {}}>
-            <CalendarBlank size={14} /> {content.status === 'scheduled' ? 'Modifica' : 'Programma'}
+            disabled={scheduling} style={{ opacity: scheduling ? 0.5 : 1 }}>
+            <CalendarBlank size={14} /> {contentQueueItems.length > 0 ? 'Modifica' : 'Programma'}
           </button>
         </div>
       </div>
@@ -637,7 +642,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
       {/* Schedule Popup */}
       {showSchedule && (
         <div className={`absolute ${isMobile ? 'bottom-14 left-3 right-3' : 'bottom-16 right-6'} z-10 card w-auto md:w-72 p-4`} style={{ background: 'var(--bg-card)' }}>
-          <p className="text-sm font-semibold mb-3">{contentQueueItem ? 'Modifica Programmazione' : 'Programma Pubblicazione'}</p>
+          <p className="text-sm font-semibold mb-3">{contentQueueItems.length > 0 ? 'Modifica Programmazione' : 'Programma Pubblicazione'}</p>
           <p className="text-[10px] text-[var(--text-muted)] mb-3">Su {selectedSocials.length} social selezionati</p>
           <div className="flex gap-2 mb-3">
             <input type="date" className="input-dark text-sm py-1.5 flex-1" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ paddingLeft: '0.5rem' }} />

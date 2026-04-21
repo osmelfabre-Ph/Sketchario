@@ -1064,7 +1064,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "GOOGLE_CLIENT_ID",
         "client_secret_env": "GOOGLE_CLIENT_SECRET",
         "token_url": "https://oauth2.googleapis.com/token",
-        "scope": "https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive.file openid email",
+        "scope": "https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive.readonly openid email",
         "extra_params": "access_type=offline&prompt=consent",
     },
 }
@@ -3015,7 +3015,13 @@ async def _build_google_slides(access_token: str, content: dict) -> dict:
 
     async with httpx.AsyncClient(timeout=60) as c:
         r = await c.post("https://slides.googleapis.com/v1/presentations",
-                         headers=headers, json={"title": title})
+                         headers=headers, json={
+                             "title": title,
+                             "pageSize": {
+                                 "width":  {"magnitude": W, "unit": "EMU"},
+                                 "height": {"magnitude": H, "unit": "EMU"},
+                             }
+                         })
         r.raise_for_status()
         pres = r.json()
         pres_id = pres["presentationId"]
@@ -3050,16 +3056,6 @@ async def _build_google_slides(access_token: str, content: dict) -> dict:
                     "style": {"alignment": "CENTER"}, "fields": "alignment"}})
             return rs
 
-        # Fix page size via updatePresentationProperties (create ignores pageSize)
-        reqs.append({"updatePresentationProperties": {
-            "presentationProperties": {
-                "pageSize": {
-                    "width":  {"magnitude": W, "unit": "EMU"},
-                    "height": {"magnitude": H, "unit": "EMU"},
-                }
-            },
-            "fields": "pageSize"
-        }})
 
         for i, sl in enumerate(logical):
             sid = f"slide_{i}_{uuid.uuid4().hex[:6]}"
