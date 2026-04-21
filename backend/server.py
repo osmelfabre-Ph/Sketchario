@@ -981,7 +981,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "FACEBOOK_APP_ID",
         "client_secret_env": "FACEBOOK_APP_SECRET",
         "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
-        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts",
+        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content",
     },
     "instagram": {
         "name": "Instagram",
@@ -989,7 +989,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "INSTAGRAM_CLIENT_ID",
         "client_secret_env": "INSTAGRAM_CLIENT_SECRET",
         "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
-        "scope": "instagram_basic,instagram_content_publish,pages_show_list",
+        "scope": "instagram_basic,instagram_content_publish,instagram_manage_insights,pages_show_list,pages_read_engagement",
     },
     "linkedin": {
         "name": "LinkedIn",
@@ -997,7 +997,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "LINKEDIN_CLIENT_ID",
         "client_secret_env": "LINKEDIN_CLIENT_SECRET",
         "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
-        "scope": "openid profile email w_member_social",
+        "scope": "openid profile email w_member_social r_member_social",
     },
     "tiktok": {
         "name": "TikTok",
