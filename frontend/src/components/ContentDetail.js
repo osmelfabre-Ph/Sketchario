@@ -441,15 +441,15 @@ export default function ContentDetail({ content: initialContent, project, onClos
       <div className="flex flex-1 overflow-hidden">
         {isMobile ? (
           <div className="flex-1 overflow-y-auto">
-            {mobileTab === 'social' && <SocialColumn />}
-            {mobileTab === 'editor' && <EditorColumn />}
-            {mobileTab === 'preview' && <PreviewColumn />}
+            {mobileTab === 'social' && SocialColumn()}
+            {mobileTab === 'editor' && EditorColumn()}
+            {mobileTab === 'preview' && PreviewColumn()}
           </div>
         ) : (
           <>
-            <SocialColumn />
-            <EditorColumn />
-            <PreviewColumn />
+            {SocialColumn()}
+            {EditorColumn()}
+            {PreviewColumn()}
           </>
         )}
       </div>
