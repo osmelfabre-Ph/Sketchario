@@ -1014,7 +1014,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "PINTEREST_CLIENT_ID",
         "client_secret_env": "PINTEREST_CLIENT_SECRET",
         "token_url": "https://api.pinterest.com/v5/oauth/token",
-        "scope": "boards:read,pins:read,pins:write,user_accounts:read",
+        "scope": "boards:read,pins:read,pins:write,user_accounts:read,offline_access",
     },
     "google_slides": {
         "name": "Google Slides",
@@ -1116,11 +1116,43 @@ async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
             data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
             headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
         r.raise_for_status()
-        token = r.json()["access_token"]
+        token_data = r.json()
+        token = token_data["access_token"]
         pr = await c.get("https://api.pinterest.com/v5/user_account", headers={"Authorization": f"Bearer {token}"})
         pr.raise_for_status()
         profile = pr.json()
-        return {"access_token": token, "profile_id": profile.get("username", ""), "profile_name": profile.get("username", "Pinterest")}
+        result = {"access_token": token, "profile_id": profile.get("username", ""), "profile_name": profile.get("username", "Pinterest")}
+        if token_data.get("refresh_token"):
+            result["refresh_token"] = token_data["refresh_token"]
+        return result
+
+async def _get_pinterest_access_token(user_id) -> str:
+    account = await db.social_accounts.find_one({"user_id": user_id, "platform": "pinterest"})
+    if not account:
+        raise HTTPException(400, "Pinterest non connesso.")
+    token = account["access_token"]
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get("https://api.pinterest.com/v5/user_account", headers={"Authorization": f"Bearer {token}"})
+        if r.status_code == 200:
+            return token
+        refresh_token = account.get("refresh_token", "")
+        if not refresh_token:
+            raise HTTPException(401, "Token Pinterest scaduto. Ricollega il tuo account Pinterest.")
+        client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
+        client_secret = os.environ.get("PINTEREST_CLIENT_SECRET", "")
+        import base64 as _b64
+        creds = _b64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        rr = await c.post("https://api.pinterest.com/v5/oauth/token",
+            data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+            headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
+        if rr.status_code != 200:
+            raise HTTPException(401, "Token Pinterest scaduto. Ricollega il tuo account Pinterest.")
+        new_token = rr.json()["access_token"]
+        update = {"access_token": new_token}
+        if rr.json().get("refresh_token"):
+            update["refresh_token"] = rr.json()["refresh_token"]
+        await db.social_accounts.update_one({"user_id": user_id, "platform": "pinterest"}, {"$set": update})
+        return new_token
 
 async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -1683,7 +1715,10 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
         }
         if publish_now:
             try:
-                post_id = await _do_publish(profile["platform"], profile.get("access_token", ""), profile.get("profile_id", ""), content)
+                pub_token = profile.get("access_token", "")
+                if profile["platform"] == "pinterest":
+                    pub_token = await _get_pinterest_access_token(user["_id"])
+                post_id = await _do_publish(profile["platform"], pub_token, profile.get("profile_id", ""), content)
                 doc["status"] = "published"
                 doc["published_at"] = now_iso
                 doc["post_id"] = post_id
