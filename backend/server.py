@@ -684,7 +684,7 @@ Settore: {project['sector']}
 Restituisci un oggetto JSON con:
 - opening_hook: testo parlato dei primi 3-5 secondi (cattura immediatamente, max 2 frasi)
 - script: script completo per l'avatar (scritto come se stesse parlando, con indicazioni di ritmo tra parentesi quadre: [pausa], [enfasi], [veloce], [lento])
-- visual_direction: descrizione visiva CONCRETA della scena da realizzare. Specifica: CHI è il soggetto (es. "uomo 35enne in camicia blu"), COSA fa esattamente (postura, gesti precisi), DOVE si trova (ambientazione specifica con dettagli: sfondo, luce, elementi presenti), CHE ESPRESSIONE ha (emozione precisa). Deve essere abbastanza dettagliata da generare un'immagine senza ambiguità.
+- visual_direction: descrizione visiva CONCRETA della scena da realizzare. Specifica: CHI è il soggetto (es. "uomo 35enne in camicia blu"), COSA fa esattamente (postura, gesti precisi), DOVE si trova (ambientazione specifica con dettagli: sfondo, luce, elementi presenti), CHE ESPRESSIONE ha (emozione precisa), e INQUADRATURA consigliata (Wide shot / Full body / Medium shot / Close-up / Macro). Deve essere abbastanza dettagliata da generare un'immagine senza ambiguità.
 - caption: caption ottimizzata per la pubblicazione social (lunghezza {caption_len})
 - hashtags: stringa di hashtag separati da spazi
 - slides: array vuoto"""
@@ -765,7 +765,7 @@ async def create_post(inp: PostCreate, request: Request):
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10." if tov else ""
         system = "Sei un copywriter. Genera contenuto social in italiano. Rispondi SOLO con JSON."
         if inp.format == 'prompted_reel':
-            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica, che espressione ha — deve essere leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."
+            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."
         else:
             prompt = f"Genera script, caption e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
         try:
@@ -830,7 +830,7 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
 Hook: {content.get('hook_text','')}
 Settore: {project.get('sector','')}
 {tov_desc}
-Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: CHI il soggetto con dettagli fisici/abbigliamento, COSA fa con postura/gesti esatti, DOVE ambientazione specifica con luce e sfondo, CHE espressione — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)"""
+Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: CHI il soggetto con dettagli fisici/abbigliamento, COSA fa con postura/gesti esatti, DOVE ambientazione specifica con luce e sfondo, CHE espressione, INQUADRATURA consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)"""
     else:
         prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
 Hook originale: {content.get('hook_text','')}
@@ -1660,12 +1660,12 @@ async def optimize_image_prompt(inp: OptimizePromptInput, request: Request):
     await get_current_user(request)
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     sector = project.get('sector', '') if project else ''
-    system = "You are an expert image generation prompt engineer. Convert scene direction notes into a precise, vivid image generation prompt for FLUX/Stable Diffusion. Be concrete and specific. Reply ONLY with the optimized prompt, no explanations."
+    system = "You are an expert image generation prompt engineer. Convert scene direction notes into a precise, vivid scene description for FLUX/Stable Diffusion. Be concrete and specific. Reply ONLY with the scene description (no style/technical qualifiers — just the scene), no explanations."
     prompt = f"""Scene direction: {inp.visual_direction}
 Content script (for context): {inp.script[:400] if inp.script else 'not available'}
 Sector: {sector}
 
-Write a precise image generation prompt specifying: the exact subject (who they are, approximate age, exact clothing/appearance), their precise action/posture/gesture, the exact setting (where, lighting, background elements, time of day), and their facial expression/emotion. Make it vivid and unambiguous."""
+Write a precise scene description specifying: the exact subject (who they are, approximate age, exact clothing/appearance), their precise action/posture/gesture, the exact setting (where, lighting, background elements, time of day), their facial expression/emotion, and the recommended camera composition (Wide shot / Full body / Medium shot / Close-up / Macro). Make it vivid and unambiguous. Include the composition type naturally in the description."""
     try:
         result = await call_ai(system, prompt)
         return {"prompt": result.strip()}

@@ -58,6 +58,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [optimizingPrompt, setOptimizingPrompt] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(null);
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
+  const [fluxComposition, setFluxComposition] = useState('wide');
   const [imageModel, setImageModel] = useState('flux');
 
   useEffect(() => {
@@ -523,7 +524,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
               </div>
               <p className="text-xs text-[var(--text-muted)] mb-2">Stile</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {[
                   { id: 'fotorealistico', label: '📷 Fotorealistico' },
                   { id: 'pittorico', label: '🎨 Pittorico' },
@@ -534,6 +535,23 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     onClick={() => setFluxStyle(s.id)}>{s.label}</button>
                 ))}
               </div>
+              {fluxStyle === 'fotorealistico' && (
+                <>
+                  <p className="text-xs text-[var(--text-muted)] mb-2">Inquadratura</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'wide', label: '🌄 Wide shot' },
+                      { id: 'full', label: '🧍 Full body' },
+                      { id: 'medium', label: '👤 Medium shot' },
+                      { id: 'closeup', label: '🎭 Close-up' },
+                      { id: 'macro', label: '🔬 Macro' },
+                    ].map(c => (
+                      <button key={c.id} className={`preset-btn text-xs py-1 px-2 ${fluxComposition === c.id ? 'active' : ''}`}
+                        onClick={() => setFluxComposition(c.id)}>{c.label}</button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
           <div className="flex gap-2">
@@ -541,8 +559,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <button className="btn-gradient flex-1" onClick={() => {
               const soggetto = document.getElementById('input-modal-field').value.trim();
               if (!soggetto) return;
+              const compositionMap = { wide: 'Wide shot', full: 'Full body', medium: 'Medium shot / Waist-up', closeup: 'Close-up / Portrait', macro: 'Macro' };
               const stylePrompts = {
-                fotorealistico: `${soggetto}. Photorealistic, high-resolution, cinematic lighting, shot on Sony A7R IV, 8K ultra-detailed, sharp focus, natural colors, masterpiece quality photography.`,
+                fotorealistico: `A professional high-fidelity photograph of ${soggetto}. Composition: ${compositionMap[fluxComposition] || 'Wide shot'}. Lighting: natural light with accurate global illumination and realistic ray-traced reflections. Camera: shot on full-frame sensor, sharp focus, deep dynamic range. Technical: 8k UHD, highly detailed textures, masterpiece, color graded for a cinematic look, no digital noise, no artificial sharpening. Authentic atmosphere, hyper-realistic details.`,
                 pittorico: `${soggetto}. Fine art oil painting, expressive visible brushstrokes, rich impasto texture, chiaroscuro dramatic lighting inspired by Caravaggio, canvas texture, masterpiece, no photorealism.`,
                 cartoon: `${soggetto}. Professional 2D vector illustration, clean flat design, bold outlines, solid colors, modern cel-shaded animation style, high contrast, sharp edges.`,
                 ink: `${soggetto}. Professional ink pen drawing, clean black ink lines, stippling and crosshatch linework for depth, high contrast, elegant hand-drawn style, white background.`,
