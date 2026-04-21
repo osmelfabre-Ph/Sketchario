@@ -413,9 +413,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                           <div key={prof.id} className="flex items-center justify-between py-1.5 px-2 rounded mb-1" style={{ background: 'rgba(34,197,94,0.1)' }}>
                             <span className="text-xs truncate">{prof.profile_name}</span>
                             <div className="flex gap-1 flex-shrink-0">
-                              <button className="text-[10px]" onClick={() => toggleProjectLink(prof.id)}>
-                                {projectSocials.some(p => p.id === prof.id) ? <span className="badge green text-[8px]">On</span> : <span className="badge orange text-[8px]">Off</span>}
-                              </button>
+                              <span className="badge green text-[8px]">Attivo</span>
                               <button className="text-[var(--accent-pink)]" onClick={() => removeSocialProfile(prof.id)}><Trash size={10} /></button>
                             </div>
                           </div>
