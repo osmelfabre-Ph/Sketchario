@@ -2493,7 +2493,9 @@ async def _get_google_access_token(user_id) -> str:
     return access_token
 
 async def _build_google_slides(access_token: str, content: dict) -> str:
-    W, H, M = 9144000, 5143500, 500000  # width, height, margin in EMU
+    W = 9144000   # square side in EMU (10" × 10" = 1:1 carousel format)
+    H = 9144000
+    M = 600000    # margin in EMU
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     title = content.get("hook_text", "Carousel")[:60]
 
@@ -2511,7 +2513,13 @@ async def _build_google_slides(access_token: str, content: dict) -> str:
 
     async with httpx.AsyncClient(timeout=45) as c:
         r = await c.post("https://slides.googleapis.com/v1/presentations",
-                         headers=headers, json={"title": title})
+                         headers=headers, json={
+                             "title": title,
+                             "pageSize": {
+                                 "width":  {"magnitude": W, "unit": "EMU"},
+                                 "height": {"magnitude": H, "unit": "EMU"},
+                             }
+                         })
         r.raise_for_status()
         pres = r.json()
         pres_id = pres["presentationId"]
