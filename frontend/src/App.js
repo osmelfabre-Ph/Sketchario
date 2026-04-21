@@ -41,10 +41,10 @@ function AppContent() {
 
   if (!user) return <AuthScreen />;
 
-  const isProjectView = ['project', 'calendar', 'personas', 'social', 'analytics'].includes(activeView);
+  const isProjectView = ['project', 'calendar', 'personas', 'social', 'analytics', 'feeds'].includes(activeView);
 
   const handleSetActiveView = (view) => {
-    if (['calendar', 'personas', 'social', 'analytics'].includes(view) && !selectedProject) {
+    if (['calendar', 'personas', 'social', 'analytics', 'feeds'].includes(view) && !selectedProject) {
       return;
     }
     setActiveView(view);
@@ -61,6 +61,7 @@ function AppContent() {
       case 'personas':
       case 'social':
       case 'analytics':
+      case 'feeds':
         return <ProjectView project={selectedProject} setActiveView={setActiveView} activeTab={activeView === 'project' ? 'list' : activeView} />;
       case 'profile':
         return <Profile />;

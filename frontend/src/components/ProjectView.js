@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   CalendarBlank, Video, Image, PencilSimple, X,
   Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
-  Eye, Sparkle, Trash, Globe, Presentation,
+  Eye, Sparkle, Trash, Globe,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
   BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp
 } from '@phosphor-icons/react';
@@ -18,7 +18,6 @@ const PLATFORM_ICONS = {
   linkedin: { Icon: LinkedinLogo, color: '#0A66C2', name: 'LinkedIn' },
   tiktok: { Icon: TiktokLogo, color: '#ffffff', name: 'TikTok' },
   pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
-  google_slides: { Icon: Presentation, color: '#4285F4', name: 'Google Slides' },
 };
 
 function useIsMobile() {
@@ -441,10 +440,59 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div className="card"><TeamPanel projectId={project.id} /></div>
               </div>
             )}
+
+            {/* FEEDS TAB — mobile full-page view */}
+            {tab === 'feeds' && (
+              <div className="pt-2 space-y-6">
+                {/* News & Reddit */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold flex items-center gap-2"><RssSimple size={16} /> News & Reddit — {project.sector}</p>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" onClick={() => { api.post(`/feeds/refresh/${project.id}`).then(() => api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data))).catch(() => {}); }}>
+                      <ArrowClockwise size={12} /> Refresh
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {feedItems.slice(0, 8).map(item => (
+                      <div key={item.id} className="card cursor-pointer hover:border-[var(--gradient-start)] transition-colors" onClick={() => feedToPost(item)}>
+                        <p className="text-sm font-medium mb-1">{item.title}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{item.feed_name}</p>
+                      </div>
+                    ))}
+                    {feedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">Feed in caricamento...</p>}
+                  </div>
+                </div>
+                {/* AI Suggestions */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold flex items-center gap-2"><Sparkle size={16} weight="fill" /> Idee AI — {project.sector}</p>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" onClick={() => { api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {}); }}>
+                      <ArrowClockwise size={12} /> Rigenera
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {aiFeedItems.map(item => (
+                      <div key={item.id} className="card cursor-pointer hover:border-[var(--accent-purple)] transition-colors"
+                        style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: '1px solid rgba(99,102,241,0.15)' }}
+                        onClick={() => feedToPost({ title: item.title, summary: item.summary })}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className={`w-2 h-2 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
+                          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase">{item.format || 'reel'}</span>
+                          {item.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
+                        </div>
+                        <p className="text-sm font-medium mb-1">{item.title}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{item.summary}</p>
+                      </div>
+                    ))}
+                    {aiFeedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">Generazione idee AI...</p>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* FEED STRIPS — above footer */}
-          <div className="flex-shrink-0 border-t border-[var(--border-color)]" style={{ background: 'var(--bg-secondary)' }}>
+          {/* FEED STRIPS — desktop only, above footer */}
+          <div className="flex-shrink-0 border-t border-[var(--border-color)]" style={{ background: 'var(--bg-secondary)', display: isMobile ? 'none' : undefined }}>
             {/* Strip 1: Google News / Reddit */}
             <div className="px-4 md:px-6 pt-3 pb-2">
               <div className="flex items-center justify-between mb-2">

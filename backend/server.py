@@ -724,7 +724,7 @@ Restituisci un oggetto JSON con:
 - script: lo script completo del contenuto (per reel: script parlato; per carousel: testo di ogni slide separato da ---)
 - caption: la caption per il post
 - hashtags: stringa di hashtag separati da spazi
-- slides: se carousel, array di stringhe (testo per ogni slide); se reel, array vuoto
+- slides: se carousel, array di 4-6 stringhe. Ogni slide: TITOLO (max 6 parole, tutto maiuscolo) seguito da 3-4 punti numerati nel formato "1 — punto specifico e dettagliato\n2 — secondo punto\n3 — terzo punto". MAI contenuto generico — dati, numeri, esempi concreti. Se reel, array vuoto.
 - opening_hook: stringa vuota
 - visual_direction: stringa vuota"""
         try:
@@ -863,7 +863,7 @@ Hook originale: {content.get('hook_text','')}
 Formato: {fmt}
 Settore: {project.get('sector','')}
 {tov_desc}
-Restituisci JSON con: hook_text, script, caption, hashtags, slides (array di stringhe per carousel, vuoto per reel), opening_hook (''), visual_direction ('')"""
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 4-6 stringhe; ogni slide = TITOLO\n\n1 — punto\n2 — punto\n3 — punto; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
@@ -910,13 +910,13 @@ Script Reel: {content.get('script','')}
 Settore: {project.get('sector','')}
 {tov_desc}
 
-Crea un carousel con:
-- SLIDE 1: hook bold
-- SLIDE 2: problema reale
-- SLIDES 3-6: passi pratici/insights
-- SLIDE FINALE: CTA diretto
+Crea un carousel con MASSIMO 6 slide totali:
+- SLIDE 1: problema/hook (1-2 frasi ad alto impatto emotivo)
+- SLIDE 2: contesto/promessa (cosa impareranno)
+- SLIDE 3-5: contenuto educativo ricco. Ogni slide = TITOLO (max 6 parole, MAIUSCOLO) + 3-4 punti numerati nel formato "1 — descrizione specifica\n2 — descrizione specifica\n3 — descrizione specifica". Usa dati, percentuali, esempi reali.
+- SLIDE 6: CTA diretto con call-to-action e hashtag principali
 
-Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di stringhe, una per slide, numerate)"""
+Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 4-6 stringhe; ogni body slide = "TITOLO\n\n1 — punto\n2 — punto\n3 — punto")"""
     else:
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Carousel in un Reel script parlato.
@@ -1246,6 +1246,8 @@ async def list_platforms(request: Request):
     await get_current_user(request)
     platforms = []
     for key, cfg in SOCIAL_PLATFORMS.items():
+        if key == "google_slides":
+            continue  # editor tool, not a social publishing platform
         client_id = os.environ.get(cfg["client_id_env"], "")
         platforms.append({
             "id": key,
@@ -1253,6 +1255,26 @@ async def list_platforms(request: Request):
             "configured": bool(client_id),
         })
     return platforms
+
+@api.get("/slides/google-status")
+async def google_slides_status(request: Request):
+    user = await get_current_user(request)
+    account = await db.social_accounts.find_one({"user_id": user["_id"], "platform": "google_slides"}, {"_id": 0, "username": 1, "access_token": 1})
+    return {"connected": bool(account), "username": account.get("username", "") if account else ""}
+
+@api.get("/slides/google-connect")
+async def google_slides_connect(request: Request):
+    user = await get_current_user(request)
+    cfg = SOCIAL_PLATFORMS["google_slides"]
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    if not client_id:
+        raise HTTPException(400, "Google non configurato")
+    app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
+    redirect_uri = f"{app_url}/api/social/oauth/callback"
+    state = f"google_slides:{user['_id']}"
+    scope_encoded = quote(cfg["scope"], safe=",")
+    url = f"{cfg['auth_url']}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&scope={scope_encoded}&state={state}&{cfg['extra_params']}"
+    return {"url": url}
 
 @api.get("/social/oauth/start/{platform}")
 async def social_oauth_start(platform: str, request: Request):
@@ -2492,10 +2514,10 @@ async def _get_google_access_token(user_id) -> str:
             )
     return access_token
 
-async def _build_google_slides(access_token: str, content: dict) -> str:
-    W = 9144000   # square side in EMU (10" × 10" = 1:1 carousel format)
-    H = 9144000
-    M = 600000    # margin in EMU
+async def _build_google_slides(access_token: str, content: dict) -> dict:
+    W = 9144000    # 4:5 portrait: 10" wide
+    H = 11430000   # 4:5 portrait: 12.5" tall (10 × 1.25)
+    M = 600000     # margin in EMU
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     title = content.get("hook_text", "Carousel")[:60]
 
@@ -2504,28 +2526,24 @@ async def _build_google_slides(access_token: str, content: dict) -> str:
         raw_slides = [s.strip() for s in content.get("script", "").split("---") if s.strip()]
     if not raw_slides:
         raw_slides = [content.get("script", "")]
+    raw_slides = raw_slides[:6]  # max 6 body slides
 
-    # Build logical slides: cover + numbered + cta
     logical = [{"kind": "cover", "text": title}]
     for i, s in enumerate(raw_slides):
         logical.append({"kind": "body", "num": str(i + 1).zfill(2), "text": str(s)})
     logical.append({"kind": "cta", "text": "Seguimi per altri contenuti!", "sub": content.get("hashtags", "")[:120]})
 
-    async with httpx.AsyncClient(timeout=45) as c:
+    slide_oids = []
+
+    async with httpx.AsyncClient(timeout=60) as c:
         r = await c.post("https://slides.googleapis.com/v1/presentations",
-                         headers=headers, json={
-                             "title": title,
-                             "pageSize": {
-                                 "width":  {"magnitude": W, "unit": "EMU"},
-                                 "height": {"magnitude": H, "unit": "EMU"},
-                             }
-                         })
+                         headers=headers, json={"title": title})
         r.raise_for_status()
         pres = r.json()
         pres_id = pres["presentationId"]
         default_sid = pres["slides"][0]["objectId"]
 
-        requests = []
+        reqs = []
         BG_DARK   = {"red": 0.11, "green": 0.107, "blue": 0.18}
         BG_COVER  = {"red": 0.07, "green": 0.065, "blue": 0.13}
         C_WHITE   = {"red": 1.0,  "green": 1.0,   "blue": 1.0}
@@ -2545,61 +2563,96 @@ async def _build_google_slides(access_token: str, content: dict) -> str:
                     "transform": {"scaleX": 1, "scaleY": 1, "translateX": x, "translateY": y, "unit": "EMU"}}}}
 
         def style_text(oid, size, color, bold=False, center=False, font="Roboto"):
-            reqs = [{"updateTextStyle": {"objectId": oid,
+            rs = [{"updateTextStyle": {"objectId": oid,
                 "style": {"fontSize": _pt(size), "foregroundColor": _rgb(color),
                           "bold": bold, "fontFamily": font},
                 "fields": "fontSize,foregroundColor,bold,fontFamily"}}]
             if center:
-                reqs.append({"updateParagraphStyle": {"objectId": oid,
+                rs.append({"updateParagraphStyle": {"objectId": oid,
                     "style": {"alignment": "CENTER"}, "fields": "alignment"}})
-            return reqs
+            return rs
+
+        # Fix page size via updatePresentationProperties (create ignores pageSize)
+        reqs.append({"updatePresentationProperties": {
+            "presentationProperties": {
+                "pageSize": {
+                    "width":  {"magnitude": W, "unit": "EMU"},
+                    "height": {"magnitude": H, "unit": "EMU"},
+                }
+            },
+            "fields": "pageSize"
+        }})
 
         for i, sl in enumerate(logical):
             sid = f"slide_{i}_{uuid.uuid4().hex[:6]}"
-            requests.append({"createSlide": {"objectId": sid, "insertionIndex": i,
+            slide_oids.append(sid)
+            reqs.append({"createSlide": {"objectId": sid, "insertionIndex": i,
                 "slideLayoutReference": {"predefinedLayout": "BLANK"}}})
             bg = BG_COVER if sl["kind"] == "cover" else BG_DARK
-            requests.append({"updatePageProperties": {"objectId": sid,
+            reqs.append({"updatePageProperties": {"objectId": sid,
                 "pageProperties": {"pageBackgroundFill": {"solidFill": {"color": {"rgbColor": bg}}}},
                 "fields": "pageBackgroundFill"}})
 
             if sl["kind"] == "cover":
                 oid = f"o_{i}_t_{uuid.uuid4().hex[:6]}"
-                requests.append(add_shape(sid, oid, M, int(H*0.25), W-2*M, int(H*0.55)))
-                requests.append({"insertText": {"objectId": oid, "text": sl["text"]}})
-                requests += style_text(oid, 42, C_WHITE, bold=True, center=True, font="Montserrat")
+                reqs.append(add_shape(sid, oid, M, int(H * 0.28), W - 2 * M, int(H * 0.48)))
+                reqs.append({"insertText": {"objectId": oid, "text": sl["text"]}})
+                reqs += style_text(oid, 44, C_WHITE, bold=True, center=True, font="Montserrat")
 
             elif sl["kind"] == "body":
+                # Large slide number top-left
                 nid = f"o_{i}_n_{uuid.uuid4().hex[:6]}"
-                requests.append(add_shape(sid, nid, M, int(H*0.07), int(W*0.18), int(H*0.22)))
-                requests.append({"insertText": {"objectId": nid, "text": sl["num"]}})
-                requests += style_text(nid, 52, C_PURPLE, bold=True, font="Montserrat")
-
+                reqs.append(add_shape(sid, nid, M, int(H * 0.05), int(W * 0.25), int(H * 0.15)))
+                reqs.append({"insertText": {"objectId": nid, "text": sl["num"]}})
+                reqs += style_text(nid, 56, C_PURPLE, bold=True, font="Montserrat")
+                # Body text — taller area thanks to 4:5 format
                 bid = f"o_{i}_b_{uuid.uuid4().hex[:6]}"
-                requests.append(add_shape(sid, bid, M, int(H*0.32), W-2*M, int(H*0.6)))
-                requests.append({"insertText": {"objectId": bid, "text": sl["text"]}})
-                requests += style_text(bid, 22, C_BODY)
+                reqs.append(add_shape(sid, bid, M, int(H * 0.22), W - 2 * M, int(H * 0.68)))
+                reqs.append({"insertText": {"objectId": bid, "text": sl["text"]}})
+                reqs += style_text(bid, 19, C_BODY)
 
             elif sl["kind"] == "cta":
                 tid = f"o_{i}_t_{uuid.uuid4().hex[:6]}"
-                requests.append(add_shape(sid, tid, M, int(H*0.2), W-2*M, int(H*0.35)))
-                requests.append({"insertText": {"objectId": tid, "text": sl["text"]}})
-                requests += style_text(tid, 34, C_LPURPLE, bold=True, center=True, font="Montserrat")
+                reqs.append(add_shape(sid, tid, M, int(H * 0.22), W - 2 * M, int(H * 0.35)))
+                reqs.append({"insertText": {"objectId": tid, "text": sl["text"]}})
+                reqs += style_text(tid, 34, C_LPURPLE, bold=True, center=True, font="Montserrat")
                 if sl.get("sub"):
                     sid2 = f"o_{i}_s_{uuid.uuid4().hex[:6]}"
-                    requests.append(add_shape(sid, sid2, M, int(H*0.62), W-2*M, int(H*0.22)))
-                    requests.append({"insertText": {"objectId": sid2, "text": sl["sub"]}})
-                    requests += style_text(sid2, 13, C_MUTED, center=True)
+                    reqs.append(add_shape(sid, sid2, M, int(H * 0.64), W - 2 * M, int(H * 0.22)))
+                    reqs.append({"insertText": {"objectId": sid2, "text": sl["sub"]}})
+                    reqs += style_text(sid2, 13, C_MUTED, center=True)
 
-        requests.append({"deleteObject": {"objectId": default_sid}})
+        reqs.append({"deleteObject": {"objectId": default_sid}})
 
         r2 = await c.post(
             f"https://slides.googleapis.com/v1/presentations/{pres_id}:batchUpdate",
-            headers=headers, json={"requests": requests})
+            headers=headers, json={"requests": reqs})
         if r2.status_code != 200:
             raise HTTPException(500, f"Google Slides API error: {r2.text[:300]}")
 
-        return f"https://docs.google.com/presentation/d/{pres_id}/edit"
+        # Download thumbnails for each slide
+        thumbnails = []
+        for sid in slide_oids:
+            try:
+                tr = await c.get(
+                    f"https://slides.googleapis.com/v1/presentations/{pres_id}/pages/{sid}/thumbnail",
+                    headers=headers, params={"thumbnailProperties.thumbnailSize": "LARGE"})
+                if tr.status_code == 200:
+                    content_url = tr.json().get("contentUrl", "")
+                    if content_url:
+                        ir = await c.get(content_url)
+                        if ir.status_code == 200:
+                            fname = f"slide_{uuid.uuid4().hex}.png"
+                            with open(UPLOAD_DIR / fname, "wb") as f:
+                                f.write(ir.content)
+                            thumbnails.append(f"/api/media/file/{fname}")
+            except Exception:
+                pass  # thumbnails are best-effort
+
+        return {
+            "url": f"https://docs.google.com/presentation/d/{pres_id}/edit",
+            "thumbnails": thumbnails,
+        }
 
 class GoogleSlidesCreateInput(BaseModel):
     content_id: str
@@ -2613,8 +2666,26 @@ async def create_google_slides(inp: GoogleSlidesCreateInput, request: Request):
         raise HTTPException(404, "Contenuto non trovato")
     access_token = await _get_google_access_token(user["_id"])
     try:
-        url = await _build_google_slides(access_token, content)
-        return {"url": url}
+        result = await _build_google_slides(access_token, content)
+        if result.get("thumbnails"):
+            media_docs = [
+                {
+                    "id": str(uuid.uuid4()),
+                    "filename": t.split("/")[-1],
+                    "original_name": f"Slide {i + 1}",
+                    "url": t,
+                    "type": "image",
+                    "source": "google_slides",
+                    "size": 0,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                for i, t in enumerate(result["thumbnails"])
+            ]
+            await db.contents.update_one(
+                {"id": inp.content_id},
+                {"$push": {"media": {"$each": media_docs}}}
+            )
+        return {"url": result["url"], "slide_count": len(result.get("thumbnails", []))}
     except HTTPException:
         raise
     except Exception as e:

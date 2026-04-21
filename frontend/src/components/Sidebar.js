@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   House, MagicWand, User, SignOut, Bell, CaretLeft, CaretRight,
-  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck
+  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck, RssSimple
 } from '@phosphor-icons/react';
 
 
@@ -37,7 +37,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
           { id: 'project', icon: CalendarBlank, label: 'Contenuti' },
           { id: 'personas', icon: Users, label: 'Personas' },
           { id: 'social', icon: Globe, label: 'Social' },
-          { id: 'analytics', icon: ChartBar, label: 'Analytics' },
+          { id: 'feeds', icon: RssSimple, label: 'Feed' },
           { id: 'profile', icon: User, label: 'Profilo' },
         ]
       : [
