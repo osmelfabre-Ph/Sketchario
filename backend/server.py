@@ -9,7 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os, logging, uuid, json, secrets, base64, shutil, hashlib
+import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio
+from contextlib import asynccontextmanager
 from urllib.parse import quote
 from starlette.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
@@ -28,7 +29,28 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-app = FastAPI()
+def _parse_dt(s: str) -> datetime:
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+async def _run_publish_queue():
+    """Background worker: every 60s publish queued items whose scheduled_at is due."""
+    await asyncio.sleep(10)  # wait for app to fully start
+    while True:
+        try:
+            await _run_publish_queue_once()
+        except Exception as e:
+            logger.error(f"Queue worker loop error: {e}")
+        await asyncio.sleep(60)
+
+@asynccontextmanager
+async def lifespan(app_instance):
+    asyncio.create_task(_run_publish_queue())
+    yield
+
+app = FastAPI(lifespan=lifespan)
 app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
 api = APIRouter(prefix="/api")
 
@@ -1736,6 +1758,53 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
     if failed:
         raise HTTPException(500, f"Errore pubblicazione: {failed[0]['error_message']}")
     return {"ok": True, "items": items}
+
+@api.post("/publish/process-queue")
+async def trigger_queue_processing(request: Request):
+    """Manually trigger the publish queue worker (for testing/debugging)."""
+    await get_current_user(request)
+    asyncio.create_task(_run_publish_queue_once())
+    return {"ok": True, "message": "Queue processing triggered"}
+
+async def _run_publish_queue_once():
+    """Single pass of the queue worker (used by manual trigger)."""
+    now = datetime.now(timezone.utc)
+    queued = await db.publish_queue.find({"status": "queued"}, {"_id": 0}).to_list(200)
+    due = [q for q in queued if _parse_dt(q.get("scheduled_at", "")) <= now]
+    for item in due:
+        result = await db.publish_queue.find_one_and_update(
+            {"id": item["id"], "status": "queued"}, {"$set": {"status": "processing"}})
+        if not result:
+            continue
+        try:
+            content = await db.contents.find_one({"id": item["content_id"]}, {"_id": 0})
+            if not content:
+                raise ValueError("Contenuto non trovato")
+            account = await db.social_accounts.find_one({"id": item.get("social_profile_id")})
+            if not account:
+                account = await db.social_accounts.find_one(
+                    {"user_id": item["user_id"], "platform": item["platform"]})
+            if not account:
+                raise ValueError("Account social non trovato")
+            token = account["access_token"]
+            if item["platform"] == "pinterest":
+                token = await _get_pinterest_access_token(item["user_id"])
+            post_id = await _do_publish(
+                item["platform"], token, account.get("profile_id", ""), content)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            await db.publish_queue.update_one(
+                {"id": item["id"]},
+                {"$set": {"status": "published", "published_at": now_iso, "post_id": post_id}})
+            remaining = await db.publish_queue.count_documents(
+                {"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
+            if remaining == 0:
+                await db.contents.update_one(
+                    {"id": item["content_id"]}, {"$set": {"status": "published"}})
+        except Exception as e:
+            logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
+            await db.publish_queue.update_one(
+                {"id": item["id"]},
+                {"$set": {"status": "failed", "error_message": str(e)[:300]}})
 
 @api.get("/publish/queue/{project_id}")
 async def get_publish_queue(project_id: str, request: Request):
