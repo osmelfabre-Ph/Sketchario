@@ -12,7 +12,7 @@
 - **Backend**: root `backend/`
 - **Renderer (HyperFrames)**: root `renderer/` — da aggiungere come nuovo service
 - Comunicazione interna tra servizi: `http://nomeservizio.railway.internal:porta`
-- `RENDERER_URL=http://renderer.railway.internal:3001` nel backend
+- `RENDERER_URL=https://sketchario-render-production.up.railway.app` nel backend
 - NON usare comandi `docker-compose` — non girano su Railway
 
 ## Branch di sviluppo
