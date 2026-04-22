@@ -20,6 +20,25 @@ services:
     restart: always
     env_file:
       - ./backend/.env.production
+    environment:
+      - RENDERER_URL=http://sketchario-renderer:3001
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      - mongodb
+      - renderer
+    networks:
+      - sketchario
+
+  renderer:
+    build:
+      context: ./renderer
+      dockerfile: Dockerfile
+    container_name: sketchario-renderer
+    restart: always
+    environment:
+      - UPLOADS_DIR=/app/uploads
+      - NODE_OPTIONS=--max-old-space-size=2048
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -32,7 +51,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - REACT_APP_BACKEND_URL=${DOMAIN_URL:-http://77.81.226.230}
+        - REACT_APP_BACKEND_URL=${DOMAIN_URL:-https://app.sketchario.it}
     container_name: sketchario-frontend
     restart: always
     depends_on:
@@ -51,6 +70,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl
       - certbot_data:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - frontend
       - backend

@@ -71,12 +71,9 @@ export default function AuthScreen() {
         className="auth-box"
       >
         <div className="mb-10 text-center">
-          <img
-            src="https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/8xtbp3ac_LOGO-sketchario.jpg"
-            alt="Sketchario"
-            data-testid="auth-logo"
-            style={{ height: 50, margin: '0 auto 12px', borderRadius: 8 }}
-          />
+          <div data-testid="auth-logo" style={{ height: 50, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src="/assets/LOGO-sketchario.jpg" alt="Sketchario" style={{ height: 50, objectFit: 'contain', borderRadius: 8 }} />
+          </div>
           <p className="text-[var(--text-secondary)] text-sm">Content Strategy Engine</p>
         </div>
 

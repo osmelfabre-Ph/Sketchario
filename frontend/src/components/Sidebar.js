@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   House, MagicWand, User, SignOut, Bell, CaretLeft, CaretRight,
-  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck
+  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck, RssSimple
 } from '@phosphor-icons/react';
 
-const LOGO = 'https://customer-assets.emergentagent.com/job_editorial-flow-v4/artifacts/oyv8tqit_favicon-invert.jpg';
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -38,6 +37,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
           { id: 'project', icon: CalendarBlank, label: 'Contenuti' },
           { id: 'personas', icon: Users, label: 'Personas' },
           { id: 'social', icon: Globe, label: 'Social' },
+          { id: 'feeds', icon: RssSimple, label: 'Feed' },
           { id: 'profile', icon: User, label: 'Profilo' },
         ]
       : [
@@ -89,16 +89,19 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
     { id: 'calendar', icon: CalendarBlank, label: 'Calendario' },
     { id: 'personas', icon: Users, label: 'Personas' },
     { id: 'social', icon: Globe, label: 'Social' },
+    { id: 'analytics', icon: ChartBar, label: 'Analytics' },
   ];
 
   return (
     <div className="sidebar flex flex-col" style={{ width: w, minWidth: w, padding: collapsed ? '1.25rem 0.5rem' : '1.25rem', transition: 'width 0.2s ease, min-width 0.2s ease, padding 0.2s ease' }}>
       {/* Logo + Collapse */}
       <div className="flex items-center gap-2 mb-6" style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
-        <img src={LOGO} alt="S" style={{ width: collapsed ? 32 : 32, height: collapsed ? 32 : 32, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
-        {!collapsed && <h2 className="text-base font-bold gradient-text flex-1">Sketchario</h2>}
+        {collapsed
+          ? <img src="/assets/favicon.jpg" alt="Sketchario" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
+          : <img src="/assets/LOGO-sketchario.jpg" alt="Sketchario" style={{ height: 32, maxWidth: '140px', objectFit: 'contain', flexShrink: 0 }} />
+        }
         {!collapsed && (
-          <button data-testid="sidebar-toggle" className="p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(true)}>
+          <button data-testid="sidebar-toggle" className="ml-auto p-1 rounded hover:bg-[var(--bg-card)] transition-colors" onClick={() => setCollapsed(true)}>
             <CaretLeft size={14} />
           </button>
         )}

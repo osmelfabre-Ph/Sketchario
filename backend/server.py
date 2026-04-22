@@ -9,7 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os, logging, uuid, json, secrets, base64, shutil
+import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, html as html_lib
+from contextlib import asynccontextmanager
+from urllib.parse import quote
+from starlette.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -26,8 +29,29 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-app = FastAPI()
-app.mount("/api/media/file", StaticFiles(directory="/app/backend/uploads"), name="uploads")
+def _parse_dt(s: str) -> datetime:
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+async def _run_publish_queue():
+    """Background worker: every 60s publish queued items whose scheduled_at is due."""
+    await asyncio.sleep(10)  # wait for app to fully start
+    while True:
+        try:
+            await _run_publish_queue_once()
+        except Exception as e:
+            logger.error(f"Queue worker loop error: {e}")
+        await asyncio.sleep(60)
+
+@asynccontextmanager
+async def lifespan(app_instance):
+    asyncio.create_task(_run_publish_queue())
+    yield
+
+app = FastAPI(lifespan=lifespan)
+app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
 api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
@@ -59,24 +83,49 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
         return False
 
 # ── GLOBAL PROMPTING ─────────────────────────────────
-GLOBAL_CONTENT_PROMPT = """GLOBAL RULES FOR SOCIAL CONTENT GENERATION:
-Every content must: Stop the scroll. Keep attention. Deliver concrete value. Trigger emotion. Push toward action.
-Avoid: bland, generic, overly safe, forgettable content. Prefer: specificity, tension, clarity, usefulness.
+GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIAL (da rispettare sempre, senza eccezioni):
 
-HOOKS: Max 5 words. Bold, negative, challenging, or curiosity-driven. Create tension, urgency, emotional reaction.
+## HOOK (max 5 parole)
+- MAI iniziare con "Ciao", "Ciao a tutti", saluti o presentazioni generiche
+- MAI iniziare con il nome del brand o del prodotto
+- Usare SOLO: domande provocatorie, affermazioni negative/controintuitive, numeri specifici, gap di curiosità, sfide dirette
+- Esempi VIETATI: "Ciao a tutti! Oggi vi presento..." / "Siamo qui per..."
+- Esempi CORRETTI: "Stai perdendo soldi ogni giorno." / "Perché nessuno te lo dice?" / "3 errori che tutti fanno."
 
-REEL STRUCTURE: HOOK (max 5 words, bold, emotionally charged) → SETUP (why it matters) → VALUE (practical, concrete, actionable) → CTA (clear next action)
+## SCRIPT (corpo del contenuto)
+- STRUTTURA NARRATIVA OBBLIGATORIA: Tensione/Problema → Risonanza emotiva ("lo conosco, lo capisco") → Soluzione/Valore concreto → Urgenza/CTA
+- ZERO emoji nello script. Le emoji vanno SOLO nella caption.
+- NON parlare del prodotto/servizio direttamente nelle prime 2/3 dello script: parla del PROBLEMA o DESIDERIO del lettore
+- NON usare linguaggio promozionale generico: no "offerte imperdibili", "non perdere questa occasione", "visitate il nostro sito"
+- Usa linguaggio specifico, personale, concreto. "La tua auto ti aspetta" → "Ogni giorno che aspetti è un giorno in meno da vivere il viaggio che meriti"
+- Ritmo: frasi corte. Max 15 parole per frase. Alterni con frasi più lunghe per creare respiro.
 
-CAROUSEL STRUCTURE: SLIDE 1: bold hook | SLIDE 2: real problem/tension | SLIDES 3-6: practical steps/insights | FINAL SLIDE: direct CTA
-Each slide must be clearly numbered and self-contained.
+## CAPTION
+- OBBLIGATORIAMENTE diversa dallo script per angolazione e tono (non è un riassunto!)
+- Prima riga: hook autonomo che funziona senza contesto
+- Corpo: valore aggiuntivo, storytelling complementare, o prospettiva diversa
+- Chiusura: CTA specifico e personale (non generico "clicca qui")
+- Emoji: massimo 3-4, strategicamente posizionate, mai a caso
+- Paragrafi brevi con spazi per leggibilità mobile
 
-SINGLE POST: TITLE (clear promise) → VALUE (strong central idea) → CTA (one clear action)
+## FORMATTAZIONE TESTO (OBBLIGATORIA — non negoziabile)
+- Script: SEMPRE strutturato in 4 blocchi VISIVAMENTE SEPARATI con una riga vuota (\n\n) tra ogni blocco:
+  Blocco 1 (Problema/Hook): 2-3 frasi brevi
+  \n\n
+  Blocco 2 (Risonanza): 2-3 frasi empatiche
+  \n\n
+  Blocco 3 (Soluzione/Valore): 2-4 frasi concrete
+  \n\n
+  Blocco 4 (CTA): 1-2 frasi di chiusura
+- Caption: SEMPRE strutturata in 3 blocchi separati da \n\n: Hook → Corpo → CTA
+- MAI scrivere script o caption come flusso unico di testo senza interruzioni di paragrafo.
+- Il \n\n DEVE essere presente nella stringa JSON come sequenza \\n\\n.
 
-CAPTION: FIRST LINE HOOK (attention-grabbing) → BODY (real value, short paragraphs, strong rhythm) → CTA (comment, save, share)
-Use strategic emojis. Line breaks for readability.
-
-WRITING STYLE: Direct. Clear. Concise. No fluff. No cliches. No generic AI tone. No vague motivational filler.
-QUALITY: Every piece must be specific, tension-filled, clear, and useful."""
+## QUALITÀ MINIMA RICHIESTA
+- Ogni pezzo deve creare TENSIONE PSICOLOGICA (FOMO, curiosità, empatia, sfida)
+- Specifico batte generico SEMPRE. Numeri concreti, esempi reali, situazioni riconoscibili
+- Vietato: tono da spot pubblicitario anni '90, frasi motivazionali vuote, ottimismo generico
+- Il lettore deve riconoscersi nella situazione descritta entro le prime 2 frasi"""
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -177,6 +226,12 @@ class ContentUpdate(BaseModel):
     caption: Optional[str] = None
     hashtags: Optional[str] = None
     slides: Optional[list] = None
+    opening_hook: Optional[str] = None
+    visual_direction: Optional[str] = None
+    hook_text: Optional[str] = None
+    day_offset: Optional[int] = None
+    status: Optional[str] = None
+    urgent: Optional[bool] = None
 
 class TovProfileInput(BaseModel):
     project_id: str
@@ -384,6 +439,23 @@ async def get_project(project_id: str, request: Request):
     p["id"] = str(p.pop("_id"))
     return p
 
+@api.get("/projects/{project_id}/wizard-state")
+async def get_wizard_state(project_id: str, request: Request):
+    user = await get_current_user(request)
+    p = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
+    if not p:
+        raise HTTPException(404, "Progetto non trovato")
+    p["id"] = str(p.pop("_id"))
+    wizard_step = p.get("wizard_step", 0)
+    result = {"project": p, "personas": [], "tov": None, "hooks": []}
+    if wizard_step >= 1:
+        result["personas"] = await db.personas.find({"project_id": project_id}, {"_id": 0}).to_list(20)
+    if wizard_step >= 2:
+        result["tov"] = await db.tov_profiles.find_one({"project_id": project_id}, {"_id": 0})
+    if wizard_step >= 3:
+        result["hooks"] = await db.hooks.find({"project_id": project_id}, {"_id": 0}).to_list(200)
+    return result
+
 @api.put("/projects/{project_id}")
 async def update_project(project_id: str, request: Request):
     user = await get_current_user(request)
@@ -452,14 +524,38 @@ async def remove_project_cover(project_id: str, request: Request):
 
 # ── AI GENERATION ────────────────────────────────────
 async def call_ai(system_prompt: str, user_prompt: str) -> str:
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(
-        api_key=os.environ["EMERGENT_LLM_KEY"],
-        session_id=f"sk-{uuid.uuid4().hex[:12]}",
-        system_message=system_prompt
-    ).with_model("gemini", "gemini-3-flash-preview")
-    response = await chat.send_message(UserMessage(text=user_prompt))
-    return response
+    import asyncio
+    # Primary: OpenAI GPT-4o-mini
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.7,
+            ),
+            timeout=240
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"OpenAI failed, falling back to Gemini: {e}")
+    # Fallback: Gemini
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    response = await asyncio.wait_for(
+        client.aio.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=user_prompt,
+            config=types.GenerateContentConfig(system_instruction=system_prompt)
+        ),
+        timeout=240
+    )
+    return response.text
 
 def extract_json(text: str):
     text = text.strip()
@@ -481,6 +577,18 @@ def extract_json(text: str):
             return json.loads(text[start:end+1])
         raise
 
+def coerce_str(val) -> str:
+    """Ensure a field that should be a plain string actually is one.
+    If the AI returns an object/dict (e.g. visual_direction as structured JSON),
+    flatten it to a readable string so the UI never shows [object Object]."""
+    if isinstance(val, str):
+        return val
+    if isinstance(val, dict):
+        return " — ".join(f"{v}" for v in val.values() if v)
+    if isinstance(val, list):
+        return " ".join(str(i) for i in val)
+    return str(val) if val is not None else ""
+
 # ── PERSONAS ─────────────────────────────────────────
 @api.post("/personas/generate")
 async def generate_personas(inp: GeneratePersonasInput, request: Request):
@@ -494,9 +602,8 @@ Descrizione: {project.get('description', '')}
 Area: {project.get('geo', 'Italia')}
 
 Per ogni persona restituisci un oggetto JSON con:
-- name: nome e eta (es. "Marco, 35")
-- role: professione/ruolo
-- age_range: fascia eta
+- role: professione o tipo di persona (es. "Insegnante", "Libero professionista", "Imprenditore")
+- age: età in anni (numero intero)
 - pain_points: lista di 2-3 pain point
 - desires: lista di 2-3 desideri
 - objections: lista di 1-2 obiezioni
@@ -506,6 +613,14 @@ Rispondi con un array JSON di 6 oggetti."""
     try:
         result = await call_ai(system, prompt)
         personas = extract_json(result)
+        # Auto-save as draft immediately after generation
+        await db.personas.delete_many({"project_id": inp.project_id})
+        for p in personas:
+            p["project_id"] = inp.project_id
+            p["id"] = str(uuid.uuid4())
+            await db.personas.insert_one(p)
+            p.pop("_id", None)
+        await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$set": {"wizard_step": 1}})
         return {"personas": personas}
     except Exception as e:
         logger.error(f"AI persona generation error: {e}")
@@ -542,7 +657,7 @@ async def generate_hooks(inp: GenerateHooksInput, request: Request):
     tov_desc = ""
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
-    system = "Sei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
+    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
     prompt = f"""Genera {num_hooks} hook per un progetto nel settore: {project['sector']}.
 Descrizione: {project.get('description','')}
 Area: {project.get('geo','Italia')}
@@ -553,15 +668,23 @@ Personas: {json.dumps([p.get('name','') + ' - ' + p.get('role','') for p in pers
 
 Per ogni hook restituisci:
 - hook_text: testo dell'hook (frase ad effetto)
-- format: "reel" o "carousel"
+- format: uno tra {', '.join([f'"{f}"' for f in project.get('formats', ['reel', 'carousel'])])}
 - pillar: "awareness", "education" o "monetizing"
 - persona_target: nome della persona target
 - day_offset: giorno dalla partenza (0, 1, 2, ...)
 
-Distribuisci i formati e i pillar secondo gli obiettivi. Rispondi con un array JSON di {num_hooks} oggetti."""
+Distribuisci i formati in modo equilibrato tra quelli disponibili. Se "prompted_reel" è disponibile usalo per circa il 20% degli hook. Rispondi con un array JSON di {num_hooks} oggetti."""
     try:
         result = await call_ai(system, prompt)
         hooks = extract_json(result)
+        # Auto-save as draft immediately after generation
+        await db.hooks.delete_many({"project_id": inp.project_id})
+        for h in hooks:
+            h["project_id"] = inp.project_id
+            h["id"] = str(uuid.uuid4())
+            await db.hooks.insert_one(h)
+            h.pop("_id", None)
+        await db.projects.update_one({"_id": ObjectId(inp.project_id)}, {"$set": {"wizard_step": 3}})
         return {"hooks": hooks}
     except Exception as e:
         logger.error(f"AI hook generation error: {e}")
@@ -615,9 +738,25 @@ async def generate_content(inp: GenerateContentInput, request: Request):
     generated = []
     for hook in hooks:
         system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
-        prompt = f"""Genera un contenuto social completo per questo hook:
+        fmt = hook.get('format', 'reel')
+        if fmt == 'prompted_reel':
+            prompt = f"""Sei un esperto di video marketing con avatar AI. Crea materiale completo per un Prompted Reel da usare con strumenti come HeyGen o D-ID.
+
 Hook: {hook.get('hook_text','')}
-Formato: {hook.get('format','reel')}
+Settore: {project['sector']}
+{tov_desc}
+
+Restituisci un oggetto JSON con:
+- opening_hook: testo parlato dei primi 3-5 secondi (cattura immediatamente, max 2 frasi)
+- script: script completo per l'avatar (scritto come se stesse parlando, con indicazioni di ritmo tra parentesi quadre: [pausa], [enfasi], [veloce], [lento])
+- visual_direction: descrizione visiva CONCRETA della scena da realizzare. Specifica: CHI è il soggetto (es. "uomo 35enne in camicia blu"), COSA fa esattamente (postura, gesti precisi), DOVE si trova (ambientazione specifica con dettagli: sfondo, luce, elementi presenti), CHE ESPRESSIONE ha (emozione precisa), e INQUADRATURA consigliata (Wide shot / Full body / Medium shot / Close-up / Macro). Deve essere abbastanza dettagliata da generare un'immagine senza ambiguità.
+- caption: caption ottimizzata per la pubblicazione social (lunghezza {caption_len})
+- hashtags: stringa di hashtag separati da spazi
+- slides: array vuoto"""
+        else:
+            prompt = f"""Genera un contenuto social completo per questo hook:
+Hook: {hook.get('hook_text','')}
+Formato: {fmt}
 Settore: {project['sector']}
 {tov_desc}
 Lunghezza caption: {caption_len}
@@ -626,7 +765,9 @@ Restituisci un oggetto JSON con:
 - script: lo script completo del contenuto (per reel: script parlato; per carousel: testo di ogni slide separato da ---)
 - caption: la caption per il post
 - hashtags: stringa di hashtag separati da spazi
-- slides: se carousel, array di stringhe (testo per ogni slide); se reel, array vuoto"""
+- slides: se carousel, array di 4-6 stringhe. Ogni slide: TITOLO (max 6 parole, tutto maiuscolo) seguito da 3-4 punti numerati nel formato "1 — punto specifico e dettagliato\n2 — secondo punto\n3 — terzo punto". MAI contenuto generico — dati, numeri, esempi concreti. Se reel, array vuoto.
+- opening_hook: stringa vuota
+- visual_direction: stringa vuota"""
         try:
             result = await call_ai(system, prompt)
             content_data = extract_json(result)
@@ -635,11 +776,13 @@ Restituisci un oggetto JSON con:
                 "project_id": inp.project_id,
                 "hook_id": hook.get("id", ""),
                 "hook_text": hook.get("hook_text", ""),
-                "format": hook.get("format", "reel"),
+                "format": fmt,
                 "pillar": hook.get("pillar", ""),
                 "persona_target": hook.get("persona_target", ""),
                 "day_offset": hook.get("day_offset", 0),
                 "script": content_data.get("script", ""),
+                "opening_hook": content_data.get("opening_hook", ""),
+                "visual_direction": coerce_str(content_data.get("visual_direction", "")),
                 "caption": content_data.get("caption", ""),
                 "hashtags": content_data.get("hashtags", ""),
                 "slides": content_data.get("slides", []),
@@ -673,24 +816,30 @@ async def create_post(inp: PostCreate, request: Request):
         "persona_target": "",
         "day_offset": 0,
         "script": "",
+        "opening_hook": "",
+        "visual_direction": "",
         "caption": "",
         "hashtags": "",
         "slides": [],
         "media": [],
         "status": "draft",
+        "urgent": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     if inp.use_ai:
         tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
-        tov_desc = ""
-        if tov:
-            tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10."
-        system = "Sei un copywriter. Genera contenuto social in italiano. Rispondi SOLO con JSON."
-        prompt = f"Genera script, caption e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array)."
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10." if tov else ""
+        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social in italiano. Rispondi SOLO con JSON."
+        if inp.format == 'prompted_reel':
+            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."
+        else:
+            prompt = f"Genera script (con paragrafi separati da \\n\\n), caption (con paragrafi separati da \\n\\n) e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
-            content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides"]})
+            content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook"]})
+            if "visual_direction" in data:
+                content_doc["visual_direction"] = coerce_str(data["visual_direction"])
         except Exception as e:
             logger.error(f"AI post creation error: {e}")
     await db.contents.insert_one({k: v for k, v in content_doc.items() if k != "_id"})
@@ -743,19 +892,29 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
     system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Rigenera questo contenuto migliorandolo. Rispondi SOLO con JSON valido. Scrivi in italiano."
-    prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
-Hook originale: {content.get('hook_text','')}
-Formato: {content.get('format','reel')}
+    fmt = content.get('format', 'reel')
+    if fmt == 'prompted_reel':
+        prompt = f"""Rigenera questo Prompted Reel migliorandolo:
+Hook: {content.get('hook_text','')}
 Settore: {project.get('sector','')}
 {tov_desc}
-Restituisci JSON con: hook_text, script, caption, hashtags, slides (array di stringhe per carousel, vuoto per reel)"""
+Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: CHI il soggetto con dettagli fisici/abbigliamento, COSA fa con postura/gesti esatti, DOVE ambientazione specifica con luce e sfondo, CHE espressione, INQUADRATURA consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)"""
+    else:
+        prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
+Hook originale: {content.get('hook_text','')}
+Formato: {fmt}
+Settore: {project.get('sector','')}
+{tov_desc}
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 4-6 stringhe; ogni slide = TITOLO\n\n1 — punto\n2 — punto\n3 — punto; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
         updates = {}
-        for k in ["hook_text", "script", "caption", "hashtags", "slides"]:
+        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
                 updates[k] = data[k]
+        if "visual_direction" in data:
+            updates["visual_direction"] = coerce_str(data["visual_direction"])
         if updates:
             await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
         updated = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
@@ -769,14 +928,23 @@ async def convert_content(inp: ContentConvertInput, request: Request):
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
-    if inp.target_format not in ("reel", "carousel"):
-        raise HTTPException(400, "target_format deve essere 'reel' o 'carousel'")
+    if inp.target_format not in ("reel", "carousel", "prompted_reel"):
+        raise HTTPException(400, "target_format non valido")
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     tov_desc = ""
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10. {tov.get('custom_instructions','')}"
-    if inp.target_format == "carousel":
+    if inp.target_format == "prompted_reel":
+        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un esperto di video marketing con avatar AI. Converti questo contenuto in un Prompted Reel. Rispondi SOLO con JSON valido. Scrivi in italiano."
+        prompt = f"""Converti questo contenuto in un Prompted Reel per avatar AI.
+Hook: {content.get('hook_text','')}
+Script originale: {content.get('script', '') or ' '.join(content.get('slides', []))}
+Settore: {project.get('sector','')}
+{tov_desc}
+
+Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per avatar con [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA della scena: CHI è il soggetto con dettagli fisici e abbigliamento precisi, COSA fa esattamente con postura e gesti specifici, DOVE si trova con ambientazione dettagliata e illuminazione, CHE ESPRESSIONE ha — deve funzionare come brief fotografico), caption, hashtags, slides (array vuoto)"""
+    elif inp.target_format == "carousel":
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Reel in un Carousel con slide numerate. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Reel in un Carousel strutturato.
 Hook: {content.get('hook_text','')}
@@ -784,13 +952,13 @@ Script Reel: {content.get('script','')}
 Settore: {project.get('sector','')}
 {tov_desc}
 
-Crea un carousel con:
-- SLIDE 1: hook bold
-- SLIDE 2: problema reale
-- SLIDES 3-6: passi pratici/insights
-- SLIDE FINALE: CTA diretto
+Crea un carousel con MASSIMO 6 slide totali:
+- SLIDE 1: problema/hook (1-2 frasi ad alto impatto emotivo)
+- SLIDE 2: contesto/promessa (cosa impareranno)
+- SLIDE 3-5: contenuto educativo ricco. Ogni slide = TITOLO (max 6 parole, MAIUSCOLO) + 3-4 punti numerati nel formato "1 — descrizione specifica\n2 — descrizione specifica\n3 — descrizione specifica". Usa dati, percentuali, esempi reali.
+- SLIDE 6: CTA diretto con call-to-action e hashtag principali
 
-Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di stringhe, una per slide, numerate)"""
+Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 4-6 stringhe; ogni body slide = "TITOLO\n\n1 — punto\n2 — punto\n3 — punto")"""
     else:
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Carousel in un Reel script parlato.
@@ -805,9 +973,11 @@ Restituisci JSON con: hook_text, script (script parlato completo), caption, hash
         result = await call_ai(system, prompt)
         data = extract_json(result)
         updates = {"format": inp.target_format}
-        for k in ["hook_text", "script", "caption", "hashtags", "slides"]:
+        for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
                 updates[k] = data[k]
+        if "visual_direction" in data:
+            updates["visual_direction"] = coerce_str(data["visual_direction"])
         await db.contents.update_one({"id": inp.content_id}, {"$set": updates})
         updated = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
         return updated
@@ -845,39 +1015,341 @@ async def get_brand_kit(project_id: str, request: Request):
     bk = await db.brand_kits.find_one({"project_id": project_id}, {"_id": 0})
     return bk or {}
 
-# ── SOCIAL PROFILES ───────────────────────────────────
+# ── SOCIAL PLATFORMS CONFIG ────────────────────────────
 SOCIAL_PLATFORMS = {
-    "instagram": {
-        "name": "Instagram",
-        "auth_url": "https://api.instagram.com/oauth/authorize",
-        "client_id_env": "INSTAGRAM_CLIENT_ID",
-        "scope": "instagram_basic,instagram_content_publish",
-    },
     "facebook": {
         "name": "Facebook",
         "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
-        "client_id_env": "META_CLIENT_ID",
-        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts",
+        "client_id_env": "FACEBOOK_APP_ID",
+        "client_secret_env": "FACEBOOK_APP_SECRET",
+        "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
+        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content",
+    },
+    "instagram": {
+        "name": "Instagram",
+        "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
+        "client_id_env": "INSTAGRAM_CLIENT_ID",
+        "client_secret_env": "INSTAGRAM_CLIENT_SECRET",
+        "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
+        "scope": "instagram_basic,instagram_content_publish,instagram_manage_insights,pages_show_list,pages_read_engagement",
     },
     "linkedin": {
         "name": "LinkedIn",
         "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
         "client_id_env": "LINKEDIN_CLIENT_ID",
-        "scope": "openid profile email w_member_social",
+        "client_secret_env": "LINKEDIN_CLIENT_SECRET",
+        "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+        "scope": "openid profile email w_member_social r_member_social",
     },
     "tiktok": {
         "name": "TikTok",
         "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
         "client_id_env": "TIKTOK_CLIENT_KEY",
+        "client_id_param": "client_key",
+        "client_secret_env": "TIKTOK_CLIENT_SECRET",
+        "token_url": "https://open.tiktok.com/v2/oauth/token/",
         "scope": "user.info.basic,video.publish",
     },
     "pinterest": {
         "name": "Pinterest",
         "auth_url": "https://www.pinterest.com/oauth/",
         "client_id_env": "PINTEREST_CLIENT_ID",
-        "scope": "boards:read,pins:read,pins:write",
+        "client_secret_env": "PINTEREST_CLIENT_SECRET",
+        "token_url": "https://api.pinterest.com/v5/oauth/token",
+        "scope": "boards:read,pins:read,pins:write,user_accounts:read,offline_access",
+    },
+    "google_slides": {
+        "name": "Google Drive",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "client_id_env": "GOOGLE_CLIENT_ID",
+        "client_secret_env": "GOOGLE_CLIENT_SECRET",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scope": "https://www.googleapis.com/auth/drive.readonly openid email",
+        "extra_params": "access_type=offline&prompt=consent",
     },
 }
+
+def _app_url() -> str:
+    return os.environ.get("APP_URL", os.environ.get("FRONTEND_URL", "http://localhost:3000"))
+
+def _oauth_callback_url() -> str:
+    return f"{_app_url()}/api/social/oauth/callback"
+
+async def _exchange_token_instagram(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("INSTAGRAM_CLIENT_ID", "")
+    client_secret = os.environ.get("INSTAGRAM_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "client_id": client_id, "client_secret": client_secret,
+            "code": code, "redirect_uri": redirect_uri,
+        })
+        r.raise_for_status()
+        token = r.json()["access_token"]
+        # Get Instagram Business Account
+        pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts", params={"access_token": token})
+        pages_r.raise_for_status()
+        pages = pages_r.json().get("data", [])
+        ig_id, ig_name = "", "Instagram"
+        for page in pages:
+            ig_r = await c.get(f"https://graph.facebook.com/v19.0/{page['id']}", params={
+                "fields": "instagram_business_account", "access_token": page["access_token"]
+            })
+            ig_data = ig_r.json().get("instagram_business_account", {})
+            if ig_data:
+                ig_id = ig_data["id"]
+                info_r = await c.get(f"https://graph.facebook.com/v19.0/{ig_id}", params={
+                    "fields": "username", "access_token": token
+                })
+                ig_name = info_r.json().get("username", "Instagram")
+                break
+        return {"access_token": token, "profile_id": ig_id, "profile_name": ig_name}
+
+async def _exchange_token_facebook(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("FACEBOOK_APP_ID", "")
+    client_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "client_id": client_id, "client_secret": client_secret,
+            "code": code, "redirect_uri": redirect_uri,
+        })
+        r.raise_for_status()
+        data = r.json()
+        token = data["access_token"]
+        # Get profile name
+        pr = await c.get("https://graph.facebook.com/v19.0/me", params={"fields": "id,name", "access_token": token})
+        pr.raise_for_status()
+        profile = pr.json()
+        return {"access_token": token, "profile_id": profile.get("id", ""), "profile_name": profile.get("name", "Facebook")}
+
+async def _exchange_token_linkedin(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("LINKEDIN_CLIENT_ID", "")
+    client_secret = os.environ.get("LINKEDIN_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://www.linkedin.com/oauth/v2/accessToken", data={
+            "grant_type": "authorization_code", "code": code,
+            "redirect_uri": redirect_uri, "client_id": client_id, "client_secret": client_secret,
+        }, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        r.raise_for_status()
+        token = r.json()["access_token"]
+        pr = await c.get("https://api.linkedin.com/v2/userinfo", headers={"Authorization": f"Bearer {token}"})
+        pr.raise_for_status()
+        profile = pr.json()
+        return {"access_token": token, "profile_id": profile.get("sub", ""), "profile_name": profile.get("name", "LinkedIn")}
+
+async def _exchange_token_tiktok(code: str, redirect_uri: str) -> dict:
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY", "")
+    client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://open.tiktok.com/v2/oauth/token/", data={
+            "client_key": client_key, "client_secret": client_secret,
+            "code": code, "grant_type": "authorization_code", "redirect_uri": redirect_uri,
+        }, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        r.raise_for_status()
+        d = r.json().get("data", r.json())
+        return {"access_token": d.get("access_token", ""), "profile_id": d.get("open_id", ""), "profile_name": d.get("display_name", "TikTok")}
+
+async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
+    client_secret = os.environ.get("PINTEREST_CLIENT_SECRET", "")
+    import base64 as _b64
+    creds = _b64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://api.pinterest.com/v5/oauth/token",
+            data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
+            headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
+        r.raise_for_status()
+        token_data = r.json()
+        token = token_data["access_token"]
+        pr = await c.get("https://api.pinterest.com/v5/user_account", headers={"Authorization": f"Bearer {token}"})
+        pr.raise_for_status()
+        profile = pr.json()
+        result = {"access_token": token, "profile_id": profile.get("username", ""), "profile_name": profile.get("username", "Pinterest")}
+        if token_data.get("refresh_token"):
+            result["refresh_token"] = token_data["refresh_token"]
+        return result
+
+async def _get_pinterest_access_token(user_id) -> str:
+    account = await db.social_accounts.find_one({"user_id": user_id, "platform": "pinterest"})
+    if not account:
+        raise HTTPException(400, "Pinterest non connesso.")
+    token = account["access_token"]
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get("https://api.pinterest.com/v5/user_account", headers={"Authorization": f"Bearer {token}"})
+        if r.status_code == 200:
+            return token
+        refresh_token = account.get("refresh_token", "")
+        if not refresh_token:
+            raise HTTPException(401, "Token Pinterest scaduto. Ricollega il tuo account Pinterest.")
+        client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
+        client_secret = os.environ.get("PINTEREST_CLIENT_SECRET", "")
+        import base64 as _b64
+        creds = _b64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        rr = await c.post("https://api.pinterest.com/v5/oauth/token",
+            data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+            headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"})
+        if rr.status_code != 200:
+            raise HTTPException(401, "Token Pinterest scaduto. Ricollega il tuo account Pinterest.")
+        new_token = rr.json()["access_token"]
+        update = {"access_token": new_token}
+        if rr.json().get("refresh_token"):
+            update["refresh_token"] = rr.json()["refresh_token"]
+        await db.social_accounts.update_one({"user_id": user_id, "platform": "pinterest"}, {"$set": update})
+        return new_token
+
+async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post("https://oauth2.googleapis.com/token", data={
+            "client_id": client_id, "client_secret": client_secret,
+            "code": code, "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+        })
+        r.raise_for_status()
+        token_data = r.json()
+        access_token = token_data["access_token"]
+        refresh_token = token_data.get("refresh_token", "")
+        ui_r = await c.get("https://www.googleapis.com/oauth2/v2/userinfo",
+                           headers={"Authorization": f"Bearer {access_token}"})
+        ui_r.raise_for_status()
+        ui = ui_r.json()
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "profile_id": ui.get("id", ""),
+            "profile_name": ui.get("email", ui.get("name", "Google")),
+        }
+
+async def _publish_facebook(token: str, text: str, image_url: Optional[str] = None) -> str:
+    async with httpx.AsyncClient(timeout=30) as c:
+        pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts", params={"access_token": token})
+        pages_r.raise_for_status()
+        pages = pages_r.json().get("data", [])
+        if not pages:
+            raise ValueError("Nessuna pagina Facebook trovata per questo account")
+        page = pages[0]
+        page_token = page["access_token"]
+        page_id = page["id"]
+        if image_url:
+            r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/photos",
+                params={"access_token": page_token}, data={"url": image_url, "caption": text})
+        else:
+            r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/feed",
+                params={"access_token": page_token}, data={"message": text})
+        r.raise_for_status()
+        return r.json().get("id", "")
+
+async def _publish_linkedin(token: str, text: str, profile_id: str, image_url: Optional[str] = None) -> str:
+    urn = f"urn:li:person:{profile_id}"
+    headers = {"Authorization": f"Bearer {token}", "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}
+    asset_urn = None
+
+    async with httpx.AsyncClient(timeout=60) as c:
+        if image_url:
+            # Step 1: register upload
+            reg = await c.post("https://api.linkedin.com/v2/assets?action=registerUpload", headers=headers, json={
+                "registerUploadRequest": {
+                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+                    "owner": urn,
+                    "serviceRelationships": [{"relationshipType": "OWNER", "identifier": "urn:li:userGeneratedContent"}],
+                }
+            })
+            if reg.status_code == 200:
+                val = reg.json().get("value", {})
+                asset_urn = val.get("asset", "")
+                upload_url = val.get("uploadMechanism", {}).get(
+                    "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest", {}
+                ).get("uploadUrl", "")
+                # Step 2: upload image bytes
+                if upload_url:
+                    img_resp = await c.get(image_url)
+                    if img_resp.status_code == 200:
+                        await c.put(upload_url, content=img_resp.content,
+                                    headers={"Authorization": f"Bearer {token}",
+                                             "Content-Type": img_resp.headers.get("content-type", "image/jpeg")})
+
+        media_category = "NONE"
+        media_list = []
+        if asset_urn:
+            media_category = "IMAGE"
+            media_list = [{"status": "READY", "media": asset_urn, "description": {"text": ""}, "title": {"text": ""}}]
+
+        payload = {
+            "author": urn, "lifecycleState": "PUBLISHED",
+            "specificContent": {"com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": text},
+                "shareMediaCategory": media_category,
+                **({"media": media_list} if media_list else {}),
+            }},
+            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+        }
+        r = await c.post("https://api.linkedin.com/v2/ugcPosts", json=payload, headers=headers)
+        r.raise_for_status()
+        return r.headers.get("x-restli-id", "")
+
+async def _publish_pinterest(token: str, text: str, title: str, image_url: Optional[str] = None) -> str:
+    async with httpx.AsyncClient(timeout=30) as c:
+        boards_r = await c.get("https://api.pinterest.com/v5/boards", headers={"Authorization": f"Bearer {token}"})
+        boards_r.raise_for_status()
+        boards = boards_r.json().get("items", [])
+        if not boards:
+            raise ValueError("Nessuna board Pinterest trovata")
+        board_id = boards[0]["id"]
+        pin = {"board_id": board_id, "title": title[:100], "description": text[:500]}
+        if image_url:
+            pin["media_source"] = {"source_type": "image_url", "url": image_url}
+        else:
+            pin["media_source"] = {"source_type": "image_url", "url": "https://via.placeholder.com/800x800?text=Sketchario"}
+        r = await c.post("https://api.pinterest.com/v5/pins", json=pin, headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json().get("id", "")
+
+async def _publish_instagram(token: str, ig_id: str, text: str, image_url: Optional[str] = None) -> str:
+    if not ig_id:
+        raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
+    if not image_url:
+        raise ValueError("Instagram richiede un'immagine. Carica prima un media sul contenuto.")
+    async with httpx.AsyncClient(timeout=60) as c:
+        # Step 1: create media container
+        container_r = await c.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media",
+            data={"image_url": image_url, "caption": text, "access_token": token}
+        )
+        if container_r.status_code != 200:
+            fb_err = container_r.json().get("error", {})
+            raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}")
+        container_id = container_r.json().get("id", "")
+        if not container_id:
+            raise ValueError("IG container creation returned no ID")
+        # Step 2: publish
+        pub_r = await c.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
+            data={"creation_id": container_id, "access_token": token}
+        )
+        if pub_r.status_code != 200:
+            fb_err = pub_r.json().get("error", {})
+            raise ValueError(f"IG publish error: {fb_err.get('message', pub_r.text[:200])}")
+        return pub_r.json().get("id", "")
+
+async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
+    text = content.get("caption") or content.get("hook_text") or content.get("title") or ""
+    title = content.get("title") or content.get("hook_text") or "Post"
+    media = content.get("media", [])
+    image_url = media[0].get("url") if media else None
+    if image_url and image_url.startswith("/"):
+        app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
+        image_url = f"{app_url}{image_url}"
+    if platform == "facebook":
+        return await _publish_facebook(token, text, image_url)
+    elif platform == "instagram":
+        return await _publish_instagram(token, profile_id, text, image_url)
+    elif platform == "linkedin":
+        return await _publish_linkedin(token, text, profile_id, image_url)
+    elif platform == "pinterest":
+        return await _publish_pinterest(token, text, title, image_url)
+    elif platform == "tiktok":
+        raise ValueError("TikTok richiede upload video. Usa l'app TikTok direttamente.")
+    else:
+        raise ValueError(f"Piattaforma {platform} non supportata per la pubblicazione")
 
 class SocialProfileSave(BaseModel):
     platform: str
@@ -893,7 +1365,6 @@ class ProjectSocialLink(BaseModel):
 @api.get("/social/platforms")
 async def list_platforms(request: Request):
     await get_current_user(request)
-    callback_base = os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE", "https://www.sketchario.app/social_oauth.php")
     platforms = []
     for key, cfg in SOCIAL_PLATFORMS.items():
         client_id = os.environ.get(cfg["client_id_env"], "")
@@ -901,14 +1372,86 @@ async def list_platforms(request: Request):
             "id": key,
             "name": cfg["name"],
             "configured": bool(client_id),
-            "auth_url": f"{cfg['auth_url']}?client_id={client_id}&redirect_uri={callback_base}&scope={cfg['scope']}&response_type=code&state={key}" if client_id else None,
+            "is_tool": key == "google_slides",  # not a social platform, shown separately
         })
     return platforms
+
+
+@api.get("/social/oauth/start/{platform}")
+async def social_oauth_start(platform: str, request: Request):
+    user = await get_current_user(request)
+    cfg = SOCIAL_PLATFORMS.get(platform)
+    if not cfg:
+        raise HTTPException(400, "Piattaforma non supportata")
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    if not client_id:
+        raise HTTPException(400, f"Credenziali {platform} non configurate")
+    state_id = str(uuid.uuid4())
+    await db.social_oauth_states.insert_one({
+        "state": state_id, "user_id": user["_id"], "platform": platform,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    })
+    callback = _oauth_callback_url()
+    client_id_param = cfg.get("client_id_param", "client_id")
+    scope_encoded = quote(cfg['scope'], safe=',')
+    auth_url = (f"{cfg['auth_url']}?{client_id_param}={client_id}"
+                f"&redirect_uri={quote(callback, safe='')}"
+                f"&scope={scope_encoded}&response_type=code&state={state_id}")
+    if cfg.get("extra_params"):
+        auth_url += f"&{cfg['extra_params']}"
+    return {"auth_url": auth_url}
+
+@api.get("/social/oauth/callback")
+async def social_oauth_callback(request: Request):
+    params = dict(request.query_params)
+    code = params.get("code", "")
+    state_id = params.get("state", "")
+    error = params.get("error", "")
+    app_url = _app_url()
+    if error or not code or not state_id:
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_error',error:'{error or 'cancelled'}'}}, '*');window.close();</script>")
+    state_doc = await db.social_oauth_states.find_one_and_delete({"state": state_id})
+    if not state_doc:
+        return HTMLResponse("<script>window.opener&&window.opener.postMessage({type:'oauth_error',error:'state_invalid'}, '*');window.close();</script>")
+    platform = state_doc["platform"]
+    user_id = state_doc["user_id"]
+    callback = _oauth_callback_url()
+    try:
+        exchangers = {
+            "facebook": _exchange_token_facebook,
+            "instagram": _exchange_token_instagram,
+            "linkedin": _exchange_token_linkedin,
+            "tiktok": _exchange_token_tiktok,
+            "pinterest": _exchange_token_pinterest,
+            "google_slides": _exchange_token_google_slides,
+        }
+        exchanger = exchangers.get(platform)
+        if not exchanger:
+            raise ValueError(f"Piattaforma {platform} non supportata")
+        result = await exchanger(code, callback)
+        doc = {
+            "id": str(uuid.uuid4()), "user_id": user_id, "platform": platform,
+            "profile_name": result["profile_name"], "profile_id": result["profile_id"],
+            "access_token": result["access_token"], "connection_mode": "oauth", "connected": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        if result.get("refresh_token"):
+            doc["refresh_token"] = result["refresh_token"]
+        await db.social_accounts.delete_many({"user_id": user_id, "platform": platform, "profile_id": result["profile_id"]})
+        await db.social_accounts.insert_one(doc)
+        pname = result["profile_name"]
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_success',platform:'{platform}',name:'{pname}'}}, '*');window.close();</script>")
+    except Exception as e:
+        logger.error(f"OAuth callback error {platform}: {e}")
+        msg = str(e).replace("'", "").replace('"', '').replace('\n', ' ').replace('\r', '')
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'oauth_error',error:'{msg}'}}, '*');window.close();</script>")
 
 @api.get("/social/profiles")
 async def list_social_profiles(request: Request):
     user = await get_current_user(request)
-    profiles = await db.social_accounts.find({"user_id": user["_id"]}, {"_id": 0}).to_list(50)
+    profiles = await db.social_accounts.find(
+        {"user_id": user["_id"]}, {"_id": 0}
+    ).to_list(50)
     return profiles
 
 @api.post("/social/profiles")
@@ -1010,13 +1553,15 @@ async def get_feed_items(project_id: str, request: Request):
                 async with httpx.AsyncClient(timeout=10) as client_http:
                     resp = await client_http.get(feed["feed_url"])
                     parsed = feedparser.parse(resp.text)
+                    def _strip_html(text):
+                        return re.sub(r'<[^>]+>', '', html_lib.unescape(str(text or ''))).strip()
                     for entry in parsed.entries[:10]:
                         item = {
                             "id": str(uuid.uuid4()),
                             "feed_id": feed["id"],
                             "feed_name": feed.get("feed_name", ""),
-                            "title": getattr(entry, "title", ""),
-                            "summary": getattr(entry, "summary", "")[:500] if hasattr(entry, "summary") else "",
+                            "title": _strip_html(getattr(entry, "title", "")),
+                            "summary": _strip_html(getattr(entry, "summary", "")[:800] if hasattr(entry, "summary") else "")[:500],
                             "link": getattr(entry, "link", ""),
                             "published": getattr(entry, "published", ""),
                             "image": "",
@@ -1046,6 +1591,38 @@ async def refresh_feeds(project_id: str, request: Request):
     items = await get_feed_items(project_id, request)
     return {"ok": True, "count": len(items)}
 
+class PinItemInput(BaseModel):
+    project_id: str
+    item_data: dict
+    item_type: str = "rss"  # "rss" or "ai"
+
+@api.post("/feeds/items/{item_id}/pin")
+async def pin_feed_item(item_id: str, inp: PinItemInput, request: Request):
+    user = await get_current_user(request)
+    existing = await db.pinned_feed_items.find_one({"item_id": item_id, "user_id": user["_id"]})
+    if existing:
+        await db.pinned_feed_items.delete_one({"item_id": item_id, "user_id": user["_id"]})
+        return {"pinned": False}
+    doc = {
+        "item_id": item_id,
+        "user_id": user["_id"],
+        "project_id": inp.project_id,
+        "item_data": inp.item_data,
+        "item_type": inp.item_type,
+        "pinned_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.pinned_feed_items.insert_one(doc)
+    doc.pop("_id", None)
+    return {"pinned": True}
+
+@api.get("/feeds/{project_id}/pinned")
+async def get_pinned_items(project_id: str, request: Request):
+    user = await get_current_user(request)
+    items = await db.pinned_feed_items.find(
+        {"project_id": project_id, "user_id": user["_id"]}, {"_id": 0}
+    ).to_list(50)
+    return items
+
 @api.post("/feeds/generate-content")
 async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     user = await get_current_user(request)
@@ -1056,14 +1633,14 @@ async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     tov_desc = ""
     if tov:
         tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10."
-    system = "Sei un copywriter professionista per social media. Genera contenuto ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
+    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
     prompt = f"""Genera un contenuto social ispirato a questo articolo:
 Titolo: {inp.feed_item_title}
 Sommario: {inp.feed_item_summary}
 Settore progetto: {project['sector']}
 {tov_desc}
 
-Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script, caption, hashtags, format ("reel" o "carousel")"""
+Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script (paragrafi separati da \n\n: Problema → Risonanza → Soluzione → CTA), caption (paragrafi separati da \n\n: Hook → Corpo → CTA), hashtags, format ("reel" o "carousel")"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
@@ -1136,20 +1713,28 @@ Restituisci un JSON array di 5 oggetti con:
             s["id"] = f"ai_{project_id}_{i}"
             s["source"] = "ai"
 
+        # Merge pinned AI items back (pinned items survive regeneration)
+        pinned = await db.pinned_feed_items.find(
+            {"project_id": project_id, "user_id": user["_id"], "item_type": "ai"}, {"_id": 0}
+        ).to_list(20)
+        pinned_data = [p["item_data"] for p in pinned]
+        pinned_ids = {p["item_data"].get("id") for p in pinned}
+        all_suggestions = pinned_data + [s for s in suggestions if s.get("id") not in pinned_ids]
+
         # Cache the result
         await db.ai_feed_cache.update_one(
             {"cache_key": cache_key},
-            {"$set": {"cache_key": cache_key, "suggestions": suggestions, "cached_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"cache_key": cache_key, "suggestions": all_suggestions, "cached_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True
         )
-        return suggestions
+        return all_suggestions
     except Exception as e:
         logger.error(f"AI feed suggestions error: {e}")
         return []
 
 @api.post("/feeds/ai-suggestions/{project_id}/refresh")
 async def refresh_ai_feed_suggestions(project_id: str, request: Request):
-    """Force refresh AI feed suggestions by clearing cache."""
+    """Force refresh AI feed suggestions, keeping pinned items."""
     user = await get_current_user(request)
     cache_key = f"ai_feed_{project_id}"
     await db.ai_feed_cache.delete_one({"cache_key": cache_key})
@@ -1175,31 +1760,93 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        scheduled_dt = datetime.fromisoformat(inp.scheduled_at.replace("Z", "+00:00"))
+    except Exception:
+        scheduled_dt = datetime.now(timezone.utc)
+    publish_now = scheduled_dt <= datetime.now(timezone.utc)
     items = []
     for sp_id in inp.social_profile_ids:
         profile = await db.social_accounts.find_one({"id": sp_id, "user_id": user["_id"]}, {"_id": 0})
         if not profile:
             continue
+        item_id = str(uuid.uuid4())
         doc = {
-            "id": str(uuid.uuid4()),
-            "content_id": inp.content_id,
-            "project_id": inp.project_id,
-            "social_profile_id": sp_id,
-            "platform": profile.get("platform", ""),
-            "profile_name": profile.get("profile_name", ""),
-            "user_id": user["_id"],
-            "status": "queued",
-            "scheduled_at": inp.scheduled_at,
-            "first_comment": inp.first_comment,
-            "error_message": "",
-            "published_at": "",
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "id": item_id, "content_id": inp.content_id, "project_id": inp.project_id,
+            "social_profile_id": sp_id, "platform": profile.get("platform", ""),
+            "profile_name": profile.get("profile_name", ""), "user_id": user["_id"],
+            "status": "queued", "scheduled_at": inp.scheduled_at, "first_comment": inp.first_comment,
+            "error_message": "", "published_at": "", "created_at": now_iso,
         }
+        if publish_now:
+            try:
+                pub_token = profile.get("access_token", "")
+                if profile["platform"] == "pinterest":
+                    pub_token = await _get_pinterest_access_token(user["_id"])
+                post_id = await _do_publish(profile["platform"], pub_token, profile.get("profile_id", ""), content)
+                doc["status"] = "published"
+                doc["published_at"] = now_iso
+                doc["post_id"] = post_id
+            except Exception as e:
+                doc["status"] = "failed"
+                doc["error_message"] = str(e)
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
         items.append(doc)
-    await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": "scheduled"}})
+    new_status = "published" if publish_now and all(i["status"] == "published" for i in items) else "scheduled"
+    await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": new_status}})
+    failed = [i for i in items if i.get("status") == "failed"]
+    if failed:
+        raise HTTPException(500, f"Errore pubblicazione: {failed[0]['error_message']}")
     return {"ok": True, "items": items}
+
+@api.post("/publish/process-queue")
+async def trigger_queue_processing(request: Request):
+    """Manually trigger the publish queue worker (for testing/debugging)."""
+    await get_current_user(request)
+    asyncio.create_task(_run_publish_queue_once())
+    return {"ok": True, "message": "Queue processing triggered"}
+
+async def _run_publish_queue_once():
+    """Single pass of the queue worker (used by manual trigger)."""
+    now = datetime.now(timezone.utc)
+    queued = await db.publish_queue.find({"status": "queued"}, {"_id": 0}).to_list(200)
+    due = [q for q in queued if _parse_dt(q.get("scheduled_at", "")) <= now]
+    for item in due:
+        result = await db.publish_queue.find_one_and_update(
+            {"id": item["id"], "status": "queued"}, {"$set": {"status": "processing"}})
+        if not result:
+            continue
+        try:
+            content = await db.contents.find_one({"id": item["content_id"]}, {"_id": 0})
+            if not content:
+                raise ValueError("Contenuto non trovato")
+            account = await db.social_accounts.find_one({"id": item.get("social_profile_id")})
+            if not account:
+                account = await db.social_accounts.find_one(
+                    {"user_id": item["user_id"], "platform": item["platform"]})
+            if not account:
+                raise ValueError("Account social non trovato")
+            token = account["access_token"]
+            if item["platform"] == "pinterest":
+                token = await _get_pinterest_access_token(item["user_id"])
+            post_id = await _do_publish(
+                item["platform"], token, account.get("profile_id", ""), content)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            await db.publish_queue.update_one(
+                {"id": item["id"]},
+                {"$set": {"status": "published", "published_at": now_iso, "post_id": post_id}})
+            remaining = await db.publish_queue.count_documents(
+                {"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
+            if remaining == 0:
+                await db.contents.update_one(
+                    {"id": item["content_id"]}, {"$set": {"status": "published"}})
+        except Exception as e:
+            logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
+            await db.publish_queue.update_one(
+                {"id": item["id"]},
+                {"$set": {"status": "failed", "error_message": str(e)[:300]}})
 
 @api.get("/publish/queue/{project_id}")
 async def get_publish_queue(project_id: str, request: Request):
@@ -1241,8 +1888,8 @@ async def mark_published(content_id: str, request: Request):
     return {"ok": True}
 
 # ── MEDIA UPLOAD ──────────────────────────────────────
-UPLOAD_DIR = Path("/app/backend/uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR = Path("/app/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @api.post("/media/upload/{content_id}")
 async def upload_media(content_id: str, request: Request, file: UploadFile = File(...)):
@@ -1287,32 +1934,83 @@ async def media_library(project_id: str, request: Request):
             all_media.append(m)
     return all_media
 
-# ── DALL·E IMAGE GENERATION ───────────────────────────
+# ── IMAGE GENERATION (FLUX / Gemini Imagen) ───────────
+class OptimizePromptInput(BaseModel):
+    visual_direction: str
+    script: str = ""
+    project_id: str
+
+@api.post("/media/optimize-prompt")
+async def optimize_image_prompt(inp: OptimizePromptInput, request: Request):
+    await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
+    sector = project.get('sector', '') if project else ''
+    system = "You are an expert image generation prompt engineer. Convert scene direction notes into a precise, vivid scene description for FLUX/Stable Diffusion. Be concrete and specific. Reply ONLY with the scene description (no style/technical qualifiers — just the scene), no explanations."
+    prompt = f"""Scene direction: {inp.visual_direction}
+Content script (for context): {inp.script[:400] if inp.script else 'not available'}
+Sector: {sector}
+
+Write a precise scene description specifying: the exact subject (who they are, approximate age, exact clothing/appearance), their precise action/posture/gesture, the exact setting (where, lighting, background elements, time of day), their facial expression/emotion, and the recommended camera composition (Wide shot / Full body / Medium shot / Close-up / Macro). Make it vivid and unambiguous. Include the composition type naturally in the description."""
+    try:
+        result = await call_ai(system, prompt)
+        return {"prompt": result.strip()}
+    except Exception as e:
+        raise HTTPException(500, f"Errore ottimizzazione: {str(e)}")
+
 class DalleGenerateInput(BaseModel):
     content_id: str
     prompt: str
     project_id: str
+    model: str = "flux"
 
 @api.post("/media/generate-dalle")
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
-    user = await get_current_user(request)
+    await get_current_user(request)
     try:
-        from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration
-        image_gen = OpenAIImageGeneration(api_key=os.environ["EMERGENT_LLM_KEY"])
-        images = await image_gen.generate_images(prompt=inp.prompt, model="gpt-image-1", number_of_images=1)
-        if not images:
-            raise HTTPException(500, "Nessuna immagine generata")
-        fname = f"dalle_{uuid.uuid4().hex}.png"
+        if inp.model == "gemini":
+            gemini_key = os.environ.get("GEMINI_API_KEY", "")
+            if not gemini_key:
+                raise HTTPException(400, "GEMINI_API_KEY non configurata")
+            from google import genai as ggenai
+            from google.genai import types as gtypes
+            gclient = ggenai.Client(api_key=gemini_key)
+            resp = gclient.models.generate_images(
+                model="imagen-3.0-generate-002",
+                prompt=inp.prompt,
+                config=gtypes.GenerateImagesConfig(number_of_images=1, aspect_ratio="4:3")
+            )
+            image_bytes = resp.generated_images[0].image.image_bytes
+            fname = f"gemini_{uuid.uuid4().hex}.png"
+            source_label = "Nano Banana"
+        else:
+            fal_key = os.environ.get("FAL_API_KEY", "")
+            if not fal_key:
+                raise HTTPException(400, "FAL_API_KEY non configurata")
+            async with httpx.AsyncClient(timeout=120) as hc:
+                r = await hc.post(
+                    "https://fal.run/fal-ai/flux/dev",
+                    headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
+                    json={"prompt": inp.prompt, "image_size": "landscape_4_3", "num_images": 1, "output_format": "jpeg"}
+                )
+                r.raise_for_status()
+                image_url = r.json()["images"][0]["url"]
+            async with httpx.AsyncClient(timeout=60) as hc:
+                img_r = await hc.get(image_url)
+                img_r.raise_for_status()
+                image_bytes = img_r.content
+            fname = f"flux_{uuid.uuid4().hex}.jpg"
+            source_label = "FLUX"
         fpath = UPLOAD_DIR / fname
         with open(fpath, "wb") as f:
-            f.write(images[0])
+            f.write(image_bytes)
         media_url = f"/api/media/file/{fname}"
-        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"DALL-E: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": "dalle", "size": len(images[0]), "created_at": datetime.now(timezone.utc).isoformat()}
+        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"{source_label}: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": inp.model, "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
         await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
-        image_base64 = base64.b64encode(images[0]).decode('utf-8')
-        return {**media_doc, "image_base64": image_base64}
+        return media_doc
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"DALL-E generation error: {e}")
+        logger.error(f"Image generation error ({inp.model}): {e}")
         raise HTTPException(500, f"Errore generazione immagine: {str(e)}")
 
 # ── ADMIN CONSOLE ─────────────────────────────────────
@@ -1409,20 +2107,24 @@ async def create_checkout(inp: CheckoutInput, request: Request):
         raise HTTPException(400, "Piano non valido")
     plan = PLANS[inp.plan_id]
     try:
-        from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-        api_key = os.environ.get("STRIPE_API_KEY", "")
-        webhook_url = f"{os.environ.get('FRONTEND_URL', inp.origin_url)}/api/webhook/stripe"
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+        import stripe as stripe_sdk
+        stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
         success_url = f"{inp.origin_url}?billing=success&session_id={{CHECKOUT_SESSION_ID}}"
         cancel_url = f"{inp.origin_url}?billing=cancelled"
-        req = CheckoutSessionRequest(amount=plan["amount"], currency=plan["currency"], success_url=success_url, cancel_url=cancel_url, metadata={"user_id": user["_id"], "email": user.get("email", ""), "plan_id": inp.plan_id})
-        session = await stripe_checkout.create_checkout_session(req)
+        session = stripe_sdk.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price_data": {"currency": plan["currency"], "product_data": {"name": plan.get("name", inp.plan_id)}, "unit_amount": plan["amount"]}, "quantity": 1}],
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={"user_id": user["_id"], "email": user.get("email", ""), "plan_id": inp.plan_id}
+        )
         await db.payment_transactions.insert_one({
-            "session_id": session.session_id, "user_id": user["_id"], "email": user.get("email", ""),
+            "session_id": session.id, "user_id": user["_id"], "email": user.get("email", ""),
             "plan_id": inp.plan_id, "amount": plan["amount"], "currency": plan["currency"],
             "payment_status": "pending", "created_at": datetime.now(timezone.utc).isoformat()
         })
-        return {"url": session.url, "session_id": session.session_id}
+        return {"url": session.url, "session_id": session.id}
     except Exception as e:
         logger.error(f"Stripe checkout error: {e}")
         raise HTTPException(500, f"Errore checkout: {str(e)}")
@@ -1431,18 +2133,17 @@ async def create_checkout(inp: CheckoutInput, request: Request):
 async def checkout_status(session_id: str, request: Request):
     user = await get_current_user(request)
     try:
-        from emergentintegrations.payments.stripe.checkout import StripeCheckout
-        api_key = os.environ.get("STRIPE_API_KEY", "")
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
-        status = await stripe_checkout.get_checkout_status(session_id)
+        import stripe as stripe_sdk
+        stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
+        session = stripe_sdk.checkout.Session.retrieve(session_id)
         tx = await db.payment_transactions.find_one({"session_id": session_id})
-        if tx and tx.get("payment_status") != "paid" and status.payment_status == "paid":
+        if tx and tx.get("payment_status") != "paid" and session.payment_status == "paid":
             plan_id = tx.get("plan_id", "")
             await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
             await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"plan": plan_id}})
-        elif tx and status.payment_status != "paid":
-            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": status.payment_status}})
-        return {"status": status.status, "payment_status": status.payment_status, "amount_total": status.amount_total, "currency": status.currency}
+        elif tx and session.payment_status != "paid":
+            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": session.payment_status}})
+        return {"status": session.status, "payment_status": session.payment_status, "amount_total": session.amount_total, "currency": session.currency}
     except Exception as e:
         logger.error(f"Stripe status error: {e}")
         raise HTTPException(500, f"Errore stato pagamento: {str(e)}")
@@ -1452,15 +2153,17 @@ async def stripe_webhook(request: Request):
     body = await request.body()
     sig = request.headers.get("Stripe-Signature", "")
     try:
-        from emergentintegrations.payments.stripe.checkout import StripeCheckout
-        api_key = os.environ.get("STRIPE_API_KEY", "")
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
-        event = await stripe_checkout.handle_webhook(body, sig)
-        if event.payment_status == "paid":
-            tx = await db.payment_transactions.find_one({"session_id": event.session_id})
-            if tx and tx.get("payment_status") != "paid":
-                await db.payment_transactions.update_one({"session_id": event.session_id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
-                await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
+        import stripe as stripe_sdk
+        stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
+        webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+        event = stripe_sdk.Webhook.construct_event(body, sig, webhook_secret)
+        if event.type == "checkout.session.completed":
+            session_obj = event.data.object
+            if session_obj.payment_status == "paid":
+                tx = await db.payment_transactions.find_one({"session_id": session_obj.id})
+                if tx and tx.get("payment_status") != "paid":
+                    await db.payment_transactions.update_one({"session_id": session_obj.id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
+                    await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
         return {"ok": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -1471,14 +2174,22 @@ async def get_plans(request: Request):
     return [{"id": k, "name": v["name"], "amount": v["amount"], "currency": v["currency"]} for k, v in PLANS.items()]
 
 # ── PLAN GATING ───────────────────────────────────────
+ADMIN_EMAILS = {"osmel@osmelfabre.it", "osmel.fabre@gmail.com"}
+
 PLAN_LIMITS = {
-    "free": {"max_projects": 1, "max_contents_per_project": 7, "can_publish": False, "can_export_csv": False},
-    "creator": {"max_projects": 5, "max_contents_per_project": 30, "can_publish": True, "can_export_csv": True},
-    "strategist": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True},
-    "custom": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True},
+    "free":       {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
+    "trial":      {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": True,  "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
+    "pro":        {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
+    "creator":    {"max_projects": 3, "max_contents_per_project": 50,  "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": False, "max_duration_weeks": 4},
+    "strategist": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
+    "custom":     {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
+    "admin":      {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
 }
 
 async def check_plan_limit(user: dict, resource: str, project_id: str = None):
+    # Admin bypass
+    if user.get("role") == "admin" or user.get("email", "") in ADMIN_EMAILS:
+        return PLAN_LIMITS["admin"]
     plan = user.get("plan", "free")
     pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
     if pu:
@@ -1505,13 +2216,17 @@ async def check_plan_limit(user: dict, resource: str, project_id: str = None):
 @api.get("/plan/limits")
 async def get_plan_limits(request: Request):
     user = await get_current_user(request)
-    plan = user.get("plan", "free")
-    pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
-    if pu:
-        exp = pu.get("expires_at", "")
-        if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
-            plan = pu.get("plan", plan)
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    if user.get("role") == "admin" or user.get("email", "") in ADMIN_EMAILS:
+        plan = "admin"
+        limits = PLAN_LIMITS["admin"]
+    else:
+        plan = user.get("plan", "free")
+        pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
+        if pu:
+            exp = pu.get("expires_at", "")
+            if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
+                plan = pu.get("plan", plan)
+        limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
     project_count = await db.projects.count_documents({"user_id": user["_id"], "archived": False})
     return {**limits, "plan": plan, "projects_used": project_count}
 
@@ -1519,15 +2234,207 @@ async def get_plan_limits(request: Request):
 CANVA_CLIENT_ID = os.environ.get("CANVA_CLIENT_ID", "")
 CANVA_CLIENT_SECRET = os.environ.get("CANVA_CLIENT_SECRET", "")
 
+def _canva_callback_url() -> str:
+    return f"{_app_url()}/api/canva/oauth/callback"
+
 @api.get("/canva/auth-url")
 async def canva_auth_url(request: Request):
-    await get_current_user(request)
-    callback = os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE", "https://www.sketchario.app/social_oauth.php")
-    canva_callback = callback.replace("social_oauth.php", "editors/canva_oauth.php")
+    user = await get_current_user(request)
     if not CANVA_CLIENT_ID:
         raise HTTPException(400, "Canva non configurato")
-    url = f"https://www.canva.com/api/oauth/authorize?client_id={CANVA_CLIENT_ID}&redirect_uri={canva_callback}&response_type=code&scope=design:content:read design:content:write asset:read asset:write"
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b'=').decode()
+    state = str(uuid.uuid4())
+    await db.canva_oauth_states.insert_one({"state": state, "code_verifier": code_verifier, "user_id": str(user["_id"]), "created_at": datetime.now(timezone.utc).isoformat()})
+    callback = _canva_callback_url()
+    scope = quote("design:content:read design:content:write asset:read asset:write profile:read", safe='')
+    url = (f"https://www.canva.com/api/oauth/authorize"
+           f"?client_id={CANVA_CLIENT_ID}"
+           f"&redirect_uri={quote(callback, safe='')}"
+           f"&response_type=code"
+           f"&scope={scope}"
+           f"&code_challenge={code_challenge}"
+           f"&code_challenge_method=s256"
+           f"&state={state}")
     return {"auth_url": url, "configured": True}
+
+@api.get("/canva/oauth/callback")
+async def canva_oauth_callback(request: Request):
+    code = request.query_params.get("code")
+    error = request.query_params.get("error")
+    state = request.query_params.get("state", "")
+    if error or not code:
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{error or 'cancelled'}'}}, '*');window.close();</script>")
+    state_doc = await db.canva_oauth_states.find_one_and_delete({"state": state})
+    if not state_doc:
+        return HTMLResponse("<script>window.opener&&window.opener.postMessage({type:'canva_error',error:'state_invalid'}, '*');window.close();</script>")
+    try:
+        callback = _canva_callback_url()
+        async with httpx.AsyncClient(timeout=30) as hc:
+            r = await hc.post("https://api.canva.com/rest/v1/oauth/token", data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": callback,
+                "client_id": CANVA_CLIENT_ID,
+                "client_secret": CANVA_CLIENT_SECRET,
+                "code_verifier": state_doc["code_verifier"],
+            })
+            token_data = r.json()
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            raise Exception(token_data.get("error_description", "Token non ricevuto"))
+        # Save token to DB so user stays connected across sessions
+        user_id = state_doc.get("user_id")
+        if user_id:
+            await db.canva_tokens.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "user_id": user_id,
+                    "access_token": access_token,
+                    "refresh_token": token_data.get("refresh_token", ""),
+                    "expires_in": token_data.get("expires_in", 3600),
+                    "connected_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_success'}}, '*');window.close();</script>")
+    except Exception as e:
+        msg = str(e).replace("'", "").replace('"', '').replace('\n', ' ').replace('\r', '')
+        return HTMLResponse(f"<script>window.opener&&window.opener.postMessage({{type:'canva_error',error:'{msg}'}}, '*');window.close();</script>")
+
+@api.get("/canva/status")
+async def canva_status(request: Request):
+    user = await get_current_user(request)
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    return {"connected": bool(token_doc and token_doc.get("access_token"))}
+
+@api.post("/canva/create-design")
+async def canva_create_design(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    content_format = body.get("format", "carousel")
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(400, "Canva non connesso")
+    access_token = token_doc["access_token"]
+    # Custom dimensions: 9:16 for reels, 4:5 for carousel/posts
+    if content_format in ("reel", "prompted_reel"):
+        design_type = {"type": "custom", "width": 1080, "height": 1920, "units": "px"}
+    else:
+        design_type = {"type": "custom", "width": 1080, "height": 1350, "units": "px"}
+    async with httpx.AsyncClient(timeout=30) as hc:
+        r = await hc.post(
+            "https://api.canva.com/rest/v1/designs",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={"design_type": design_type}
+        )
+        data = r.json()
+    if r.status_code == 401:
+        # Token expired, clear it
+        await db.canva_tokens.delete_one({"user_id": str(user["_id"])})
+        raise HTTPException(401, "Sessione Canva scaduta, riconnettiti")
+    design = data.get("design", {})
+    edit_url = design.get("urls", {}).get("edit_url", "")
+    if not edit_url:
+        raise HTTPException(400, f"Canva non ha restituito un URL di editing: {data}")
+    return {"edit_url": edit_url, "design_id": design.get("id", "")}
+
+@api.post("/canva/export-design/{content_id}")
+async def canva_export_design(content_id: str, request: Request):
+    """Step 1: create the Canva export job, return job_id immediately."""
+    user = await get_current_user(request)
+    body = await request.json()
+    design_id = body.get("design_id", "")
+    if not design_id:
+        raise HTTPException(400, "design_id richiesto")
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(400, "Canva non connesso")
+    access_token = token_doc["access_token"]
+
+    async with httpx.AsyncClient(timeout=30) as hc:
+        r = await hc.post(
+            "https://api.canva.com/rest/v1/exports",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={"design_id": design_id, "format": {"type": "png"}}
+        )
+    export_data = r.json()
+    if r.status_code not in (200, 201):
+        raise HTTPException(400, f"Canva export error {r.status_code}: {export_data}")
+    job_id = export_data.get("job", {}).get("id", "")
+    if not job_id:
+        raise HTTPException(400, f"Canva non ha restituito job ID: {export_data}")
+    return {"job_id": job_id, "status": "in_progress"}
+
+@api.get("/canva/export-status/{job_id}")
+async def canva_export_status(job_id: str, request: Request):
+    """Step 2 (polled by frontend): check export job status."""
+    user = await get_current_user(request)
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(400, "Canva non connesso")
+    access_token = token_doc["access_token"]
+    async with httpx.AsyncClient(timeout=15) as hc:
+        r = await hc.get(
+            f"https://api.canva.com/rest/v1/exports/{job_id}",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+    job = r.json().get("job", {})
+    return {"status": job.get("status", "in_progress"), "urls": [u["url"] for u in job.get("urls", []) if u.get("url")]}
+
+@api.post("/canva/export-download/{content_id}")
+async def canva_export_download(content_id: str, request: Request):
+    """Step 3: download exported images and save as media."""
+    await get_current_user(request)
+    body = await request.json()
+    urls = body.get("urls", [])
+    if not urls:
+        return {"media": [], "count": 0}
+    added = []
+    async with httpx.AsyncClient(timeout=60) as hc:
+        for i, img_url in enumerate(urls):
+            resp = await hc.get(img_url)
+            if resp.status_code != 200:
+                continue
+            fname = f"canva_{uuid.uuid4().hex}.png"
+            fpath = UPLOAD_DIR / fname
+            with open(fpath, "wb") as f:
+                f.write(resp.content)
+            media_url = f"/api/media/file/{fname}"
+            media_doc = {
+                "id": str(uuid.uuid4()),
+                "filename": fname,
+                "original_name": f"Canva Export {i + 1}",
+                "url": media_url,
+                "type": "image",
+                "source": "canva",
+                "size": len(resp.content),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
+            added.append(media_doc)
+    return {"media": added, "count": len(added)}
+
+@api.get("/google/picker-token")
+async def google_picker_token(request: Request):
+    user = await get_current_user(request)
+    try:
+        token = await _get_google_access_token(user["_id"])
+        # Check that the token actually has drive.readonly scope
+        async with httpx.AsyncClient(timeout=10) as hc:
+            info = await hc.get("https://www.googleapis.com/oauth2/v3/tokeninfo",
+                                params={"access_token": token})
+        scope = info.json().get("scope", "") if info.status_code == 200 else ""
+        has_drive = "drive.readonly" in scope or "drive " in scope or scope.endswith("drive")
+        if not has_drive:
+            # Token has insufficient scope (old drive.file token) — force reconnect
+            await db.social_accounts.delete_one({"user_id": user["_id"], "platform": "google_slides"})
+            return {"token": "", "connected": False, "reason": "scope_upgrade"}
+        return {"token": token, "connected": True}
+    except Exception:
+        return {"token": "", "connected": False}
 
 @api.post("/canva/import")
 async def canva_import(request: Request):
@@ -1665,14 +2572,24 @@ async def reset_password(inp: ResetPasswordInput):
 # ── GOOGLE DRIVE IMPORT ───────────────────────────────
 class DriveImportInput(BaseModel):
     content_id: str
-    file_url: str
+    file_url: Optional[str] = ""
+    file_id: Optional[str] = ""   # from Google Picker
+    file_name: Optional[str] = ""
 
 @api.post("/media/import-drive")
 async def import_from_drive(inp: DriveImportInput, request: Request):
     user = await get_current_user(request)
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
-            resp = await hc.get(inp.file_url)
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
+            if inp.file_id:
+                # Download via Drive API using stored Google OAuth token
+                token = await _get_google_access_token(user["_id"])
+                resp = await hc.get(
+                    f"https://www.googleapis.com/drive/v3/files/{inp.file_id}?alt=media",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+            else:
+                resp = await hc.get(inp.file_url)
             if resp.status_code != 200:
                 raise HTTPException(400, "Impossibile scaricare il file da Google Drive")
             ct = resp.headers.get("content-type", "")
@@ -1688,13 +2605,58 @@ async def import_from_drive(inp: DriveImportInput, request: Request):
                 f.write(resp.content)
             media_url = f"/api/media/file/{fname}"
             ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
-            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"Google Drive Import", "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
+            display_name = inp.file_name or "Google Drive Import"
+            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": display_name, "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
             await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
             return media_doc
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, f"Errore import Drive: {str(e)}")
+
+# ── HYPERFRAMES VIDEO RENDER ──────────────────────────
+class RenderVideoInput(BaseModel):
+    content_id: str
+
+@api.post("/media/render-video")
+async def render_video(inp: RenderVideoInput, request: Request):
+    user = await get_current_user(request)
+    content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    renderer_url = os.environ.get("RENDERER_URL", "http://sketchario-renderer:3001")
+    try:
+        async with httpx.AsyncClient(timeout=180) as c:
+            r = await c.post(f"{renderer_url}/render", json={
+                "content_id": inp.content_id,
+                "format": content.get("format", "reel"),
+                "hook_text": content.get("hook_text", ""),
+                "script": content.get("script", ""),
+                "caption": content.get("caption", ""),
+                "opening_hook": content.get("opening_hook", ""),
+                "slides": content.get("slides", []),
+            })
+            if r.status_code != 200:
+                raise HTTPException(500, f"Renderer error: {r.text[:300]}")
+            data = r.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, "Timeout rendering video (>3 min). Riprova con uno script più corto.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore renderer: {str(e)}")
+    media_doc = {
+        "id": str(uuid.uuid4()),
+        "filename": data["filename"],
+        "original_name": f"video_{(content.get('hook_text') or '')[:40]}.mp4",
+        "url": data["url"],
+        "type": "video",
+        "source": "hyperframes",
+        "size": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
+    return media_doc
 
 # ── NOTIFICATIONS (Release Note Reads) ────────────────
 @api.get("/notifications/unread-count")
@@ -1773,6 +2735,203 @@ async def global_analytics(request: Request):
     published = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "published"})
     queued = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "queued"})
     return {"projects": projects, "total_contents": contents, "published": published, "queued": queued}
+
+# ── SOCIAL ENGAGEMENT METRICS ────────────────────────
+
+async def _fetch_facebook_metrics(token: str, post_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as c:
+        pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts",
+                               params={"access_token": token})
+        if pages_r.status_code != 200:
+            return {}
+        pages = pages_r.json().get("data", [])
+        if not pages:
+            return {}
+        page_token = pages[0]["access_token"]
+        r = await c.get(f"https://graph.facebook.com/v19.0/{post_id}/insights",
+                        params={"metric": "post_impressions,post_engaged_users,post_clicks,post_reactions_by_type_total",
+                                "access_token": page_token})
+        if r.status_code != 200:
+            return {}
+        result = {}
+        for item in r.json().get("data", []):
+            name = item.get("name", "")
+            values = item.get("values", [])
+            val = values[-1].get("value", 0) if values else 0
+            if name == "post_impressions":
+                result["impressions"] = val if isinstance(val, int) else 0
+            elif name == "post_engaged_users":
+                result["reach"] = val if isinstance(val, int) else 0
+            elif name == "post_clicks":
+                result["clicks"] = val if isinstance(val, int) else 0
+            elif name == "post_reactions_by_type_total":
+                result["likes"] = sum(val.values()) if isinstance(val, dict) else 0
+        return result
+
+async def _fetch_instagram_metrics(token: str, media_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://graph.facebook.com/v19.0/{media_id}/insights",
+                        params={"metric": "impressions,reach,saved,likes,comments,shares",
+                                "access_token": token})
+        if r.status_code != 200:
+            return {}
+        result = {}
+        for item in r.json().get("data", []):
+            name = item.get("name", "")
+            val = item.get("values", [{}])[-1].get("value", 0) if item.get("values") else item.get("value", 0)
+            if name in ("impressions", "reach", "saved", "likes", "comments", "shares"):
+                result[name] = val if isinstance(val, (int, float)) else 0
+        return result
+
+async def _fetch_linkedin_metrics(token: str, post_urn: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as c:
+        encoded = quote(post_urn, safe="")
+        r = await c.get(f"https://api.linkedin.com/v2/socialActions/{encoded}",
+                        headers={"Authorization": f"Bearer {token}",
+                                 "X-Restli-Protocol-Version": "2.0.0"})
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+        return {
+            "likes": data.get("likesSummary", {}).get("totalLikes", 0),
+            "comments": data.get("commentsSummary", {}).get("totalFirstLevelComments", 0),
+        }
+
+@api.post("/analytics/{project_id}/sync")
+async def sync_analytics(project_id: str, request: Request):
+    user = await get_current_user(request)
+    published = await db.publish_queue.find(
+        {"project_id": project_id, "status": "published", "post_id": {"$exists": True, "$ne": ""}},
+        {"_id": 0}
+    ).to_list(500)
+    if not published:
+        return {"synced": 0, "message": "Nessun post pubblicato trovato"}
+
+    synced = 0
+    errors = []
+    for item in published:
+        platform = item.get("platform")
+        post_id = item.get("post_id", "")
+        content_id = item.get("content_id", "")
+        if not post_id or not platform in ("facebook", "instagram", "linkedin"):
+            continue
+        account = await db.social_accounts.find_one({"id": item.get("social_profile_id")})
+        if not account:
+            account = await db.social_accounts.find_one({"user_id": user["_id"], "platform": platform})
+        if not account:
+            continue
+        token = account.get("access_token", "")
+        try:
+            metrics = {}
+            if platform == "facebook":
+                metrics = await _fetch_facebook_metrics(token, post_id)
+            elif platform == "instagram":
+                metrics = await _fetch_instagram_metrics(token, post_id)
+            elif platform == "linkedin":
+                metrics = await _fetch_linkedin_metrics(token, post_id)
+            if metrics:
+                await db.content_metrics.update_one(
+                    {"content_id": content_id, "platform": platform},
+                    {"$set": {
+                        "content_id": content_id, "project_id": project_id,
+                        "platform": platform, "post_id": post_id,
+                        "metrics": metrics,
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True
+                )
+                synced += 1
+        except Exception as e:
+            errors.append(f"{platform}: {str(e)[:80]}")
+    return {"synced": synced, "errors": errors}
+
+@api.get("/analytics/{project_id}/post-metrics")
+async def get_post_metrics(project_id: str, request: Request):
+    await get_current_user(request)
+    metrics = await db.content_metrics.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+    result = []
+    for m in metrics:
+        content = await db.contents.find_one(
+            {"id": m["content_id"]}, {"_id": 0, "hook_text": 1, "format": 1, "pillar": 1})
+        result.append({**m,
+            "hook_text": content.get("hook_text", "") if content else "",
+            "format": content.get("format", "") if content else "",
+            "pillar": content.get("pillar", "") if content else "",
+        })
+    return result
+
+@api.get("/analytics/{project_id}/ai-insights")
+async def get_ai_insights(project_id: str, request: Request):
+    await get_current_user(request)
+    metrics_docs = await db.content_metrics.find({"project_id": project_id}, {"_id": 0}).to_list(200)
+    contents = await db.contents.find({"project_id": project_id},
+        {"_id": 0, "id": 1, "hook_text": 1, "format": 1, "pillar": 1}).to_list(200)
+    project = await db.projects.find_one({"_id": ObjectId(project_id)}, {"_id": 0})
+
+    def _eng(m): return sum(v for v in m.get("metrics", {}).values() if isinstance(v, (int, float)))
+    def _reach(m): return m.get("metrics", {}).get("reach", 0) or m.get("metrics", {}).get("impressions", 0) or 0
+
+    total_reach = sum(_reach(m) for m in metrics_docs)
+    total_likes = sum(m.get("metrics", {}).get("likes", 0) or 0 for m in metrics_docs)
+    total_comments = sum(m.get("metrics", {}).get("comments", 0) or 0 for m in metrics_docs)
+
+    by_format: dict = {}
+    by_pillar: dict = {}
+    content_map = {c["id"]: c for c in contents}
+    for m in metrics_docs:
+        c = content_map.get(m.get("content_id"), {})
+        fmt = c.get("format", "unknown")
+        pil = c.get("pillar", "unknown")
+        eng = _eng(m)
+        reach = _reach(m)
+        for bucket, key in [(by_format, fmt), (by_pillar, pil)]:
+            if key not in bucket:
+                bucket[key] = {"engagement": 0, "reach": 0, "count": 0}
+            bucket[key]["engagement"] += eng
+            bucket[key]["reach"] += reach
+            bucket[key]["count"] += 1
+
+    top_posts = []
+    for m in sorted(metrics_docs, key=_eng, reverse=True)[:5]:
+        c = content_map.get(m.get("content_id"), {})
+        top_posts.append({"hook_text": c.get("hook_text", ""), "format": c.get("format", ""),
+                          "platform": m.get("platform", ""), "metrics": m.get("metrics", {})})
+
+    aggregate = {"total_reach": total_reach, "total_likes": total_likes,
+                 "total_comments": total_comments, "by_format": by_format, "by_pillar": by_pillar}
+
+    if not metrics_docs:
+        return {"insights": "Nessun dato disponibile. Pubblica dei contenuti e sincronizza le metriche.",
+                "recommendations": [], "best_format": "", "best_pillar": "",
+                "top_posts": [], "aggregate": aggregate}
+
+    summary = f"""Settore: {project.get('sector','')} | Post con metriche: {len(metrics_docs)}
+Reach totale: {total_reach:,} | Like: {total_likes:,} | Commenti: {total_comments:,}
+Per formato: {json.dumps(by_format, ensure_ascii=False)}
+Per pillar: {json.dumps(by_pillar, ensure_ascii=False)}
+Top 3: {json.dumps([{"hook": p["hook_text"][:60], "format": p["format"], "metrics": p["metrics"]} for p in top_posts[:3]], ensure_ascii=False)}"""
+
+    try:
+        ai_result = await call_ai(
+            "Sei un esperto di social media analytics. Analizza i dati e rispondi in italiano con insights strategici concreti. Rispondi SOLO con JSON valido.",
+            f"""Analizza e restituisci JSON con:
+- insights: stringa con 2-3 osservazioni strategiche sui dati
+- recommendations: array di 3 azioni concrete da fare subito
+- best_format: formato che performa meglio con breve spiegazione
+- best_pillar: pillar con miglior engagement con breve spiegazione
+
+Dati: {summary}"""
+        )
+        data = extract_json(ai_result)
+        return {**data, "top_posts": top_posts, "aggregate": aggregate}
+    except Exception:
+        return {
+            "insights": f"Reach totale {total_reach:,} — {len(metrics_docs)} post analizzati.",
+            "recommendations": ["Sincronizza le metriche regolarmente", "Analizza i post top e replica il formato", "Testa pillar diversi"],
+            "best_format": max(by_format, key=lambda f: by_format[f]["engagement"], default=""),
+            "best_pillar": max(by_pillar, key=lambda p: by_pillar[p]["engagement"], default=""),
+            "top_posts": top_posts, "aggregate": aggregate
+        }
 
 # ── ONBOARDING ────────────────────────────────────────
 @api.get("/onboarding/status")
@@ -1919,180 +3078,34 @@ async def import_from_cloud(inp: CloudImportInput, request: Request):
     except Exception as e:
         raise HTTPException(500, f"Errore import {inp.source}: {str(e)}")
 
-# ── POSTNITRO INTEGRATION ─────────────────────────────
-POSTNITRO_API_URL = "https://embed-api.postnitro.ai"
-POSTNITRO_API_KEY = os.environ.get("POSTNITRO_API_KEY", "")
-POSTNITRO_TEMPLATE_ID = os.environ.get("POSTNITRO_TEMPLATE_ID", "")
-POSTNITRO_BRAND_ID = os.environ.get("POSTNITRO_BRAND_ID", "")
-POSTNITRO_PRESET_ID = os.environ.get("POSTNITRO_PRESET_ID", "")
+# ── GOOGLE SLIDES INTEGRATION ────────────────────────
 
-class PostNitroGenerateInput(BaseModel):
-    content_id: str
-    project_id: str
-    mode: str = "ai"
-    slides: Optional[list] = None
-
-@api.get("/postnitro/status")
-async def postnitro_status(request: Request):
-    await get_current_user(request)
-    configured = bool(POSTNITRO_API_KEY)
-    embed_sdk_ready = configured
-    api_ready = configured and bool(POSTNITRO_TEMPLATE_ID) and bool(POSTNITRO_BRAND_ID)
-    return {
-        "available": configured, "configured": configured, "ready": embed_sdk_ready,
-        "api_ready": api_ready,
-        "missing_config": [],
-        "message": "" if embed_sdk_ready else "PostNitro API key mancante"
-    }
-
-@api.post("/postnitro/generate")
-async def postnitro_generate(inp: PostNitroGenerateInput, request: Request):
-    user = await get_current_user(request)
-    if not POSTNITRO_API_KEY:
-        raise HTTPException(400, "PostNitro non configurato")
-    if not POSTNITRO_TEMPLATE_ID:
-        raise HTTPException(400, "PostNitro templateId mancante")
-    content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
-    if not content:
-        raise HTTPException(404, "Contenuto non trovato")
-    project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
-    headers = {"Content-Type": "application/json", "embed-api-key": POSTNITRO_API_KEY}
-    try:
-        # Strategy: Use our AI (Gemini) to generate slide content, then import into PostNitro for rendering
-        context_text = f"{content.get('hook_text', '')}. {content.get('script', '')}. {content.get('caption', '')}"
-
-        if inp.mode == "ai":
-            # Generate slides content using Gemini
-            system = "Sei un esperto di social media carousel. Genera il contenuto per le slide di un carousel. Rispondi SOLO con JSON array."
-            prompt = f"""Genera 5-7 slide per un carousel social media basato su questo contenuto:
-{context_text[:1500]}
-
-Restituisci un JSON array con queste slide in ordine:
-1. Prima slide (starting_slide): heading (titolo accattivante), description (sottotitolo breve), cta_button ("Scorri per scoprire")
-2. 3-5 slide centrali (body_slide): heading (titolo punto chiave), description (spiegazione 1-2 frasi)
-3. Ultima slide (ending_slide): heading (call to action), description (messaggio finale), cta_button ("Seguimi per altri contenuti")
-
-Ogni oggetto deve avere: type, heading, description. cta_button solo per starting_slide e ending_slide."""
-
-            result = await call_ai(system, prompt)
-            slides = extract_json(result)
-            if not isinstance(slides, list):
-                slides = [slides]
-        else:
-            # Use existing slides from content
-            slides_data = inp.slides or content.get("slides", [])
-            if not slides_data:
-                slides_data = [s.strip() for s in content.get("script", "").split("---") if s.strip()]
-            slides = []
-            for i, slide in enumerate(slides_data):
-                if isinstance(slide, str):
-                    if i == 0:
-                        slides.append({"type": "starting_slide", "heading": slide[:100], "description": "", "cta_button": "Scorri"})
-                    elif i == len(slides_data) - 1:
-                        slides.append({"type": "ending_slide", "heading": slide[:100], "description": "", "cta_button": "Seguimi"})
-                    else:
-                        slides.append({"type": "body_slide", "heading": f"Punto {i}", "description": slide[:200]})
-                elif isinstance(slide, dict):
-                    slides.append(slide)
-
-        # Ensure proper slide structure for PostNitro
-        formatted_slides = []
-        for i, s in enumerate(slides):
-            slide_type = s.get("type", "body_slide")
-            if i == 0:
-                slide_type = "starting_slide"
-            elif i == len(slides) - 1:
-                slide_type = "ending_slide"
-            formatted = {"type": slide_type, "heading": s.get("heading", s.get("title", f"Slide {i+1}"))}
-            if s.get("description"):
-                formatted["description"] = s["description"]
-            if s.get("cta_button") and slide_type in ("starting_slide", "ending_slide"):
-                formatted["cta_button"] = s["cta_button"]
-            if s.get("sub_heading"):
-                formatted["sub_heading"] = s["sub_heading"]
-            formatted_slides.append(formatted)
-
-        # Use import endpoint (doesn't require presetId)
-        payload = {
-            "postType": "CAROUSEL",
-            "responseType": "PNG",
-            "templateId": POSTNITRO_TEMPLATE_ID,
-            "slides": formatted_slides
-        }
-        if POSTNITRO_BRAND_ID:
-            payload["brandId"] = POSTNITRO_BRAND_ID
-
-        async with httpx.AsyncClient(timeout=30) as hc:
-            resp = await hc.post(f"{POSTNITRO_API_URL}/post/initiate/import", headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise HTTPException(resp.status_code, f"PostNitro errore: {resp.text}")
-            data = resp.json()
-            embed_post_id = data.get("embedPostId", "")
-            await db.postnitro_jobs.insert_one({
-                "embed_post_id": embed_post_id, "content_id": inp.content_id,
-                "project_id": inp.project_id, "user_id": user["_id"],
-                "status": "processing", "created_at": datetime.now(timezone.utc).isoformat()
+async def _get_google_access_token(user_id) -> str:
+    account = await db.social_accounts.find_one({"user_id": user_id, "platform": "google_slides"})
+    if not account:
+        raise HTTPException(400, "Google non connesso. Collega il tuo account Google nella sezione Social.")
+    access_token = account["access_token"]
+    # Try a lightweight token check; refresh if needed
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get("https://www.googleapis.com/oauth2/v3/tokeninfo",
+                        params={"access_token": access_token})
+        if r.status_code != 200:
+            refresh_token = account.get("refresh_token", "")
+            if not refresh_token:
+                raise HTTPException(401, "Token Google scaduto. Ricollega il tuo account Google.")
+            client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+            client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+            rr = await c.post("https://oauth2.googleapis.com/token", data={
+                "client_id": client_id, "client_secret": client_secret,
+                "refresh_token": refresh_token, "grant_type": "refresh_token",
             })
-            return {"embed_post_id": embed_post_id, "status": "processing"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"PostNitro generation error: {e}")
-        raise HTTPException(500, f"Errore PostNitro: {str(e)}")
-
-@api.get("/postnitro/status/{embed_post_id}")
-async def postnitro_job_status(embed_post_id: str, request: Request):
-    await get_current_user(request)
-    if not POSTNITRO_API_KEY:
-        raise HTTPException(400, "PostNitro non configurato")
-    headers = {"embed-api-key": POSTNITRO_API_KEY}
-    try:
-        async with httpx.AsyncClient(timeout=15) as hc:
-            resp = await hc.get(f"{POSTNITRO_API_URL}/post/status/{embed_post_id}", headers=headers)
-            if resp.status_code != 200:
-                return {"status": "error", "message": resp.text}
-            data = resp.json()
-            status = data.get("status", "processing")
-            await db.postnitro_jobs.update_one({"embed_post_id": embed_post_id}, {"$set": {"status": status}})
-            return {"status": status, "data": data}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@api.get("/postnitro/output/{embed_post_id}")
-async def postnitro_output(embed_post_id: str, request: Request):
-    user = await get_current_user(request)
-    if not POSTNITRO_API_KEY:
-        raise HTTPException(400, "PostNitro non configurato")
-    headers = {"embed-api-key": POSTNITRO_API_KEY}
-    try:
-        async with httpx.AsyncClient(timeout=15) as hc:
-            resp = await hc.get(f"{POSTNITRO_API_URL}/post/output/{embed_post_id}", headers=headers)
-            if resp.status_code != 200:
-                raise HTTPException(resp.status_code, f"PostNitro output error: {resp.text}")
-            data = resp.json()
-            slide_urls = data.get("slideImageUrls", [])
-            job = await db.postnitro_jobs.find_one({"embed_post_id": embed_post_id}, {"_id": 0})
-            if job and slide_urls:
-                for i, url in enumerate(slide_urls):
-                    try:
-                        img_resp = await hc.get(url)
-                        if img_resp.status_code == 200:
-                            fname = f"postnitro_{uuid.uuid4().hex}_{i}.png"
-                            fpath = UPLOAD_DIR / fname
-                            with open(fpath, "wb") as f:
-                                f.write(img_resp.content)
-                            media_url = f"/api/media/file/{fname}"
-                            media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"PostNitro Slide {i+1}", "url": media_url, "type": "image", "source": "postnitro", "size": len(img_resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
-                            await db.contents.update_one({"id": job["content_id"]}, {"$push": {"media": media_doc}})
-                    except Exception as e:
-                        logger.error(f"PostNitro slide download error: {e}")
-                await db.postnitro_jobs.update_one({"embed_post_id": embed_post_id}, {"$set": {"status": "completed"}})
-            return {"slide_urls": slide_urls, "pdf_url": data.get("pdfUrl", ""), "status": "completed"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Errore output PostNitro: {str(e)}")
-
+            rr.raise_for_status()
+            access_token = rr.json()["access_token"]
+            await db.social_accounts.update_one(
+                {"user_id": user_id, "platform": "google_slides"},
+                {"$set": {"access_token": access_token}}
+            )
+    return access_token
 # ── EXPORT ───────────────────────────────────────────
 @api.get("/export/{project_id}/csv")
 async def export_csv(project_id: str, request: Request):
@@ -2123,9 +3136,10 @@ async def root():
 
 app.include_router(api)
 
+_cors_origins = [o.strip() for o in os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

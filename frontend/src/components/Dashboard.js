@@ -5,7 +5,7 @@ import {
   Plus, Eye, PencilSimple, Trash, Lightning, ChartLineUp, Target, Clock, Article, MagnifyingGlass, Archive, ImageSquare
 } from '@phosphor-icons/react';
 
-export default function Dashboard({ setActiveView, setSelectedProject }) {
+export default function Dashboard({ setActiveView, setSelectedProject, setWizardResumeData }) {
   const { api } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +37,16 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
     } catch {
       setSelectedProject(project);
       setActiveView('project');
+    }
+  };
+
+  const resumeWizard = async (project) => {
+    try {
+      const { data } = await api.get(`/projects/${project.id}/wizard-state`);
+      setWizardResumeData(data);
+      setActiveView('wizard');
+    } catch (e) {
+      alert('Errore: ' + (e.response?.data?.detail || e.message));
     }
   };
 
@@ -142,7 +152,10 @@ export default function Dashboard({ setActiveView, setSelectedProject }) {
                   <span className="flex items-center gap-1"><Article size={14} /> {project.content_count || 0} contenuti</span>
                 </div>
                 <div className="flex gap-2">
-                  <button className="btn-ghost text-xs md:text-sm py-2 px-3 flex-1" onClick={() => openProject(project)}><Eye size={14} /> Apri</button>
+                  {project.status === 'draft' && (project.wizard_step || 0) < 4
+                    ? <button className="btn-gradient text-xs md:text-sm py-2 px-3 flex-1" onClick={() => resumeWizard(project)}>▶ Riprendi Wizard</button>
+                    : <button className="btn-ghost text-xs md:text-sm py-2 px-3 flex-1" onClick={() => openProject(project)}><Eye size={14} /> Apri</button>
+                  }
                   <button className="btn-ghost text-xs md:text-sm py-2 px-3" onClick={() => archiveProject(project.id, project.archived)}><Archive size={14} /></button>
                   <button className="btn-ghost text-xs md:text-sm py-2 px-3" onClick={() => deleteProject(project.id)}><Trash size={14} /></button>
                 </div>

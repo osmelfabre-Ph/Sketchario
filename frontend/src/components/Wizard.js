@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Users, Palette, Lightning, Sparkle, ArrowRight, Check, PencilSimple, Video, Image, ArrowLeft
 } from '@phosphor-icons/react';
 
-export default function Wizard({ setActiveView, setSelectedProject }) {
+export default function Wizard({ setActiveView, setSelectedProject, resumeData, setWizardResumeData }) {
   const { api } = useAuth();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -59,6 +59,37 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
     { id: 'provocatorio', label: 'Provocatorio', f: 4, e: 9, em: 3, h: 7, s: 6 },
     { id: 'educativo', label: 'Educativo', f: 7, e: 5, em: 6, h: 3, s: 5 },
   ];
+
+  useEffect(() => {
+    if (!resumeData) return;
+    const { project, personas: p, tov, hooks: h } = resumeData;
+    setProjectId(project.id);
+    setProjectName(project.name || '');
+    setSector(project.sector || '');
+    setDescription(project.description || '');
+    setAwareness(project.objective_awareness ?? 60);
+    setEducation(project.objective_education ?? 30);
+    setMonetizing(project.objective_monetizing ?? 10);
+    setFormats(project.formats || ['reel', 'carousel']);
+    setDurationWeeks(project.duration_weeks || 1);
+    setGeo(project.geo || '');
+    setBriefNotes(project.brief_notes || '');
+    if (p?.length) setPersonas(p);
+    if (tov) {
+      setTovPreset(tov.preset || '');
+      setFormality(tov.formality ?? 5);
+      setEnergy(tov.energy ?? 5);
+      setEmpathy(tov.empathy ?? 5);
+      setHumor(tov.humor ?? 3);
+      setStorytelling(tov.storytelling ?? 5);
+      setCustomInstructions(tov.custom_instructions || '');
+      setCaptionLength(tov.caption_length || 'medium');
+    }
+    if (h?.length) setHooks(h);
+    const wizardStep = project.wizard_step || 0;
+    setStep(Math.min(wizardStep + 1, 4));
+    if (setWizardResumeData) setWizardResumeData(null);
+  }, [resumeData]);
 
   const applyPreset = (p) => {
     setTovPreset(p.id);
@@ -130,6 +161,9 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
       setGenTotal(hooks.length);
       const { data } = await api.post('/content/generate', { project_id: projectId });
       setGenProgress(data.count || 0);
+      const { data: proj } = await api.get(`/projects/${projectId}`);
+      setSelectedProject(proj);
+      setActiveView('project');
     } catch (e) {
       setError('Errore generazione contenuti: ' + (e.response?.data?.detail || e.message));
     } finally { setLoading(false); }
@@ -199,6 +233,24 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium mb-3">Formati contenuto</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'reel', label: 'Reel', emoji: '🎬' },
+                    { id: 'carousel', label: 'Carousel', emoji: '🖼️' },
+                    { id: 'post', label: 'Post', emoji: '📷' },
+                    { id: 'prompted_reel', label: 'Prompted Reel', emoji: '🤖' },
+                  ].map(f => (
+                    <button key={f.id}
+                      className={`preset-btn ${formats.includes(f.id) ? 'active' : ''}`}
+                      onClick={() => setFormats(prev => prev.includes(f.id) ? prev.filter(x => x !== f.id) : [...prev, f.id])}>
+                      {f.emoji} {f.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-2">L'AI distribuirà gli hook tra i formati selezionati</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-2">Note per l'AI</label>
                 <textarea className="input-dark" rows={2} placeholder="Es. Tono leggermente pi&ugrave; urgente, uscita corso online..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
               </div>
@@ -225,8 +277,7 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
                 <div className="personas-grid mb-8">
                   {personas.map((p, i) => (
                     <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card persona-card">
-                      <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
-                      <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
+                      <h3 className="font-semibold text-lg mb-1">{p.role}{p.age ? `, ${p.age} anni` : ''}</h3>
                       {p.pain_points && (
                         <div className="p-3 rounded-lg text-sm mb-2" style={{ background: 'rgba(236,72,153,0.1)' }}>
                           <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">Pain Points</span>
@@ -327,8 +378,8 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
                         <span className="text-xs font-semibold text-[var(--text-muted)]">G{h.day_offset || i + 1}</span>
                       </div>
                       <div className="flex-1"><p className="text-sm">{h.hook_text}</p></div>
-                      <span className={`badge ${h.format === 'reel' ? 'pink' : 'blue'}`}>
-                        {h.format === 'reel' ? <Video size={12} /> : <Image size={12} />}
+                      <span className={`badge ${h.format === 'reel' ? 'pink' : h.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
+                        {h.format === 'reel' ? <Video size={12} /> : h.format === 'prompted_reel' ? <span>🤖</span> : <Image size={12} />}
                         <span className="ml-1">{h.format}</span>
                       </span>
                       <span className={`badge ${h.pillar === 'awareness' ? 'blue' : h.pillar === 'education' ? 'green' : 'orange'}`}>
@@ -364,11 +415,6 @@ export default function Wizard({ setActiveView, setSelectedProject }) {
                   <motion.div className="progress-fill" initial={{ width: '0%' }} animate={{ width: '100%' }} transition={{ duration: 30, ease: 'linear' }} />
                 </div>
               </div>
-            )}
-            {!loading && (
-              <button data-testid="open-project-btn" className="btn-gradient" onClick={openProject}>
-                Apri il Progetto <ArrowRight weight="bold" size={18} />
-              </button>
             )}
           </motion.div>
         )}

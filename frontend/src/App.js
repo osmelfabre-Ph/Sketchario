@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Toaster } from 'sonner';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -18,6 +19,7 @@ function AppContent() {
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedProject, setSelectedProject] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [wizardResumeData, setWizardResumeData] = useState(null);
 
   useEffect(() => {
     if (user && api) {
@@ -40,12 +42,11 @@ function AppContent() {
 
   if (!user) return <AuthScreen />;
 
-  const isProjectView = ['project', 'calendar', 'personas', 'social'].includes(activeView);
+  const isProjectView = ['project', 'calendar', 'personas', 'social', 'analytics', 'feeds'].includes(activeView);
 
   const handleSetActiveView = (view) => {
-    // If switching to project sub-views, keep the project context
-    if (['calendar', 'personas', 'social'].includes(view) && !selectedProject) {
-      return; // Can't navigate to project sub-views without a project
+    if (['calendar', 'personas', 'social', 'analytics', 'feeds'].includes(view) && !selectedProject) {
+      return;
     }
     setActiveView(view);
   };
@@ -53,13 +54,15 @@ function AppContent() {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard setActiveView={setActiveView} setSelectedProject={setSelectedProject} />;
+        return <Dashboard setActiveView={setActiveView} setSelectedProject={setSelectedProject} setWizardResumeData={setWizardResumeData} />;
       case 'wizard':
-        return <Wizard setActiveView={setActiveView} setSelectedProject={setSelectedProject} />;
+        return <Wizard setActiveView={setActiveView} setSelectedProject={setSelectedProject} resumeData={wizardResumeData} setWizardResumeData={setWizardResumeData} />;
       case 'project':
       case 'calendar':
       case 'personas':
       case 'social':
+      case 'analytics':
+      case 'feeds':
         return <ProjectView project={selectedProject} setActiveView={setActiveView} activeTab={activeView === 'project' ? 'list' : activeView} />;
       case 'profile':
         return <Profile />;
@@ -105,6 +108,12 @@ function App() {
           </Routes>
         </AuthProvider>
       </BrowserRouter>
+      <Toaster
+        theme="dark"
+        position="top-right"
+        richColors
+        toastOptions={{ duration: 4000 }}
+      />
     </div>
   );
 }
