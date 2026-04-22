@@ -2351,7 +2351,7 @@ async def canva_export_design(content_id: str, request: Request):
         raise HTTPException(400, "design_id richiesto")
     token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
     if not token_doc or not token_doc.get("access_token"):
-        raise HTTPException(400, "Canva non connesso")
+        raise HTTPException(401, "Canva non connesso")
     access_token = token_doc["access_token"]
 
     async with httpx.AsyncClient(timeout=30) as hc:
@@ -2360,6 +2360,9 @@ async def canva_export_design(content_id: str, request: Request):
             headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
             json={"design_id": design_id, "format": {"type": "png"}}
         )
+    if r.status_code == 401:
+        await db.canva_tokens.delete_one({"user_id": str(user["_id"])})
+        raise HTTPException(401, "Sessione Canva scaduta, riconnettiti")
     export_data = r.json()
     if r.status_code not in (200, 201):
         raise HTTPException(400, f"Canva export error {r.status_code}: {export_data}")

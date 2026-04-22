@@ -132,9 +132,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
             toast.info('Nessuna immagine salvata', { id: importTid });
           }
         } catch (e) {
-          const status = e.response?.status ? ` (${e.response.status})` : '';
-          const detail = e.response?.data?.detail || e.message;
-          toast.error(`Errore importazione Canva${status}: ${detail}`, { id: importTid });
+          if (e.response?.status === 401) {
+            setCanvaConnected(false);
+            toast.error('Sessione Canva scaduta — clicca di nuovo il pulsante Canva per riconnetterti', { id: importTid, duration: 7000 });
+          } else {
+            const status = e.response?.status ? ` (${e.response.status})` : '';
+            const detail = e.response?.data?.detail || e.message;
+            toast.error(`Errore importazione Canva${status}: ${detail}`, { id: importTid });
+          }
         }
       };
 
