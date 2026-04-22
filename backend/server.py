@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio
+import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, html as html_lib
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 from starlette.responses import HTMLResponse
@@ -1554,13 +1554,15 @@ async def get_feed_items(project_id: str, request: Request):
                 async with httpx.AsyncClient(timeout=10) as client_http:
                     resp = await client_http.get(feed["feed_url"])
                     parsed = feedparser.parse(resp.text)
+                    def _strip_html(text):
+                        return re.sub(r'<[^>]+>', '', html_lib.unescape(str(text or ''))).strip()
                     for entry in parsed.entries[:10]:
                         item = {
                             "id": str(uuid.uuid4()),
                             "feed_id": feed["id"],
                             "feed_name": feed.get("feed_name", ""),
-                            "title": getattr(entry, "title", ""),
-                            "summary": getattr(entry, "summary", "")[:500] if hasattr(entry, "summary") else "",
+                            "title": _strip_html(getattr(entry, "title", "")),
+                            "summary": _strip_html(getattr(entry, "summary", "")[:800] if hasattr(entry, "summary") else "")[:500],
                             "link": getattr(entry, "link", ""),
                             "published": getattr(entry, "published", ""),
                             "image": "",
