@@ -191,7 +191,11 @@ app.post('/render', async (req, res) => {
       {
         cwd: workDir,
         timeout: 180_000,
-        env: { ...process.env, PUPPETEER_EXECUTABLE_PATH: chromiumExe },
+        env: {
+          ...process.env,
+          PUPPETEER_EXECUTABLE_PATH: chromiumExe,
+          PUPPETEER_ARGS: '--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --no-zygote',
+        },
       }
     );
 
@@ -210,5 +214,5 @@ app.post('/render', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT) || 3001;
 app.listen(PORT, () => console.log(`[renderer] In ascolto su :${PORT}`));
