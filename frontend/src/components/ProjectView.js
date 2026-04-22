@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -39,6 +40,7 @@ function useIsMobile() {
 
 export default function ProjectView({ project, setActiveView, activeTab }) {
   const { api } = useAuth();
+  const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [tab, setTab] = useState(activeTab || 'list');
   const [contents, setContents] = useState([]);
@@ -328,7 +330,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
-  if (loading) return <p className="text-[var(--text-muted)] text-center py-12">Caricamento progetto...</p>;
+  if (loading) return <p className="text-[var(--text-muted)] text-center py-12">{t('common.loading')}</p>;
 
   return (
     <div className="flex flex-col h-[calc(100vh-0px)]" style={{ paddingBottom: isMobile ? 56 : 0 }}>
@@ -337,7 +339,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
         <button className="btn-ghost p-1.5" onClick={() => setActiveView('dashboard')} data-testid="back-to-dashboard"><ArrowLeft size={18} /></button>
         <div className="flex-1 min-w-0">
           <h1 className="text-base md:text-lg font-bold gradient-text truncate" data-testid="project-title">{project.name}</h1>
-          <p className="text-[10px] md:text-xs text-[var(--text-secondary)]">{project.sector} | {contents.length} contenuti</p>
+          <p className="text-[10px] md:text-xs text-[var(--text-secondary)]">{project.sector} | {contents.length} {t('dashboard.contents')}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button data-testid="new-post-btn" className="btn-gradient text-xs md:text-sm" onClick={() => setShowNewPost(true)}>
@@ -359,21 +361,21 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           {/* Tab Buttons */}
           <div className="flex gap-1 px-4 md:px-6 pt-3 pb-2 flex-shrink-0 overflow-x-auto" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {[
-              { id: 'list', label: 'Contenuti' },
-              { id: 'calendar', label: 'Calendario' },
-              { id: 'personas', label: 'Personas' },
-              { id: 'social', label: 'Social' },
-            ].map(t => (
-              <button key={t.id} data-testid={`tab-${t.id}`} className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${tab === t.id ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`} onClick={() => setTab(t.id)}>
-                {t.label}
-              </button>
+              { id: 'list', label: t('project.tabs.list') },
+              { id: 'calendar', label: t('project.tabs.calendar') },
+              { id: 'personas', label: t('project.tabs.personas') },
+              { id: 'social', label: t('project.tabs.social') },
+            ].map(tab_ => (
+              <button key={tab_.id} data-testid={`tab-${tab_.id}`} className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${tab === tab_.id ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`} onClick={() => setTab(tab_.id)}>
+                {tab_.label}
+            </button>
             ))}
             <button
               data-testid="tab-analytics"
               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${showRightPanel ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
               onClick={() => setShowRightPanel(v => !v)}
             >
-              Analytics
+              {t('nav.analytics')}
             </button>
             {tab === 'list' && (
               <div className="flex items-center gap-0.5 ml-2 border-l border-[var(--border-color)] pl-2 flex-shrink-0">
@@ -431,7 +433,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 ))}
                 {contents.length === 0 && (
                   <div className="col-span-full text-center py-12">
-                    <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
+                    <p className="text-[var(--text-muted)] mb-4">{t('project.content.noContent')}</p>
                     <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
                   </div>
                 )}
@@ -441,9 +443,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             {/* LIST VIEW — COMPACT LIST */}
             {tab === 'list' && viewMode === 'list' && (() => {
               const groups = [
-                { key: 'published', label: 'Pubblicati', items: contents.filter(c => c.status === 'published') },
-                { key: 'scheduled', label: 'Programmati', items: contents.filter(c => c.status === 'scheduled') },
-                { key: 'draft', label: 'Bozze', items: contents.filter(c => !c.status || c.status === 'draft') },
+                { key: 'published', label: t('status.published'), items: contents.filter(c => c.status === 'published') },
+                { key: 'scheduled', label: t('status.scheduled'), items: contents.filter(c => c.status === 'scheduled') },
+                { key: 'draft', label: t('status.draft'), items: contents.filter(c => !c.status || c.status === 'draft') },
               ].filter(g => g.items.length > 0);
               return (
                 <div className="pt-2 space-y-5">
@@ -466,7 +468,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                               : '#6b7280';
                             const queueItem = queueItems.find(q => q.content_id === c.id);
                             let dateLabel;
-                            if (c.status === 'published') dateLabel = 'Pubblicato';
+                            if (c.status === 'published') dateLabel = t('status.published');
                             else if (queueItem?.scheduled_at) dateLabel = new Date(queueItem.scheduled_at).toLocaleDateString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
                             else dateLabel = `G${(c.day_offset || 0) + 1}`;
                             return (
@@ -510,7 +512,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   ))}
                   {contents.length === 0 && (
                     <div className="text-center py-12">
-                      <p className="text-[var(--text-muted)] mb-4">Nessun contenuto generato.</p>
+                      <p className="text-[var(--text-muted)] mb-4">{t('project.content.noContent')}</p>
                       <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
                     </div>
                   )}
@@ -620,14 +622,14 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                           <pi.Icon weight="fill" size={22} color={pi.color} />
                           <div>
                             <p className="font-semibold text-sm">{platform.name}</p>
-                            <p className="text-[10px] text-[var(--text-muted)]">{connected.length} collegati</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">{connected.length} {t('project.social.connected')}</p>
                           </div>
                         </div>
                         {connected.map(prof => (
                           <div key={prof.id} className="flex items-center justify-between py-1.5 px-2 rounded mb-1" style={{ background: 'rgba(34,197,94,0.1)' }}>
                             <span className="text-xs truncate">{prof.profile_name}</span>
                             <div className="flex gap-1 flex-shrink-0">
-                              <span className="badge green text-[8px]">Attivo</span>
+                              <span className="badge green text-[8px]">{t('common.active')}</span>
                               <button className="text-[var(--accent-pink)]" disabled={removingProfileId === prof.id} onClick={() => removeSocialProfile(prof.id)}>
                                 {removingProfileId === prof.id ? <div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" /> : <Trash size={10} />}
                               </button>
@@ -635,8 +637,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                           </div>
                         ))}
                         <div className="flex gap-1 mt-2">
-                          {platform.configured && <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => connectSocial(platform)}>OAuth</button>}
-                          <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => { setShowAddManual(platform.id); setManualName(''); }}><Plus size={10} /> Manuale</button>
+                          {platform.configured && <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => connectSocial(platform)}>{t('common.oauth')}</button>}
+                          <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => { setShowAddManual(platform.id); setManualName(''); }}><Plus size={10} /> {t('common.manuale')}</button>
                         </div>
                         {showAddManual === platform.id && (
                           <div className="mt-2 p-2 rounded" style={{ background: 'var(--bg-secondary)' }}>
@@ -655,7 +657,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 {/* Tool integrations (Google Drive etc.) */}
                 {platforms.some(p => p.is_tool) && (
                   <div className="mb-6">
-                    <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3">Integrazioni</p>
+                    <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3">{t('project.social.integrations')}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {platforms.filter(p => p.is_tool).map(platform => {
                         const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#34a853' };
@@ -670,21 +672,21 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                               <div>
                                 <p className="font-semibold text-sm">{platform.name}</p>
                                 <p className="text-[10px]" style={{ color: isConnected ? '#34a853' : 'var(--text-muted)' }}>
-                                  {isConnected ? 'Connesso' : 'Non connesso'}
+                                  {isConnected ? t('common.connected') : t('common.notConnected')}
                                 </p>
                               </div>
                             </div>
                             {isConnected ? (
                               <div className="flex gap-1">
-                                <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => connectSocial(platform)}>Riconnetti</button>
+                                <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => connectSocial(platform)}>{t('common.reconnect')}</button>
                                 <button className="text-[var(--accent-pink)] text-[10px] py-1 px-2 flex-1 rounded btn-ghost" onClick={() => removeSocialProfile(connected[0].id)}>
-                                  <Trash size={10} className="inline mr-1" />Disconnetti
+                                  <Trash size={10} className="inline mr-1" />{t('common.disconnect')}
                                 </button>
                               </div>
                             ) : (
                               platform.configured && (
                                 <button className="btn-gradient text-[10px] py-1.5 px-3 w-full" onClick={() => connectSocial(platform)}>
-                                  Connetti Google Drive
+                                  {t('common.connect')} {platform.name}
                                 </button>
                               )
                             )}
@@ -712,7 +714,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                       catch { toast.error('Errore aggiornamento feed', { id: tid }); }
                       setRefreshingFeeds(false);
                     }}>
-                      <ArrowClockwise size={12} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : 'Refresh'}
+                      <ArrowClockwise size={12} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : t('project.feeds.refresh')}
                     </button>
                   </div>
                   <div className="space-y-2">
@@ -723,7 +725,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                         <p className="text-xs text-[var(--text-muted)]">{item.feed_name}</p>
                       </div>
                     ))}
-                    {feedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">Feed in caricamento...</p>}
+                    {feedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">{t('project.feeds.noFeeds')}</p>}
                   </div>
                 </div>
                 {/* AI Suggestions */}
@@ -736,7 +738,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                       catch { toast.error('Errore generazione idee AI', { id: tid }); }
                       setRefreshingAi(false);
                     }}>
-                      <ArrowClockwise size={12} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : 'Rigenera'}
+                      <ArrowClockwise size={12} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : t('editor.regenerate')}
                     </button>
                   </div>
                   <div className="space-y-2">
@@ -773,7 +775,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   catch { toast.error('Errore', { id: tid }); }
                   setRefreshingFeeds(false);
                 }}>
-                  <ArrowClockwise size={10} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : 'Refresh'}
+                  <ArrowClockwise size={10} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : t('project.feeds.refresh')}
                 </button>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
@@ -786,7 +788,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                     <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.feed_name}</p>
                   </div>
                 ))}
-                {feedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Feed in caricamento...</p>}
+                {feedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">{t('project.feeds.noFeeds')}</p>}
               </div>
             </div>
 
@@ -800,7 +802,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   catch { toast.error('Errore', { id: tid }); }
                   setRefreshingAi(false);
                 }}>
-                  <ArrowClockwise size={10} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : 'Rigenera'}
+                  <ArrowClockwise size={10} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : t('editor.regenerate')}
                 </button>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
@@ -881,7 +883,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => !newPostLoading && setShowNewPost(false)}>
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="card w-full max-w-lg" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold mb-4">Nuovo Post</h3>
+              <h3 className="text-lg font-semibold mb-4">{t('project.content.generate')}</h3>
               <div className="space-y-4">
                 <textarea data-testid="new-post-hook" className="input-dark" rows={3} placeholder="Hook/idea del post..." value={newPostHook} onChange={e => setNewPostHook(e.target.value)} style={{ paddingLeft: '1rem' }} />
                 <div className="flex gap-2">
@@ -894,9 +896,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   <button className={`preset-btn flex-1 ${newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(true)}><Sparkle size={14} /> Con AI</button>
                 </div>
                 <div className="flex gap-3">
-                  <button className="btn-ghost flex-1" onClick={() => setShowNewPost(false)}>Annulla</button>
+                  <button className="btn-ghost flex-1" onClick={() => setShowNewPost(false)}>{t('common.cancel')}</button>
                   <button data-testid="create-post-btn" className="btn-gradient flex-1" onClick={createNewPost} disabled={newPostLoading || !newPostHook.trim()}>
-                    {newPostLoading ? '...' : 'Crea'}
+                    {newPostLoading ? '...' : t('common.save')}
                   </button>
                 </div>
               </div>
@@ -986,6 +988,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
 /* Extracted right panel content to reuse in desktop inline + mobile overlay */
 function RightPanelContent({ queueItems, contents, cancelQueueItem, cancellingQueueId, project }) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="mb-6">
@@ -1007,7 +1010,7 @@ function RightPanelContent({ queueItems, contents, cancelQueueItem, cancellingQu
             </div>
           );
         })}
-        {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Coda vuota</p>}
+        {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">{t('project.queue.empty')}</p>}
       </div>
       <div>
         <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> Analytics</p>
