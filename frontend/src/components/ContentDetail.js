@@ -67,7 +67,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [imageModel, setImageModel] = useState('flux');
 
   useEffect(() => {
-    api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
+    api.get('/social/profiles').then(r => setSocialProfiles((r.data || []).filter(p => p.platform !== 'google_slides'))).catch(() => {});
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
     api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
     api.get(`/publish/queue/${project.id}`).then(r => {

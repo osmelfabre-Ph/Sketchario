@@ -1450,7 +1450,7 @@ async def social_oauth_callback(request: Request):
 async def list_social_profiles(request: Request):
     user = await get_current_user(request)
     profiles = await db.social_accounts.find(
-        {"user_id": user["_id"], "platform": {"$ne": "google_slides"}}, {"_id": 0}
+        {"user_id": user["_id"]}, {"_id": 0}
     ).to_list(50)
     return profiles
 
