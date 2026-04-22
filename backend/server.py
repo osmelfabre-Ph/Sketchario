@@ -2343,6 +2343,7 @@ async def canva_create_design(request: Request):
 
 @api.post("/canva/export-design/{content_id}")
 async def canva_export_design(content_id: str, request: Request):
+    """Step 1: create the Canva export job, return job_id immediately."""
     user = await get_current_user(request)
     body = await request.json()
     design_id = body.get("design_id", "")
@@ -2353,40 +2354,44 @@ async def canva_export_design(content_id: str, request: Request):
         raise HTTPException(400, "Canva non connesso")
     access_token = token_doc["access_token"]
 
-    async with httpx.AsyncClient(timeout=120) as hc:
-        # Create export job (PNG format)
+    async with httpx.AsyncClient(timeout=30) as hc:
         r = await hc.post(
             "https://api.canva.com/rest/v1/exports",
             headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
             json={"design_id": design_id, "format": {"type": "png"}}
         )
-        export_data = r.json()
-        if r.status_code not in (200, 201):
-            raise HTTPException(400, f"Canva export error: {export_data}")
-        job = export_data.get("job", {})
-        job_id = job.get("id", "")
-        if not job_id:
-            raise HTTPException(400, f"Canva non ha restituito un job ID: {export_data}")
+    export_data = r.json()
+    if r.status_code not in (200, 201):
+        raise HTTPException(400, f"Canva export error {r.status_code}: {export_data}")
+    job_id = export_data.get("job", {}).get("id", "")
+    if not job_id:
+        raise HTTPException(400, f"Canva non ha restituito job ID: {export_data}")
+    return {"job_id": job_id, "status": "in_progress"}
 
-        # Poll until completed (max 30 × 3s = 90s)
-        urls = []
-        for _ in range(30):
-            await asyncio.sleep(3)
-            poll = await hc.get(
-                f"https://api.canva.com/rest/v1/exports/{job_id}",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
-            job = poll.json().get("job", {})
-            status = job.get("status", "")
-            if status == "success":
-                urls = [u["url"] for u in job.get("urls", []) if u.get("url")]
-                break
-            elif status == "failed":
-                raise HTTPException(400, "Export Canva fallito")
+@api.get("/canva/export-status/{job_id}")
+async def canva_export_status(job_id: str, request: Request):
+    """Step 2 (polled by frontend): check export job status."""
+    user = await get_current_user(request)
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(400, "Canva non connesso")
+    access_token = token_doc["access_token"]
+    async with httpx.AsyncClient(timeout=15) as hc:
+        r = await hc.get(
+            f"https://api.canva.com/rest/v1/exports/{job_id}",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+    job = r.json().get("job", {})
+    return {"status": job.get("status", "in_progress"), "urls": [u["url"] for u in job.get("urls", []) if u.get("url")]}
 
+@api.post("/canva/export-download/{content_id}")
+async def canva_export_download(content_id: str, request: Request):
+    """Step 3: download exported images and save as media."""
+    await get_current_user(request)
+    body = await request.json()
+    urls = body.get("urls", [])
     if not urls:
         return {"media": [], "count": 0}
-
     added = []
     async with httpx.AsyncClient(timeout=60) as hc:
         for i, img_url in enumerate(urls):
@@ -2410,7 +2415,6 @@ async def canva_export_design(content_id: str, request: Request):
             }
             await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
             added.append(media_doc)
-
     return {"media": added, "count": len(added)}
 
 @api.get("/google/picker-token")

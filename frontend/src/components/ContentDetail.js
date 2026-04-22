@@ -100,20 +100,38 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const doImport = async () => {
         if (importing) return;
         importing = true;
-        const importTid = toast.loading('Importazione da Canva in corso...');
+        const importTid = toast.loading('Avvio export Canva...');
         try {
-          const { data: imp } = await api.post(`/canva/export-design/${content.id}`, { design_id });
+          // Step 1: create export job (fast, instant response)
+          const { data: jobData } = await api.post(`/canva/export-design/${content.id}`, { design_id });
+          const { job_id } = jobData;
+
+          // Step 2: poll for completion (frontend-driven, every 3s, max 20 tries)
+          toast.loading('Esportazione in corso...', { id: importTid });
+          let urls = [];
+          for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 3000));
+            const { data: statusData } = await api.get(`/canva/export-status/${job_id}`);
+            if (statusData.status === 'success') { urls = statusData.urls || []; break; }
+            if (statusData.status === 'failed') throw new Error('Export Canva fallito');
+          }
+
+          if (urls.length === 0) { toast.info('Nessuna immagine esportata da Canva', { id: importTid }); return; }
+
+          // Step 3: download and save
+          toast.loading('Download immagini...', { id: importTid });
+          const { data: imp } = await api.post(`/canva/export-download/${content.id}`, { urls });
           if (imp.count > 0) {
-            const added = imp.media || [];
-            const updated = { ...content, media: [...(content.media || []), ...added] };
+            const updated = { ...content, media: [...(content.media || []), ...(imp.media || [])] };
             setContent(updated); onUpdate?.(updated);
             toast.success(`${imp.count} immagin${imp.count > 1 ? 'i importate' : 'e importata'} da Canva!`, { id: importTid, duration: 5000 });
           } else {
-            toast.info('Nessuna immagine esportata da Canva', { id: importTid });
+            toast.info('Nessuna immagine salvata', { id: importTid });
           }
         } catch (e) {
+          const status = e.response?.status ? ` (${e.response.status})` : '';
           const detail = e.response?.data?.detail || e.message;
-          toast.error('Errore importazione Canva: ' + detail, { id: importTid });
+          toast.error(`Errore importazione Canva${status}: ${detail}`, { id: importTid });
         }
       };
 
