@@ -87,15 +87,37 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const openCanvaEditor = async () => {
     setCanvaLoading(true);
     const tid = toast.loading('Creazione design Canva...');
-    // Open window immediately on user click to bypass popup blockers
-    const win = window.open('about:blank', '_blank');
+    // Open named popup immediately (synchronous) to bypass popup blockers
+    const popup = window.open('about:blank', 'canva_editor', 'width=1280,height=820,left=100,top=60');
     try {
       const { data } = await api.post('/canva/create-design', { content_id: content.id, format: content.format });
-      if (win) win.location.href = data.edit_url;
-      else window.open(data.edit_url, '_blank');
-      toast.success('Design aperto in Canva — torna qui per importare le immagini', { id: tid, duration: 6000 });
+      const { edit_url, design_id } = data;
+      if (popup && !popup.closed) popup.location.href = edit_url;
+      else window.open(edit_url, 'canva_editor', 'width=1280,height=820,left=100,top=60');
+      toast.success('Design aperto in Canva — chiudi la finestra per importare le immagini', { id: tid, duration: 8000 });
+
+      // Poll for popup closure → auto-import
+      const interval = setInterval(async () => {
+        if (!popup || popup.closed) {
+          clearInterval(interval);
+          const importTid = toast.loading('Importazione da Canva in corso...');
+          try {
+            const { data: imp } = await api.post(`/canva/export-design/${content.id}`, { design_id });
+            if (imp.count > 0) {
+              const added = imp.media || [];
+              const updated = { ...content, media: [...(content.media || []), ...added] };
+              setContent(updated); onUpdate?.(updated);
+              toast.success(`${imp.count} immagin${imp.count > 1 ? 'i importate' : 'e importata'} da Canva!`, { id: importTid, duration: 5000 });
+            } else {
+              toast.info('Nessuna immagine esportata da Canva', { id: importTid });
+            }
+          } catch (e) {
+            toast.error('Errore importazione Canva: ' + (e.response?.data?.detail || e.message), { id: importTid });
+          }
+        }
+      }, 1000);
     } catch (e) {
-      if (win) win.close();
+      if (popup && !popup.closed) popup.close();
       if (e.response?.status === 401) { setCanvaConnected(false); }
       toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message), { id: tid });
     }
@@ -163,7 +185,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
       // Users see the full folder tree and can navigate normally.
       const view = new window.google.picker.DocsView()
         .setIncludeFolders(true)
-        .setSelectFolderEnabled(false);
+        .setSelectFolderEnabled(false)
+        .setParent('root');
       const pickerToken = data.token;
       new PickerBuilder()
         .addView(view)

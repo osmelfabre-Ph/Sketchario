@@ -2340,6 +2340,78 @@ async def canva_create_design(request: Request):
         raise HTTPException(400, f"Canva non ha restituito un URL di editing: {data}")
     return {"edit_url": edit_url, "design_id": design.get("id", "")}
 
+@api.post("/canva/export-design/{content_id}")
+async def canva_export_design(content_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    design_id = body.get("design_id", "")
+    if not design_id:
+        raise HTTPException(400, "design_id richiesto")
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(400, "Canva non connesso")
+    access_token = token_doc["access_token"]
+
+    async with httpx.AsyncClient(timeout=120) as hc:
+        # Create export job (PNG format)
+        r = await hc.post(
+            "https://api.canva.com/rest/v1/exports",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={"design_id": design_id, "format": {"type": "png"}}
+        )
+        export_data = r.json()
+        if r.status_code not in (200, 201):
+            raise HTTPException(400, f"Canva export error: {export_data}")
+        job = export_data.get("job", {})
+        job_id = job.get("id", "")
+        if not job_id:
+            raise HTTPException(400, f"Canva non ha restituito un job ID: {export_data}")
+
+        # Poll until completed (max 30 × 3s = 90s)
+        urls = []
+        for _ in range(30):
+            await asyncio.sleep(3)
+            poll = await hc.get(
+                f"https://api.canva.com/rest/v1/exports/{job_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            job = poll.json().get("job", {})
+            status = job.get("status", "")
+            if status == "success":
+                urls = [u["url"] for u in job.get("urls", []) if u.get("url")]
+                break
+            elif status == "failed":
+                raise HTTPException(400, "Export Canva fallito")
+
+    if not urls:
+        return {"media": [], "count": 0}
+
+    added = []
+    async with httpx.AsyncClient(timeout=60) as hc:
+        for i, img_url in enumerate(urls):
+            resp = await hc.get(img_url)
+            if resp.status_code != 200:
+                continue
+            fname = f"canva_{uuid.uuid4().hex}.png"
+            fpath = UPLOAD_DIR / fname
+            with open(fpath, "wb") as f:
+                f.write(resp.content)
+            media_url = f"/api/media/file/{fname}"
+            media_doc = {
+                "id": str(uuid.uuid4()),
+                "filename": fname,
+                "original_name": f"Canva Export {i + 1}",
+                "url": media_url,
+                "type": "image",
+                "source": "canva",
+                "size": len(resp.content),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
+            added.append(media_doc)
+
+    return {"media": added, "count": len(added)}
+
 @api.get("/google/picker-token")
 async def google_picker_token(request: Request):
     user = await get_current_user(request)
