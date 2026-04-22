@@ -94,28 +94,46 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const { edit_url, design_id } = data;
       if (popup && !popup.closed) popup.location.href = edit_url;
       else window.open(edit_url, 'canva_editor', 'width=1280,height=820,left=100,top=60');
-      toast.success('Design aperto in Canva — chiudi la finestra per importare le immagini', { id: tid, duration: 8000 });
+      toast.success('Design aperto in Canva — premi "Torna a Sketchario" per importare', { id: tid, duration: 10000 });
 
-      // Poll for popup closure → auto-import
-      const interval = setInterval(async () => {
+      let importing = false;
+      const doImport = async () => {
+        if (importing) return;
+        importing = true;
+        const importTid = toast.loading('Importazione da Canva in corso...');
+        try {
+          const { data: imp } = await api.post(`/canva/export-design/${content.id}`, { design_id });
+          if (imp.count > 0) {
+            const added = imp.media || [];
+            const updated = { ...content, media: [...(content.media || []), ...added] };
+            setContent(updated); onUpdate?.(updated);
+            toast.success(`${imp.count} immagin${imp.count > 1 ? 'i importate' : 'e importata'} da Canva!`, { id: importTid, duration: 5000 });
+          } else {
+            toast.info('Nessuna immagine esportata da Canva', { id: importTid });
+          }
+        } catch (e) {
+          const detail = e.response?.data?.detail || e.message;
+          toast.error('Errore importazione Canva: ' + detail, { id: importTid });
+        }
+      };
+
+      // Poll for popup closure or same-origin navigation ("Torna a Sketchario")
+      const interval = setInterval(() => {
+        // When Canva redirects back to our domain, popup.location is accessible (same-origin)
+        try {
+          if (popup && !popup.closed && popup.location.hostname === window.location.hostname) {
+            clearInterval(interval);
+            popup.close();
+            doImport();
+            return;
+          }
+        } catch (_) { /* popup still on Canva (cross-origin) — expected */ }
+
         if (!popup || popup.closed) {
           clearInterval(interval);
-          const importTid = toast.loading('Importazione da Canva in corso...');
-          try {
-            const { data: imp } = await api.post(`/canva/export-design/${content.id}`, { design_id });
-            if (imp.count > 0) {
-              const added = imp.media || [];
-              const updated = { ...content, media: [...(content.media || []), ...added] };
-              setContent(updated); onUpdate?.(updated);
-              toast.success(`${imp.count} immagin${imp.count > 1 ? 'i importate' : 'e importata'} da Canva!`, { id: importTid, duration: 5000 });
-            } else {
-              toast.info('Nessuna immagine esportata da Canva', { id: importTid });
-            }
-          } catch (e) {
-            toast.error('Errore importazione Canva: ' + (e.response?.data?.detail || e.message), { id: importTid });
-          }
+          doImport();
         }
-      }, 1000);
+      }, 800);
     } catch (e) {
       if (popup && !popup.closed) popup.close();
       if (e.response?.status === 401) { setCanvaConnected(false); }
