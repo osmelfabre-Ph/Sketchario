@@ -14,12 +14,17 @@ import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
 import ContentDetail from './ContentDetail';
 
+const GoogleDriveIcon = ({ size = 16 }) => (
+  <img src="https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png" alt="Google Drive" style={{ width: size, height: size, objectFit: 'contain' }} />
+);
+
 const PLATFORM_ICONS = {
   instagram: { Icon: InstagramLogo, color: '#E4405F', name: 'Instagram' },
   facebook: { Icon: FacebookLogo, color: '#1877F2', name: 'Facebook' },
   linkedin: { Icon: LinkedinLogo, color: '#0A66C2', name: 'LinkedIn' },
   tiktok: { Icon: TiktokLogo, color: '#ffffff', name: 'TikTok' },
   pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
+  google_slides: { Icon: GoogleDriveIcon, color: '#1EA362', name: 'Google Drive' },
 };
 
 function useIsMobile() {
@@ -604,8 +609,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             {/* SOCIAL */}
             {tab === 'social' && (
               <div className="pt-2">
+                {/* Social publishing platforms */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-6">
-                  {platforms.map(platform => {
+                  {platforms.filter(p => !p.is_tool).map(platform => {
                     const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#fff' };
                     const connected = socialProfiles.filter(p => p.platform === platform.id);
                     return (
@@ -645,6 +651,50 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                     );
                   })}
                 </div>
+
+                {/* Tool integrations (Google Drive etc.) */}
+                {platforms.some(p => p.is_tool) && (
+                  <div className="mb-6">
+                    <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3">Integrazioni</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {platforms.filter(p => p.is_tool).map(platform => {
+                        const pi = PLATFORM_ICONS[platform.id] || { Icon: Globe, color: '#34a853' };
+                        const connected = socialProfiles.filter(p => p.platform === platform.id);
+                        const isConnected = connected.length > 0;
+                        return (
+                          <div key={platform.id} className="card" style={{ border: isConnected ? '1px solid rgba(52,168,83,0.4)' : undefined }}>
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'rgba(52,168,83,0.1)' }}>
+                                <pi.Icon size={22} color={pi.color} />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-sm">{platform.name}</p>
+                                <p className="text-[10px]" style={{ color: isConnected ? '#34a853' : 'var(--text-muted)' }}>
+                                  {isConnected ? 'Connesso' : 'Non connesso'}
+                                </p>
+                              </div>
+                            </div>
+                            {isConnected ? (
+                              <div className="flex gap-1">
+                                <button className="btn-ghost text-[10px] py-1 px-2 flex-1" onClick={() => connectSocial(platform)}>Riconnetti</button>
+                                <button className="text-[var(--accent-pink)] text-[10px] py-1 px-2 flex-1 rounded btn-ghost" onClick={() => removeSocialProfile(connected[0].id)}>
+                                  <Trash size={10} className="inline mr-1" />Disconnetti
+                                </button>
+                              </div>
+                            ) : (
+                              platform.configured && (
+                                <button className="btn-gradient text-[10px] py-1.5 px-3 w-full" onClick={() => connectSocial(platform)}>
+                                  Connetti Google Drive
+                                </button>
+                              )
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="card"><TeamPanel projectId={project.id} /></div>
               </div>
             )}

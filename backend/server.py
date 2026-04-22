@@ -1367,13 +1367,12 @@ async def list_platforms(request: Request):
     await get_current_user(request)
     platforms = []
     for key, cfg in SOCIAL_PLATFORMS.items():
-        if key == "google_slides":
-            continue  # editor tool, not a social publishing platform
         client_id = os.environ.get(cfg["client_id_env"], "")
         platforms.append({
             "id": key,
             "name": cfg["name"],
             "configured": bool(client_id),
+            "is_tool": key == "google_slides",  # not a social platform, shown separately
         })
     return platforms
 
