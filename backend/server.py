@@ -1064,7 +1064,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "GOOGLE_CLIENT_ID",
         "client_secret_env": "GOOGLE_CLIENT_SECRET",
         "token_url": "https://oauth2.googleapis.com/token",
-        "scope": "https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive.readonly openid email",
+        "scope": "https://www.googleapis.com/auth/drive.readonly openid email",
         "extra_params": "access_type=offline&prompt=consent",
     },
 }
@@ -2417,6 +2417,16 @@ async def google_picker_token(request: Request):
     user = await get_current_user(request)
     try:
         token = await _get_google_access_token(user["_id"])
+        # Check that the token actually has drive.readonly scope
+        async with httpx.AsyncClient(timeout=10) as hc:
+            info = await hc.get("https://www.googleapis.com/oauth2/v3/tokeninfo",
+                                params={"access_token": token})
+        scope = info.json().get("scope", "") if info.status_code == 200 else ""
+        has_drive = "drive.readonly" in scope or "drive " in scope or scope.endswith("drive")
+        if not has_drive:
+            # Token has insufficient scope (old drive.file token) — force reconnect
+            await db.social_accounts.delete_one({"user_id": user["_id"], "platform": "google_slides"})
+            return {"token": "", "connected": False, "reason": "scope_upgrade"}
         return {"token": token, "connected": True}
     except Exception:
         return {"token": "", "connected": False}

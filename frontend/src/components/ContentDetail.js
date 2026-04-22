@@ -175,7 +175,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
     try {
       const { data } = await api.get('/google/picker-token');
       if (!data.connected) {
-        toast.error('Collega il tuo account Google nella sezione Social del progetto.', { id: tid, duration: 5000 });
+        const msg = data.reason === 'scope_upgrade'
+          ? 'Le autorizzazioni Google Drive sono scadute. Riconnetti Google Drive nella sezione Social del progetto.'
+          : 'Collega il tuo account Google nella sezione Social del progetto.';
+        toast.error(msg, { id: tid, duration: 7000 });
         return;
       }
       toast.dismiss(tid);
@@ -207,7 +210,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
               `https://www.googleapis.com/drive/v3/files/${doc.id}?alt=media`,
               { headers: { Authorization: `Bearer ${pickerToken}` } }
             );
-            if (!dlResp.ok) throw new Error(`Google Drive ha rifiutato il download (${dlResp.status})`);
+            if (!dlResp.ok) {
+              if (dlResp.status === 403 || dlResp.status === 404) throw new Error('Autorizzazioni insufficienti. Disconnetti e riconnetti Google Drive nella sezione Social.');
+              throw new Error(`Google Drive ha rifiutato il download (${dlResp.status})`);
+            }
             const blob = await dlResp.blob();
             const file = new File([blob], doc.name, { type: doc.mimeType || blob.type });
             const fd = new FormData();
