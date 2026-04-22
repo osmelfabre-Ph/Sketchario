@@ -2534,7 +2534,7 @@ class RenderVideoInput(BaseModel):
 @api.post("/media/render-video")
 async def render_video(inp: RenderVideoInput, request: Request):
     user = await get_current_user(request)
-    content = await db.contents.find_one({"id": inp.content_id, "user_id": user["_id"]}, {"_id": 0})
+    content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
     renderer_url = os.environ.get("RENDERER_URL", "http://sketchario-renderer:3001")
