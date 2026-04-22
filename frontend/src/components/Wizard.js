@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import {
   Users, Palette, Lightning, Sparkle, ArrowRight, Check, PencilSimple, Video, Image, ArrowLeft
 } from '@phosphor-icons/react';
 
 export default function Wizard({ setActiveView, setSelectedProject, resumeData, setWizardResumeData }) {
   const { api } = useAuth();
+  const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -256,7 +258,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
               </div>
             </div>
             <button data-testid="wizard-next-btn" className="btn-gradient" onClick={createProject} disabled={loading}>
-              {loading ? 'Creazione...' : 'Crea e Continua'} <ArrowRight weight="bold" size={18} />
+              {loading ? t('wizard.generating') : t('wizard.complete')} <ArrowRight weight="bold" size={18} />
             </button>
           </motion.div>
         )}

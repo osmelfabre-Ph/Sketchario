@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import {
   House, MagicWand, User, SignOut, Bell, CaretLeft, CaretRight,
-  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck, RssSimple
+  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck, RssSimple, Translate
 } from '@phosphor-icons/react';
 
 
@@ -16,8 +17,60 @@ function useIsMobile() {
   return isMobile;
 }
 
+const LANGUAGES = [
+  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'fr', label: 'Français', flag: '🇫🇷' },
+];
+
+function LangSwitcher({ collapsed }) {
+  const { i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const current = LANGUAGES.find(l => l.code === i18n.language) || LANGUAGES[0];
+
+  return (
+    <div className="relative">
+      <button
+        className="sidebar-nav-item w-full text-[var(--text-muted)]"
+        onClick={() => setOpen(o => !o)}
+        title={collapsed ? current.flag : ''}
+        style={collapsed ? { justifyContent: 'center', padding: '0.75rem' } : {}}
+      >
+        <Translate size={18} />
+        {!collapsed && <span className="text-sm flex-1 text-left">{current.flag} {current.label}</span>}
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 rounded-lg shadow-xl border border-[var(--border)] overflow-hidden"
+          style={{
+            background: 'var(--bg-card)',
+            bottom: '100%',
+            left: collapsed ? '100%' : 0,
+            marginBottom: 4,
+            minWidth: 160,
+          }}
+        >
+          {LANGUAGES.map(lang => (
+            <button
+              key={lang.code}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2"
+              style={{ color: lang.code === i18n.language ? 'var(--accent-purple)' : 'var(--text-primary)' }}
+              onClick={() => { i18n.changeLanguage(lang.code); setOpen(false); }}
+            >
+              <span>{lang.flag}</span>
+              <span>{lang.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar({ activeView, setActiveView, isProjectView }) {
   const { user, logout, api } = useAuth();
+  const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -29,23 +82,22 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
   const isAdmin = user?.role === 'admin';
   const w = collapsed ? 68 : 220;
 
-  // Mobile: show context-aware navigation
   if (isMobile) {
     const mobileItems = isProjectView
       ? [
-          { id: 'dashboard', icon: House, label: 'Home' },
-          { id: 'project', icon: CalendarBlank, label: 'Contenuti' },
-          { id: 'personas', icon: Users, label: 'Personas' },
-          { id: 'social', icon: Globe, label: 'Social' },
-          { id: 'feeds', icon: RssSimple, label: 'Feed' },
-          { id: 'profile', icon: User, label: 'Profilo' },
+          { id: 'dashboard', icon: House, label: t('nav.dashboard') },
+          { id: 'project', icon: CalendarBlank, label: t('nav.content') },
+          { id: 'personas', icon: Users, label: t('nav.personas') },
+          { id: 'social', icon: Globe, label: t('nav.social') },
+          { id: 'feeds', icon: RssSimple, label: t('nav.feeds') },
+          { id: 'profile', icon: User, label: t('nav.profile') },
         ]
       : [
-          { id: 'dashboard', icon: House, label: 'Home' },
-          { id: 'wizard', icon: MagicWand, label: 'Nuovo' },
-          { id: 'notifications', icon: Bell, label: 'Novita' },
-          ...(isAdmin ? [{ id: 'admin', icon: ShieldCheck, label: 'Admin' }] : []),
-          { id: 'profile', icon: User, label: 'Profilo' },
+          { id: 'dashboard', icon: House, label: t('nav.dashboard') },
+          { id: 'wizard', icon: MagicWand, label: t('nav.newProject') },
+          { id: 'notifications', icon: Bell, label: t('nav.notifications') },
+          ...(isAdmin ? [{ id: 'admin', icon: ShieldCheck, label: t('nav.admin') }] : []),
+          { id: 'profile', icon: User, label: t('nav.profile') },
         ];
 
     return (
@@ -79,17 +131,16 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
     );
   }
 
-  // Desktop sidebar
   const mainNav = [
-    { id: 'dashboard', icon: House, label: 'Dashboard' },
-    { id: 'wizard', icon: MagicWand, label: 'Nuovo Progetto' },
+    { id: 'dashboard', icon: House, label: t('nav.dashboard') },
+    { id: 'wizard', icon: MagicWand, label: t('nav.newProject') },
   ];
 
   const projectNav = [
-    { id: 'calendar', icon: CalendarBlank, label: 'Calendario' },
-    { id: 'personas', icon: Users, label: 'Personas' },
-    { id: 'social', icon: Globe, label: 'Social' },
-    { id: 'analytics', icon: ChartBar, label: 'Analytics' },
+    { id: 'calendar', icon: CalendarBlank, label: t('nav.calendar') },
+    { id: 'personas', icon: Users, label: t('nav.personas') },
+    { id: 'social', icon: Globe, label: t('nav.social') },
+    { id: 'analytics', icon: ChartBar, label: t('nav.analytics') },
   ];
 
   return (
@@ -132,7 +183,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
       {/* Project Nav */}
       {isProjectView && (
         <div className="rounded-lg p-2 mb-3 space-y-1" style={{ background: 'rgba(255,255,255,0.03)' }}>
-          {!collapsed && <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase px-2 mb-1">Progetto</p>}
+          {!collapsed && <p className="text-[9px] font-semibold text-[var(--text-muted)] uppercase px-2 mb-1">{t('nav.project')}</p>}
           {projectNav.map(item => (
             <div
               key={item.id}
@@ -155,18 +206,17 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
           data-testid="nav-admin"
           className={`sidebar-nav-item relative ${activeView === 'admin' ? 'active' : ''}`}
           onClick={() => setActiveView('admin')}
-          title={collapsed ? 'Admin' : ''}
+          title={collapsed ? t('nav.admin') : ''}
           style={collapsed ? { justifyContent: 'center', padding: '0.75rem' } : {}}
         >
           <ShieldCheck weight={activeView === 'admin' ? 'fill' : 'regular'} size={20} />
-          {!collapsed && <span>Admin</span>}
+          {!collapsed && <span>{t('nav.admin')}</span>}
         </div>
       )}
 
-      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Bell */}
+      {/* Notifications bell */}
       <button
         data-testid="notifications-bell"
         className="sidebar-nav-item relative"
@@ -177,8 +227,11 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
           <Bell size={20} weight={unread > 0 ? 'fill' : 'regular'} />
           {unread > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[var(--accent-pink)] text-[8px] font-bold flex items-center justify-center">{unread}</span>}
         </div>
-        {!collapsed && <span>Novita</span>}
+        {!collapsed && <span>{t('nav.notifications')}</span>}
       </button>
+
+      {/* Language switcher */}
+      <LangSwitcher collapsed={collapsed} />
 
       {/* User Profile */}
       <div
@@ -203,10 +256,11 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
         data-testid="logout-btn"
         className="sidebar-nav-item mt-2 text-[var(--text-muted)]"
         onClick={logout}
+        title={collapsed ? t('nav.logout') : ''}
         style={collapsed ? { justifyContent: 'center', padding: '0.75rem' } : {}}
       >
         <SignOut size={18} />
-        {!collapsed && <span className="text-sm">Esci</span>}
+        {!collapsed && <span className="text-sm">{t('nav.logout')}</span>}
       </button>
     </div>
   );

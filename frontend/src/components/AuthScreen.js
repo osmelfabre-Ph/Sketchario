@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import {
   EnvelopeSimple, Lock, User, ArrowRight, GoogleLogo, FacebookLogo
 } from '@phosphor-icons/react';
 
 export default function AuthScreen() {
   const { login, register } = useAuth();
+  const { t } = useTranslation();
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -57,7 +59,7 @@ export default function AuthScreen() {
       }
     } catch (err) {
       const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(e => e.msg || '').join(' ') : 'Errore. Riprova.');
+      setError(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(e => e.msg || '').join(' ') : t('auth.loginError'));
     } finally {
       setLoading(false);
     }
@@ -78,46 +80,46 @@ export default function AuthScreen() {
         </div>
 
         <div className="flex gap-2 mb-8">
-          <button data-testid="auth-tab-login" className={isLogin ? 'btn-gradient flex-1' : 'btn-ghost flex-1'} onClick={() => { setIsLogin(true); setError(''); }}>Accedi</button>
-          <button data-testid="auth-tab-register" className={!isLogin ? 'btn-gradient flex-1' : 'btn-ghost flex-1'} onClick={() => { setIsLogin(false); setError(''); }}>Registrati</button>
+          <button data-testid="auth-tab-login" className={isLogin ? 'btn-gradient flex-1' : 'btn-ghost flex-1'} onClick={() => { setIsLogin(true); setError(''); }}>{t('auth.login')}</button>
+          <button data-testid="auth-tab-register" className={!isLogin ? 'btn-gradient flex-1' : 'btn-ghost flex-1'} onClick={() => { setIsLogin(false); setError(''); }}>{t('auth.register')}</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
             <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Nome</label>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">{t('auth.name')}</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
-                <input data-testid="auth-name-input" type="text" className="input-dark" placeholder="Il tuo nome" value={name} onChange={e => setName(e.target.value)} required />
+                <input data-testid="auth-name-input" type="text" className="input-dark" placeholder={t('auth.name')} value={name} onChange={e => setName(e.target.value)} required />
               </div>
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Email</label>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">{t('auth.email')}</label>
             <div className="relative">
               <EnvelopeSimple className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
               <input data-testid="auth-email-input" type="email" className="input-dark" placeholder="email@esempio.com" value={email} onChange={e => setEmail(e.target.value)} required />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Password</label>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">{t('auth.password')}</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
-              <input data-testid="auth-password-input" type="password" className="input-dark" placeholder="Min 8 caratteri" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+              <input data-testid="auth-password-input" type="password" className="input-dark" placeholder="Min 8" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
             </div>
           </div>
 
           {error && <p data-testid="auth-error" className="text-sm text-[var(--accent-pink)]">{error}</p>}
 
           <button data-testid="auth-submit-btn" className="btn-gradient w-full mt-6" type="submit" disabled={loading}>
-            {loading ? 'Caricamento...' : isLogin ? 'Accedi' : 'Crea Account'}
+            {loading ? t('common.loading') : isLogin ? t('auth.login') : t('auth.register')}
             {!loading && <ArrowRight weight="bold" size={18} />}
           </button>
 
           {isLogin && (
             <p className="text-center mt-3">
               <button type="button" data-testid="forgot-password-link" className="text-sm text-[var(--text-muted)] hover:text-[var(--gradient-start)] underline" onClick={() => setShowForgot(true)}>
-                Password dimenticata?
+                {t('auth.forgotPassword')}
               </button>
             </p>
           )}
@@ -141,21 +143,21 @@ export default function AuthScreen() {
           <div className="card w-full max-w-sm" onClick={e => e.stopPropagation()}>
             {resetToken ? (
               <>
-                <h3 className="text-lg font-semibold mb-4">Nuova Password</h3>
-                <input type="password" className="input-dark mb-3" placeholder="Nuova password (min 8 caratteri)" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <h3 className="text-lg font-semibold mb-4">{t('auth.newPassword') || 'Nuova Password'}</h3>
+                <input type="password" className="input-dark mb-3" placeholder={t('auth.newPassword')} value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ paddingLeft: '1rem' }} />
                 {resetMsg && <p className="text-sm mb-3" style={{ color: resetMsg.includes('aggiornata') ? 'var(--accent-green)' : 'var(--accent-pink)' }}>{resetMsg}</p>}
-                <button className="btn-gradient w-full" onClick={handleReset} data-testid="reset-password-btn">Cambia Password</button>
+                <button className="btn-gradient w-full" onClick={handleReset} data-testid="reset-password-btn">{t('common.confirm')}</button>
               </>
             ) : (
               <>
-                <h3 className="text-lg font-semibold mb-4">Password Dimenticata</h3>
+                <h3 className="text-lg font-semibold mb-4">{t('auth.forgotPassword')}</h3>
                 <p className="text-sm text-[var(--text-muted)] mb-4">Inserisci la tua email per ricevere un link di reset.</p>
                 <input type="email" className="input-dark mb-3" placeholder="email@esempio.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} style={{ paddingLeft: '1rem' }} />
                 {forgotMsg && <p className="text-sm text-[var(--accent-green)] mb-3">{forgotMsg}</p>}
                 <button className="btn-gradient w-full" onClick={handleForgot} data-testid="send-reset-btn">Invia Link Reset</button>
               </>
             )}
-            <button className="btn-ghost w-full mt-3" onClick={() => { setShowForgot(false); setResetToken(''); }}>Chiudi</button>
+            <button className="btn-ghost w-full mt-3" onClick={() => { setShowForgot(false); setResetToken(''); }}>{t('common.close')}</button>
           </div>
         </div>
       )}

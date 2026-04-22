@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { Toaster } from 'sonner';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
@@ -16,6 +17,7 @@ import OnboardingTour from './components/OnboardingTour';
 
 function AppContent() {
   const { user, loading, api } = useAuth();
+  const { t } = useTranslation();
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedProject, setSelectedProject] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -34,7 +36,7 @@ function AppContent() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-[var(--gradient-start)] to-[var(--gradient-end)] animate-pulse" />
-          <p className="text-[var(--text-secondary)] text-sm">Caricamento...</p>
+          <p className="text-[var(--text-secondary)] text-sm">{t('common.loading')}</p>
         </div>
       </div>
     );
