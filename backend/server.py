@@ -2288,13 +2288,15 @@ async def canva_oauth_callback(request: Request):
         # Save token to DB so user stays connected across sessions
         user_id = state_doc.get("user_id")
         if user_id:
+            expires_in = token_data.get("expires_in", 3600)
             await db.canva_tokens.update_one(
                 {"user_id": user_id},
                 {"$set": {
                     "user_id": user_id,
                     "access_token": access_token,
                     "refresh_token": token_data.get("refresh_token", ""),
-                    "expires_in": token_data.get("expires_in", 3600),
+                    "expires_in": expires_in,
+                    "token_expires_at": datetime.now(timezone.utc).timestamp() + expires_in,
                     "connected_at": datetime.now(timezone.utc).isoformat()
                 }},
                 upsert=True
@@ -2310,15 +2312,50 @@ async def canva_status(request: Request):
     token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
     return {"connected": bool(token_doc and token_doc.get("access_token"))}
 
+async def _get_canva_access_token(user_id: str) -> str:
+    token_doc = await db.canva_tokens.find_one({"user_id": str(user_id)})
+    if not token_doc or not token_doc.get("access_token"):
+        raise HTTPException(401, "Canva non connesso")
+    expires_at = token_doc.get("token_expires_at")
+    needs_refresh = expires_at and (expires_at - datetime.now(timezone.utc).timestamp()) < 60
+    if needs_refresh:
+        refresh_token = token_doc.get("refresh_token", "")
+        if not refresh_token:
+            await db.canva_tokens.delete_one({"user_id": str(user_id)})
+            raise HTTPException(401, "Sessione Canva scaduta — ricollegati")
+        async with httpx.AsyncClient(timeout=30) as hc:
+            r = await hc.post("https://api.canva.com/rest/v1/oauth/token", data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": CANVA_CLIENT_ID,
+                "client_secret": CANVA_CLIENT_SECRET,
+            })
+        if r.status_code != 200:
+            await db.canva_tokens.delete_one({"user_id": str(user_id)})
+            raise HTTPException(401, "Sessione Canva scaduta — ricollegati")
+        data = r.json()
+        access_token = data.get("access_token", "")
+        if not access_token:
+            await db.canva_tokens.delete_one({"user_id": str(user_id)})
+            raise HTTPException(401, "Sessione Canva scaduta — ricollegati")
+        new_expires_in = data.get("expires_in", 3600)
+        await db.canva_tokens.update_one(
+            {"user_id": str(user_id)},
+            {"$set": {
+                "access_token": access_token,
+                "refresh_token": data.get("refresh_token", refresh_token),
+                "token_expires_at": datetime.now(timezone.utc).timestamp() + new_expires_in,
+            }}
+        )
+        return access_token
+    return token_doc["access_token"]
+
 @api.post("/canva/create-design")
 async def canva_create_design(request: Request):
     user = await get_current_user(request)
     body = await request.json()
     content_format = body.get("format", "carousel")
-    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
-    if not token_doc or not token_doc.get("access_token"):
-        raise HTTPException(400, "Canva non connesso")
-    access_token = token_doc["access_token"]
+    access_token = await _get_canva_access_token(str(user["_id"]))
     # Custom dimensions: 9:16 for reels, 4:5 for carousel/posts
     if content_format in ("reel", "prompted_reel"):
         design_type = {"type": "custom", "width": 1080, "height": 1920, "units": "px"}
@@ -2332,7 +2369,6 @@ async def canva_create_design(request: Request):
         )
         data = r.json()
     if r.status_code == 401:
-        # Token expired, clear it
         await db.canva_tokens.delete_one({"user_id": str(user["_id"])})
         raise HTTPException(401, "Sessione Canva scaduta, riconnettiti")
     design = data.get("design", {})
@@ -2349,10 +2385,7 @@ async def canva_export_design(content_id: str, request: Request):
     design_id = body.get("design_id", "")
     if not design_id:
         raise HTTPException(400, "design_id richiesto")
-    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
-    if not token_doc or not token_doc.get("access_token"):
-        raise HTTPException(401, "Canva non connesso")
-    access_token = token_doc["access_token"]
+    access_token = await _get_canva_access_token(str(user["_id"]))
 
     async with httpx.AsyncClient(timeout=30) as hc:
         r = await hc.post(
@@ -2375,10 +2408,7 @@ async def canva_export_design(content_id: str, request: Request):
 async def canva_export_status(job_id: str, request: Request):
     """Step 2 (polled by frontend): check export job status."""
     user = await get_current_user(request)
-    token_doc = await db.canva_tokens.find_one({"user_id": str(user["_id"])})
-    if not token_doc or not token_doc.get("access_token"):
-        raise HTTPException(400, "Canva non connesso")
-    access_token = token_doc["access_token"]
+    access_token = await _get_canva_access_token(str(user["_id"]))
     async with httpx.AsyncClient(timeout=15) as hc:
         r = await hc.get(
             f"https://api.canva.com/rest/v1/exports/{job_id}",
