@@ -2682,7 +2682,9 @@ async def render_video(inp: RenderVideoInput, request: Request):
     content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
-    renderer_url = os.environ.get("RENDERER_URL", "http://sketchario-renderer:3001")
+    renderer_url = os.environ.get("RENDERER_URL", "")
+    if not renderer_url:
+        raise HTTPException(500, "RENDERER_URL non configurato. Imposta la variabile d'ambiente nel backend Railway.")
     try:
         async with httpx.AsyncClient(timeout=180) as c:
             r = await c.post(f"{renderer_url}/render", json={
@@ -2696,18 +2698,22 @@ async def render_video(inp: RenderVideoInput, request: Request):
             })
             if r.status_code != 200:
                 raise HTTPException(500, f"Renderer error: {r.text[:300]}")
-            data = r.json()
+            out_name = r.headers.get("x-filename") or f"render_{inp.content_id}_{uuid.uuid4().hex[:8]}.mp4"
+            fpath = UPLOAD_DIR / out_name
+            with open(fpath, "wb") as f:
+                f.write(r.content)
     except httpx.TimeoutException:
         raise HTTPException(504, "Timeout rendering video (>3 min). Riprova con uno script più corto.")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, f"Errore renderer: {str(e)}")
+    media_url = f"/api/media/file/{out_name}"
     media_doc = {
         "id": str(uuid.uuid4()),
-        "filename": data["filename"],
+        "filename": out_name,
         "original_name": f"video_{(content.get('hook_text') or '')[:40]}.mp4",
-        "url": data["url"],
+        "url": media_url,
         "type": "video",
         "source": "hyperframes",
         "size": 0,

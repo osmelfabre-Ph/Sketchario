@@ -1,6 +1,6 @@
 import express from 'express';
 import { exec } from 'child_process';
-import { writeFileSync, mkdirSync, copyFileSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, copyFileSync, existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { promisify } from 'util';
@@ -205,7 +205,10 @@ app.post('/render', async (req, res) => {
     }
 
     copyFileSync(defaultOut, outPath);
-    res.json({ url: `/api/media/file/${outName}`, filename: outName });
+    const videoBuffer = readFileSync(outPath);
+    res.set('Content-Type', 'video/mp4');
+    res.set('X-Filename', outName);
+    res.send(videoBuffer);
   } catch (err) {
     console.error('[renderer] Error:', err.message);
     res.status(500).json({ error: err.message || 'Render fallito' });
