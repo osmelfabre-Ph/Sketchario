@@ -6,7 +6,7 @@ import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
   CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check,
-  XCircle
+  XCircle, Images
 } from '@phosphor-icons/react';
 
 const PLATFORM_ICONS = {
@@ -65,6 +65,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
   const [fluxComposition, setFluxComposition] = useState('wide');
   const [imageModel, setImageModel] = useState('flux');
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles((r.data || []).filter(p => p.platform !== 'google_slides'))).catch(() => {});
@@ -265,6 +268,26 @@ export default function ContentDetail({ content: initialContent, project, onClos
     } catch (e) {
       toast.error('Errore Google Drive: ' + (e.response?.data?.detail || e.message), { id: tid });
     }
+  };
+
+  const openLibrary = async () => {
+    setShowLibrary(true);
+    if (libraryItems.length > 0) return;
+    setLibraryLoading(true);
+    try {
+      const { data } = await api.get(`/media/library/${project.id}`);
+      setLibraryItems(data);
+    } catch { toast.error('Errore caricamento libreria'); }
+    setLibraryLoading(false);
+  };
+
+  const addFromLibrary = async (item) => {
+    try {
+      const { data } = await api.post(`/media/library/add/${content.id}`, { media: item });
+      const updated = { ...content, media: [...(content.media || []), data] };
+      setContent(updated); onUpdate?.(updated);
+      toast.success('Media aggiunto al contenuto');
+    } catch { toast.error('Errore aggiunta media'); }
   };
 
   const toggleSocial = (profId) => {
@@ -562,6 +585,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Importa da Google Drive" onClick={openDrivePicker}>
             <Download size={16} color="#34a853" />
           </button>
+          <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title="Libreria media del progetto" onClick={openLibrary}>
+            <Images size={16} color="#a855f7" />
+          </button>
         </div>
         <button
           className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5"
@@ -742,6 +768,47 @@ export default function ContentDetail({ content: initialContent, project, onClos
       )}
     </motion.div>
     </motion.div>
+
+    {/* Media Library Modal */}
+    {showLibrary && (
+      <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowLibrary(false)}>
+        <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full sm:max-w-2xl max-h-[80vh] flex flex-col rounded-t-2xl sm:rounded-xl overflow-hidden" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)] flex-shrink-0">
+            <p className="font-semibold text-sm flex items-center gap-2"><Images size={16} color="#a855f7" /> Libreria Media — {project.name}</p>
+            <button onClick={() => setShowLibrary(false)} className="btn-ghost p-1"><X size={16} /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {libraryLoading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-[var(--accent-purple)] border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+            {!libraryLoading && libraryItems.length === 0 && (
+              <p className="text-sm text-[var(--text-muted)] text-center py-12">Nessun media caricato nel progetto</p>
+            )}
+            {!libraryLoading && libraryItems.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {libraryItems.map(item => (
+                  <div key={item.id} className="relative group aspect-square rounded-lg overflow-hidden cursor-pointer" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }} onClick={() => addFromLibrary(item)}>
+                    {item.type === 'image' ? (
+                      <img src={`${process.env.REACT_APP_BACKEND_URL}${item.url}`} alt={item.original_name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                        <Video size={24} color="var(--text-muted)" />
+                        <p className="text-[9px] text-[var(--text-muted)] text-center px-1 truncate w-full">{item.original_name}</p>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(168,85,247,0.6)' }}>
+                      <Plus size={24} color="white" weight="bold" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </div>
+    )}
 
     {/* Input Modal (replaces window.prompt) */}
     {inputModal && (

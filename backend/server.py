@@ -2618,6 +2618,31 @@ async def import_from_drive(inp: DriveImportInput, request: Request):
 class RenderVideoInput(BaseModel):
     content_id: str
 
+@api.get("/media/library/{project_id}")
+async def get_media_library(project_id: str, request: Request):
+    await get_current_user(request)
+    contents = await db.contents.find({"project_id": project_id}, {"media": 1, "_id": 0}).to_list(500)
+    seen = set()
+    items = []
+    for c in contents:
+        for m in c.get("media") or []:
+            if m.get("id") and m["id"] not in seen:
+                seen.add(m["id"])
+                items.append(m)
+    items.sort(key=lambda m: m.get("created_at", ""), reverse=True)
+    return items
+
+@api.post("/media/library/add/{content_id}")
+async def add_media_from_library(content_id: str, request: Request):
+    await get_current_user(request)
+    body = await request.json()
+    src = body.get("media", {})
+    if not src:
+        raise HTTPException(400, "media richiesto")
+    new_doc = {**src, "id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.contents.update_one({"id": content_id}, {"$push": {"media": new_doc}})
+    return new_doc
+
 @api.post("/media/render-video")
 async def render_video(inp: RenderVideoInput, request: Request):
     user = await get_current_user(request)
