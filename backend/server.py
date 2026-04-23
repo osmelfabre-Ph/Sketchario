@@ -1748,6 +1748,7 @@ class PublishSchedule(BaseModel):
     social_profile_ids: List[str]
     scheduled_at: str
     first_comment: Optional[str] = ""
+    social_schedules: Optional[List[dict]] = None  # [{social_profile_id, scheduled_at}]
 
 class PublishUpdate(BaseModel):
     status: Optional[str] = None
@@ -1761,22 +1762,31 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
     now_iso = datetime.now(timezone.utc).isoformat()
-    try:
-        scheduled_dt = datetime.fromisoformat(inp.scheduled_at.replace("Z", "+00:00"))
-    except Exception:
-        scheduled_dt = datetime.now(timezone.utc)
-    publish_now = scheduled_dt <= datetime.now(timezone.utc)
+    # Build per-profile schedule map
+    if inp.social_schedules:
+        schedule_map = {ss["social_profile_id"]: ss["scheduled_at"] for ss in inp.social_schedules}
+        profile_ids = list(schedule_map.keys())
+    else:
+        profile_ids = inp.social_profile_ids
+        schedule_map = {sid: inp.scheduled_at for sid in inp.social_profile_ids}
+
     items = []
-    for sp_id in inp.social_profile_ids:
+    for sp_id in profile_ids:
         profile = await db.social_accounts.find_one({"id": sp_id, "user_id": user["_id"]}, {"_id": 0})
         if not profile:
             continue
+        item_scheduled_at = schedule_map.get(sp_id, inp.scheduled_at)
+        try:
+            scheduled_dt = datetime.fromisoformat(item_scheduled_at.replace("Z", "+00:00"))
+        except Exception:
+            scheduled_dt = datetime.now(timezone.utc)
+        publish_now = scheduled_dt <= datetime.now(timezone.utc)
         item_id = str(uuid.uuid4())
         doc = {
             "id": item_id, "content_id": inp.content_id, "project_id": inp.project_id,
             "social_profile_id": sp_id, "platform": profile.get("platform", ""),
             "profile_name": profile.get("profile_name", ""), "user_id": user["_id"],
-            "status": "queued", "scheduled_at": inp.scheduled_at, "first_comment": inp.first_comment,
+            "status": "queued", "scheduled_at": item_scheduled_at, "first_comment": inp.first_comment,
             "error_message": "", "published_at": "", "created_at": now_iso,
         }
         if publish_now:
@@ -1794,7 +1804,7 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
         items.append(doc)
-    new_status = "published" if publish_now and all(i["status"] == "published" for i in items) else "scheduled"
+    new_status = "published" if all(i["status"] == "published" for i in items) else "scheduled"
     await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": new_status}})
     failed = [i for i in items if i.get("status") == "failed"]
     if failed:

@@ -43,6 +43,183 @@ function useIsMobile() {
   return isMobile;
 }
 
+function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
+  const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888', name: prof.platform };
+  const firstImg = (media || []).find(m => m.type === 'image');
+  const isReel = format === 'reel' || format === 'prompted_reel' || prof.platform === 'tiktok';
+  const short = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
+  const initials = (prof.profile_name || '?')[0].toUpperCase();
+
+  /* ── REEL / TIKTOK ── */
+  if (isReel) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{ width: 160, height: 284, borderRadius: 16, overflow: 'hidden', position: 'relative', background: '#000', border: '2px solid #333', flexShrink: 0 }}>
+          {firstImg
+            ? <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg,#1a1535,#2d1f5e)' }} />}
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 55%)' }} />
+          {/* Right actions */}
+          <div style={{ position: 'absolute', right: 6, bottom: 70, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            {['♡','💬','↗'].map((ic, i) => (
+              <div key={i} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 16 }}>{ic}</div>
+                {i < 2 && <div style={{ color: 'white', fontSize: 8 }}>0</div>}
+              </div>
+            ))}
+          </div>
+          {/* Bottom left */}
+          <div style={{ position: 'absolute', bottom: 8, left: 8, right: 30 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+              <div style={{ width: 20, height: 20, borderRadius: '50%', background: `linear-gradient(135deg,${pi.color},#ec4899)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ color: 'white', fontSize: 8, fontWeight: 700 }}>{initials}</span>
+              </div>
+              <span style={{ color: 'white', fontSize: 9, fontWeight: 600 }}>@{short(prof.profile_name, 14)}</span>
+            </div>
+            <p style={{ color: 'white', fontSize: 9, lineHeight: 1.35, margin: 0 }}>{short(caption, 80)}</p>
+            {hashtags && <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 8, margin: '2px 0 0' }}>{short(hashtags, 40)}</p>}
+          </div>
+          {/* Platform watermark */}
+          <div style={{ position: 'absolute', top: 6, right: 6 }}>
+            <pi.Icon size={12} color="white" weight="fill" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── PINTEREST ── */
+  if (prof.platform === 'pinterest') {
+    return (
+      <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', color: '#111', fontFamily: 'system-ui,sans-serif' }}>
+        <div style={{ position: 'relative', aspectRatio: '2/3', background: '#f0f0f0' }}>
+          {firstImg
+            ? <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <PinterestLogo size={32} color="#ccc" />
+              </div>}
+          <button style={{ position: 'absolute', top: 8, right: 8, background: '#e60023', color: 'white', border: 'none', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'default' }}>Salva</button>
+        </div>
+        <div style={{ padding: '8px 10px 10px' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, margin: '0 0 4px', lineHeight: 1.3 }}>{short(caption, 60)}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#e60023', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ color: 'white', fontSize: 8, fontWeight: 700 }}>{initials}</span>
+            </div>
+            <span style={{ fontSize: 10, color: '#555' }}>{prof.profile_name}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── LINKEDIN ── */
+  if (prof.platform === 'linkedin') {
+    return (
+      <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', color: '#000', fontFamily: 'system-ui,sans-serif', border: '1px solid #ddd' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', padding: '10px 12px 6px', gap: 8 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: '#0a66c2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ color: 'white', fontSize: 13, fontWeight: 700 }}>{initials}</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>{prof.profile_name}</p>
+            <p style={{ fontSize: 10, color: '#666', margin: 0 }}>1 ora fa · 🌐</p>
+          </div>
+          <span style={{ color: '#666', fontSize: 16, cursor: 'default' }}>···</span>
+        </div>
+        <div style={{ padding: '0 12px 8px' }}>
+          <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0 }}>{short(caption, 180)}</p>
+          {hashtags && <p style={{ fontSize: 10, color: '#0a66c2', margin: '4px 0 0' }}>{short(hashtags, 80)}</p>}
+        </div>
+        {firstImg && (
+          <div style={{ aspectRatio: '1.91/1', overflow: 'hidden' }}>
+            <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        )}
+        <div style={{ padding: '6px 12px', borderTop: '1px solid #eee' }}>
+          <div style={{ display: 'flex', gap: 2, fontSize: 13, marginBottom: 4 }}>👍💡❤️<span style={{ fontSize: 10, color: '#666', marginLeft: 4, lineHeight: '20px' }}>43</span></div>
+          <div style={{ display: 'flex', borderTop: '1px solid #eee', paddingTop: 5 }}>
+            {['👍 Mi piace', '💬 Commenta', '↗ Condividi'].map((a, i) => (
+              <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: '#666', padding: '3px 0' }}>{a}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── FACEBOOK ── */
+  if (prof.platform === 'facebook') {
+    return (
+      <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', color: '#000', fontFamily: 'system-ui,sans-serif', border: '1px solid #ddd' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px 6px', gap: 8 }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1877f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ color: 'white', fontSize: 13, fontWeight: 700 }}>{initials}</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>{prof.profile_name}</p>
+            <p style={{ fontSize: 10, color: '#65676b', margin: 0 }}>1 ora fa · 🌐</p>
+          </div>
+          <span style={{ color: '#606770', fontSize: 16, cursor: 'default' }}>···</span>
+        </div>
+        <div style={{ padding: '0 12px 8px' }}>
+          <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, color: '#050505' }}>{short(caption, 180)}</p>
+          {hashtags && <p style={{ fontSize: 10, color: '#1877f2', margin: '4px 0 0' }}>{short(hashtags, 80)}</p>}
+        </div>
+        {firstImg && (
+          <div style={{ aspectRatio: '1.91/1', overflow: 'hidden' }}>
+            <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        )}
+        <div style={{ padding: '4px 12px', borderTop: '1px solid #ddd' }}>
+          <div style={{ display: 'flex', borderTop: '1px solid #ddd', paddingTop: 6, marginTop: 4 }}>
+            {['👍 Mi piace', '💬 Commenta', '↗ Condividi'].map((a, i) => (
+              <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: '#65676b', padding: '3px 0' }}>{a}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── INSTAGRAM FEED (default) ── */
+  return (
+    <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', color: '#262626', fontFamily: 'system-ui,sans-serif', border: '1px solid #dbdbdb' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8 }}>
+        <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ color: 'white', fontSize: 11, fontWeight: 700 }}>{initials}</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>{prof.profile_name}</p>
+        </div>
+        <span style={{ fontSize: 18, color: '#262626' }}>···</span>
+      </div>
+      <div style={{ aspectRatio: '1/1', background: '#f3f4f6', overflow: 'hidden' }}>
+        {firstImg
+          ? <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <InstagramLogo size={28} color="#dbdbdb" />
+            </div>}
+      </div>
+      <div style={{ padding: '8px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+          <span style={{ fontSize: 18 }}>♡</span>
+          <span style={{ fontSize: 18 }}>🗨</span>
+          <span style={{ fontSize: 18 }}>✈</span>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 18 }}>🔖</span>
+        </div>
+        <p style={{ fontSize: 11, margin: '0 0 3px' }}>
+          <span style={{ fontWeight: 700 }}>{prof.profile_name} </span>
+          {short(caption, 120)}
+        </p>
+        {hashtags && <p style={{ fontSize: 10, color: '#00376b', margin: '2px 0 0' }}>{short(hashtags, 80)}</p>}
+        <p style={{ fontSize: 10, color: '#8e8e8e', margin: '4px 0 0' }}>1 ORA FA</p>
+      </div>
+    </div>
+  );
+}
+
 export default function ContentDetail({ content: initialContent, project, onClose, onUpdate }) {
   const { api } = useAuth();
   const { t } = useTranslation();
@@ -81,6 +258,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [showLibrary, setShowLibrary] = useState(false);
   const [libraryItems, setLibraryItems] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [socialTimes, setSocialTimes] = useState({});
 
   useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles((r.data || []).filter(p => p.platform !== 'google_slides'))).catch(() => {});
@@ -94,6 +272,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
         setScheduleDate(dt.toISOString().slice(0, 10));
         setScheduleTime(dt.toISOString().slice(11, 16));
         setSelectedSocials(items.map(q => q.social_profile_id).filter(Boolean));
+        const times = {};
+        items.forEach(q => { times[q.social_profile_id] = new Date(q.scheduled_at).toISOString().slice(11, 16); });
+        setSocialTimes(times);
       }
     }).catch(() => {});
   }, [api, project.id, initialContent.id]);
@@ -102,6 +283,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
     if (showSchedule) {
       const base = scheduleDate ? new Date(scheduleDate + 'T12:00:00') : new Date();
       setCalViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
+      const times = {};
+      selectedSocials.forEach(id => { times[id] = socialTimes[id] || scheduleTime; });
+      setSocialTimes(times);
     }
   }, [showSchedule]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -398,7 +582,17 @@ export default function ContentDetail({ content: initialContent, project, onClos
       if (contentQueueItems.length > 0) {
         await Promise.all(contentQueueItems.map(item => api.delete(`/publish/queue/${item.id}`).catch(() => {})));
       }
-      await api.post('/publish/schedule', { content_id: content.id, project_id: project.id, social_profile_ids: selectedSocials, scheduled_at: `${scheduleDate}T${scheduleTime}:00Z` });
+      const socialSchedules = selectedSocials.map(id => ({
+        social_profile_id: id,
+        scheduled_at: `${scheduleDate}T${socialTimes[id] || scheduleTime}:00Z`,
+      }));
+      await api.post('/publish/schedule', {
+        content_id: content.id,
+        project_id: project.id,
+        social_profile_ids: selectedSocials,
+        scheduled_at: `${scheduleDate}T${scheduleTime}:00Z`,
+        social_schedules: socialSchedules,
+      });
       const { data: queueData } = await api.get(`/publish/queue/${project.id}`);
       const newItems = queueData.filter(q => q.content_id === content.id && q.status === 'queued');
       setContentQueueItems(newItems);
@@ -653,28 +847,21 @@ export default function ContentDetail({ content: initialContent, project, onClos
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase">{t('editor.preview')}</p>
         {selectedSocials.length > 0 && <span className="badge blue text-[10px]">{selectedSocials.length} social</span>}
       </div>
-      {selectedProfiles.length > 0 ? selectedProfiles.map(prof => {
-        const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#fff', name: prof.platform };
-        const previewCaption = editCaption.length > 150 ? editCaption.slice(0, 150) + '...' : editCaption;
-        return (
-          <div key={prof.id} className="mb-4 p-3 rounded-lg" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: `${pi.color}20` }}>
-                <pi.Icon weight="fill" size={14} color={pi.color} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold">{prof.profile_name} · {pi.name}</p>
-                <p className="text-[10px] text-[var(--text-muted)]">{project.sector}</p>
-              </div>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded" style={{ background: `${pi.color}20`, color: pi.color }}>{pi.name.toUpperCase()}</span>
-            </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-2" style={{ whiteSpace: 'pre-wrap' }}>{previewCaption}</p>
-            {content.media && content.media[0] && content.media[0].type === 'image' && (
-              <img src={`${process.env.REACT_APP_BACKEND_URL}${content.media[0].url}`} alt="" className="w-full h-32 md:h-40 object-cover rounded-lg mb-2" />
-            )}
+      {selectedProfiles.length > 0 ? selectedProfiles.map(prof => (
+        <div key={prof.id} className="mb-5">
+          <div className="flex items-center gap-2 mb-2">
+            {(() => { const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888', name: prof.platform }; return <><pi.Icon size={12} color={pi.color} weight="fill" /><span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">{pi.name}</span></>; })()}
           </div>
-        );
-      }) : (
+          <SocialMockup
+            prof={prof}
+            format={content.format}
+            caption={editCaption}
+            hashtags={editHashtags}
+            media={content.media}
+            backendUrl={process.env.REACT_APP_BACKEND_URL}
+          />
+        </div>
+      )) : (
         <div className="text-center py-8 md:py-12">
           <Eye size={28} className="mx-auto mb-3 text-[var(--text-muted)] opacity-30" />
           <p className="text-xs text-[var(--text-muted)] mb-1">{t('editor.selectSocials')}</p>
@@ -990,10 +1177,25 @@ export default function ContentDetail({ content: initialContent, project, onClos
             </div>
           </div>
 
-          {/* Time */}
+          {/* Per-social times */}
           <div className="mb-4">
-            <p className="text-[10px] text-[var(--text-muted)] mb-1.5">Orario</p>
-            <input type="time" className="input-dark text-sm py-2 w-full" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+            <p className="text-[10px] text-[var(--text-muted)] mb-2 font-semibold uppercase">Orario per piattaforma</p>
+            {selectedProfiles.map(prof => {
+              const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888' };
+              return (
+                <div key={prof.id} className="flex items-center gap-2 mb-2">
+                  <pi.Icon size={14} color={pi.color} weight="fill" />
+                  <span className="text-xs flex-1 truncate text-[var(--text-secondary)]">{prof.profile_name}</span>
+                  <input
+                    type="time"
+                    className="input-dark text-xs py-1"
+                    style={{ width: 90, paddingLeft: '0.5rem' }}
+                    value={socialTimes[prof.id] || scheduleTime}
+                    onChange={e => setSocialTimes(prev => ({ ...prev, [prof.id]: e.target.value }))}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           <div className="flex gap-2">
