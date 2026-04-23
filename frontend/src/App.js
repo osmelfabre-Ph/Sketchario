@@ -3,7 +3,7 @@ import '@/App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -34,6 +34,20 @@ function AppContent() {
       }).catch(() => {});
     }
   }, [user, api]);
+
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('billing') === 'success') {
+      window.history.replaceState({}, '', window.location.pathname);
+      const plan = user.plan || 'creator';
+      const planLabel = plan === 'strategist' ? 'Strategist' : plan === 'creator' ? 'Creator' : 'base';
+      toast.success(`🎉 Benvenuto in Sketchario ${planLabel}! Il tuo piano è attivo.`, {
+        duration: 8000,
+        description: 'Sei pronto a creare contenuti. Inizia dal Wizard!',
+      });
+    }
+  }, [user]);
 
   if (loading) {
     return (
