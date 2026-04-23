@@ -7,7 +7,7 @@ import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
   CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check,
-  XCircle, Images
+  XCircle, Images, CaretLeft, CaretRight
 } from '@phosphor-icons/react';
 
 const PLATFORM_ICONS = {
@@ -22,6 +22,16 @@ const CanvaIcon = ({ size = 16 }) => (
   <img src="https://www.canva.com/favicon.ico" alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
+const MONTH_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const DAY_IT   = ['L','M','M','G','V','S','D'];
+function calDays(monthStart) {
+  const y = monthStart.getFullYear(), m = monthStart.getMonth();
+  const pad = (new Date(y, m, 1).getDay() + 6) % 7;
+  const total = new Date(y, m + 1, 0).getDate();
+  const cells = Array(pad).fill(null);
+  for (let d = 1; d <= total; d++) cells.push(d);
+  return cells;
+}
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -63,7 +73,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [generatingImage, setGeneratingImage] = useState(false);
   const [renderingVideo, setRenderingVideo] = useState(false);
   const [optimizingPrompt, setOptimizingPrompt] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [lightboxIdx, setLightboxIdx] = useState(null);
+  const [calViewDate, setCalViewDate] = useState(null);
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
   const [fluxComposition, setFluxComposition] = useState('wide');
   const [imageModel, setImageModel] = useState('flux');
@@ -82,11 +93,17 @@ export default function ContentDetail({ content: initialContent, project, onClos
         const dt = new Date(items[0].scheduled_at);
         setScheduleDate(dt.toISOString().slice(0, 10));
         setScheduleTime(dt.toISOString().slice(11, 16));
-        // Pre-select the social profiles that are already scheduled
         setSelectedSocials(items.map(q => q.social_profile_id).filter(Boolean));
       }
     }).catch(() => {});
   }, [api, project.id, initialContent.id]);
+
+  useEffect(() => {
+    if (showSchedule) {
+      const base = scheduleDate ? new Date(scheduleDate + 'T12:00:00') : new Date();
+      setCalViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
+    }
+  }, [showSchedule]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── CANVA ─────────────────────────────────────────────
   const openCanvaEditor = async () => {
@@ -513,7 +530,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <p className="text-xs text-[var(--accent-purple)]">Generazione immagine in corso...</p>
           </div>
         )}
-        {content.media && content.media.length > 0 && (
+        {content.media && content.media.length > 0 && (() => {
+          const imgMedia = content.media.filter(m => m.type === 'image');
+          return (
           <div className="flex gap-2 flex-wrap mb-3">
             {content.media.map(m => (
               <div key={m.id} className="relative group w-14 h-14 md:w-16 md:h-16">
@@ -523,8 +542,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
                   <div className="w-full h-full rounded-lg bg-[var(--bg-secondary)] flex items-center justify-center"><Video size={20} /></div>
                 )}
                 {m.type === 'image' && (
-                  <button className="absolute inset-0 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setLightboxUrl(`${process.env.REACT_APP_BACKEND_URL}${m.url}`)}>
+                  <button className="absolute inset-0 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setLightboxIdx(imgMedia.findIndex(im => im.id === m.id))}>
                     <Eye size={18} color="white" />
+                    {imgMedia.length > 1 && <span className="absolute bottom-1 right-1 text-[9px] font-bold bg-black/60 rounded px-1">{imgMedia.findIndex(im => im.id === m.id) + 1}/{imgMedia.length}</span>}
                   </button>
                 )}
                 <button className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-pink)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteMedia(m.id)} disabled={deletingMediaId === m.id}>
@@ -535,7 +555,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
       </div>
       <div className="flex gap-2 flex-wrap items-center">
         {content.format === 'prompted_reel' ? (
@@ -759,23 +780,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </div>
       </div>
 
-      {/* Schedule Popup */}
-      {showSchedule && (
-        <div className={`absolute ${isMobile ? 'bottom-14 left-3 right-3' : 'bottom-16 right-6'} z-10 card w-auto md:w-72 p-4`} style={{ background: 'var(--bg-card)' }}>
-          <p className="text-sm font-semibold mb-3">{contentQueueItems.length > 0 ? t('editor.scheduleModifyTitle') : t('editor.scheduleTitle')}</p>
-          <p className="text-[10px] text-[var(--text-muted)] mb-3">{t('editor.scheduleOnSocials', { count: selectedSocials.length })}</p>
-          <div className="flex gap-2 mb-3">
-            <input type="date" className="input-dark text-sm py-1.5 flex-1" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ paddingLeft: '0.5rem' }} />
-            <input type="time" className="input-dark text-sm py-1.5 w-24" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ paddingLeft: '0.5rem' }} />
-          </div>
-          <div className="flex gap-2">
-            <button className="btn-ghost flex-1 text-xs" onClick={() => setShowSchedule(false)} disabled={scheduling}>{t('common.cancel')}</button>
-            <button className="btn-gradient flex-1 text-xs" onClick={schedule} disabled={scheduling}>
-              {scheduling ? <><span className="animate-spin inline-block mr-1">⏳</span>{t('editor.publishing_')}</> : t('common.confirm')}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Schedule Popup — handled as fixed overlay below */}
     </motion.div>
     </motion.div>
 
@@ -916,10 +921,88 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </motion.div>
       </div>
     )}
-    {lightboxUrl && (
-      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setLightboxUrl(null)}>
-        <button className="absolute top-4 right-4 btn-ghost p-2" onClick={() => setLightboxUrl(null)}><X size={24} /></button>
-        <img src={lightboxUrl} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()} />
+    {/* Navigable lightbox */}
+    {lightboxIdx !== null && (() => {
+      const imgMedia = (content.media || []).filter(m => m.type === 'image');
+      const cur = imgMedia[lightboxIdx];
+      if (!cur) return null;
+      return (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.92)' }} onClick={() => setLightboxIdx(null)}>
+          <button className="absolute top-4 right-4 btn-ghost p-2" onClick={() => setLightboxIdx(null)}><X size={24} /></button>
+          {imgMedia.length > 1 && (
+            <button className="absolute left-4 top-1/2 -translate-y-1/2 btn-ghost p-2 z-10" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i - 1 + imgMedia.length) % imgMedia.length); }}>
+              <CaretLeft size={28} weight="bold" />
+            </button>
+          )}
+          <img src={`${process.env.REACT_APP_BACKEND_URL}${cur.url}`} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()} />
+          {imgMedia.length > 1 && (
+            <>
+              <button className="absolute right-4 top-1/2 -translate-y-1/2 btn-ghost p-2 z-10" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i + 1) % imgMedia.length); }}>
+                <CaretRight size={28} weight="bold" />
+              </button>
+              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {imgMedia.map((_, i) => (
+                  <div key={i} onClick={e => { e.stopPropagation(); setLightboxIdx(i); }} className="w-2 h-2 rounded-full cursor-pointer transition-all" style={{ background: i === lightboxIdx ? 'white' : 'rgba(255,255,255,0.35)' }} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    })()}
+
+    {/* Schedule overlay — centered */}
+    {showSchedule && calViewDate && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowSchedule(false)}>
+        <div className="card p-5 w-80 max-w-full" style={{ background: 'var(--bg-card)' }} onClick={e => e.stopPropagation()}>
+          <p className="text-sm font-semibold mb-1">{contentQueueItems.length > 0 ? t('editor.scheduleModifyTitle') : t('editor.scheduleTitle')}</p>
+          <p className="text-[10px] text-[var(--text-muted)] mb-4">{t('editor.scheduleOnSocials', { count: selectedSocials.length })}</p>
+
+          {/* Mini calendar */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><CaretLeft size={14} /></button>
+              <span className="text-xs font-semibold">{MONTH_IT[calViewDate.getMonth()]} {calViewDate.getFullYear()}</span>
+              <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}><CaretRight size={14} /></button>
+            </div>
+            <div className="grid grid-cols-7 gap-0.5 mb-1">
+              {DAY_IT.map((d, i) => <div key={i} className="text-center text-[9px] font-semibold text-[var(--text-muted)] py-0.5">{d}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-0.5">
+              {calDays(calViewDate).map((day, i) => {
+                if (!day) return <div key={i} />;
+                const iso = `${calViewDate.getFullYear()}-${String(calViewDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const isSelected = scheduleDate === iso;
+                const today = new Date(); const isToday = day === today.getDate() && calViewDate.getMonth() === today.getMonth() && calViewDate.getFullYear() === today.getFullYear();
+                return (
+                  <button key={i} onClick={() => setScheduleDate(iso)}
+                    className="text-xs py-1.5 rounded-md font-medium transition-all"
+                    style={isSelected
+                      ? { background: 'linear-gradient(135deg,var(--gradient-start),var(--gradient-end))', color: 'white' }
+                      : isToday
+                        ? { background: 'rgba(168,85,247,0.15)', color: 'var(--accent-purple)', outline: '1px solid var(--accent-purple)' }
+                        : { color: 'var(--text-primary)' }
+                    }>
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Time */}
+          <div className="mb-4">
+            <p className="text-[10px] text-[var(--text-muted)] mb-1.5">Orario</p>
+            <input type="time" className="input-dark text-sm py-2 w-full" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+          </div>
+
+          <div className="flex gap-2">
+            <button className="btn-ghost flex-1 text-xs" onClick={() => setShowSchedule(false)} disabled={scheduling}>{t('common.cancel')}</button>
+            <button className="btn-gradient flex-1 text-xs" onClick={schedule} disabled={scheduling}>
+              {scheduling ? <><span className="animate-spin inline-block mr-1">⏳</span>{t('editor.publishing_')}</> : t('common.confirm')}
+            </button>
+          </div>
+        </div>
       </div>
     )}
     </>
