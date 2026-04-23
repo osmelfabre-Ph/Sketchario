@@ -399,8 +399,11 @@ export default function ContentDetail({ content: initialContent, project, onClos
     const tid = toast.loading(t('editor.uploading'));
     try {
       const { data } = await api.post(`/media/upload/${content.id}`, fd);
-      const updated = { ...content, media: [...(content.media || []), data] };
-      setContent(updated); onUpdate?.(updated);
+      setContent(prev => {
+        const updated = { ...prev, media: [...(prev.media || []), data] };
+        onUpdate?.(updated);
+        return updated;
+      });
       toast.success('File caricato', { id: tid });
     } catch (e) { toast.error('Errore upload: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     setUploadingMedia(false);
@@ -502,7 +505,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <p className="text-xs text-[var(--text-muted)] mt-1">{t('editor.uploadMax')}</p>
             </>
           )}
-          <input type="file" accept="image/*,video/*" className="hidden" disabled={uploadingMedia} onChange={e => { if (e.target.files[0]) uploadMedia(e.target.files[0]); }} />
+          <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={uploadingMedia} onChange={async e => { const files = Array.from(e.target.files); e.target.value = ''; for (const f of files) await uploadMedia(f); }} />
         </label>
         {generatingImage && (
           <div className="flex items-center gap-3 p-3 rounded-lg mb-3" style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)' }}>

@@ -2317,12 +2317,12 @@ async def _get_canva_access_token(user_id: str) -> str:
     if not token_doc or not token_doc.get("access_token"):
         raise HTTPException(401, "Canva non connesso")
     expires_at = token_doc.get("token_expires_at")
-    needs_refresh = expires_at and (expires_at - datetime.now(timezone.utc).timestamp()) < 60
+    refresh_token = token_doc.get("refresh_token", "")
+    # Refresh if: token is about to expire, OR legacy token with no expiry info stored
+    needs_refresh = refresh_token and (
+        not expires_at or (expires_at - datetime.now(timezone.utc).timestamp()) < 60
+    )
     if needs_refresh:
-        refresh_token = token_doc.get("refresh_token", "")
-        if not refresh_token:
-            await db.canva_tokens.delete_one({"user_id": str(user_id)})
-            raise HTTPException(401, "Sessione Canva scaduta — ricollegati")
         async with httpx.AsyncClient(timeout=30) as hc:
             r = await hc.post("https://api.canva.com/rest/v1/oauth/token", data={
                 "grant_type": "refresh_token",

@@ -180,7 +180,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       setContents(prev => [...prev, data]);
       setShowNewPost(false); setNewPostHook('');
       toast.success('Post creato!', { id: tid });
-      if (data.caption || data.script) openContentDetail(data);
+      openContentDetail(data);
     } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     finally { setNewPostLoading(false); }
   };
