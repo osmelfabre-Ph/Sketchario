@@ -919,7 +919,7 @@ Restituisci un oggetto JSON con:
 - script: lo script completo del contenuto (per reel: script parlato; per carousel: testo di ogni slide separato da ---)
 - caption: la caption per il post
 - hashtags: stringa di hashtag separati da spazi
-- slides: se carousel, array di 4-6 stringhe. Ogni slide: TITOLO (max 6 parole, tutto maiuscolo) seguito da 3-4 punti numerati nel formato "1 — punto specifico e dettagliato\n2 — secondo punto\n3 — terzo punto". MAI contenuto generico — dati, numeri, esempi concreti. Se reel, array vuoto.
+- slides: se carousel, array di 5-8 stringhe, una per slide. FORMATO OBBLIGATORIO di ogni stringa: inizia con "Slide N:" (es. "Slide 1:"), poi a capo TITOLO TUTTO MAIUSCOLO (max 7 parole), poi a capo 4-5 punti numerati nel formato "1 — descrizione dettagliata e concreta con dati/esempi\n2 — secondo punto\n3 — terzo punto\n4 — quarto punto". Struttura raccomandata: Slide 1 = hook/problema (1-2 frasi ad alto impatto), Slide 2 = promessa/contesto, Slide 3-6 = contenuto educativo ricco (dati, percentuali, esempi reali, casi studio), Slide 7 = riepilogo, Slide 8 = CTA. MAI contenuto vago. Se reel, array vuoto.
 - opening_hook: stringa vuota
 - visual_direction: stringa vuota"""
         try:
@@ -1059,7 +1059,7 @@ Hook originale: {content.get('hook_text','')}
 Formato: {fmt}
 Settore: {project.get('sector','')}
 {tov_desc}
-Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 4-6 stringhe; ogni slide = TITOLO\n\n1 — punto\n2 — punto\n3 — punto; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 5-8 stringhe; ogni slide inizia con "Slide N:" poi TITOLO MAIUSCOLO poi 4-5 punti numerati "1 — dettaglio concreto"; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
@@ -1106,13 +1106,14 @@ Script Reel: {content.get('script','')}
 Settore: {project.get('sector','')}
 {tov_desc}
 
-Crea un carousel con MASSIMO 6 slide totali:
-- SLIDE 1: problema/hook (1-2 frasi ad alto impatto emotivo)
-- SLIDE 2: contesto/promessa (cosa impareranno)
-- SLIDE 3-5: contenuto educativo ricco. Ogni slide = TITOLO (max 6 parole, MAIUSCOLO) + 3-4 punti numerati nel formato "1 — descrizione specifica\n2 — descrizione specifica\n3 — descrizione specifica". Usa dati, percentuali, esempi reali.
-- SLIDE 6: CTA diretto con call-to-action e hashtag principali
+Crea un carousel con 6-8 slide. FORMATO OBBLIGATORIO ogni slide: inizia con "Slide N:" poi TITOLO TUTTO MAIUSCOLO (max 7 parole) poi 4-5 punti "1 — testo\n2 — testo\n..." concreti e dettagliati:
+- Slide 1: hook/problema ad alto impatto emotivo
+- Slide 2: promessa/contesto (cosa impareranno)
+- Slide 3-6: contenuto educativo ricco con dati, percentuali, esempi reali, casi studio
+- Slide 7: riepilogo dei punti chiave
+- Slide 8: CTA diretto con invito all'azione
 
-Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 4-6 stringhe; ogni body slide = "TITOLO\n\n1 — punto\n2 — punto\n3 — punto")"""
+Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 6-8 stringhe, ogni stringa = "Slide N:\nTITOLO MAIUSCOLO\n\n1 — punto\n2 — punto\n3 — punto\n4 — punto")"""
     else:
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Carousel in un Reel script parlato.
@@ -2657,9 +2658,9 @@ async def canva_export_download(content_id: str, request: Request):
     if not urls:
         return {"media": [], "count": 0}
     added = []
-    async with httpx.AsyncClient(timeout=60) as hc:
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
         for i, img_url in enumerate(urls):
-            resp = await hc.get(img_url)
+            resp = await hc.get(img_url, headers={"User-Agent": "Mozilla/5.0"})
             if resp.status_code != 200:
                 continue
             fname = f"canva_{uuid.uuid4().hex}.png"
