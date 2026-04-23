@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import {
   House, MagicWand, User, SignOut, Bell, CaretLeft, CaretRight,
-  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck, RssSimple, Translate
+  CalendarBlank, Users, Globe, ChartBar, Queue, ShieldCheck, RssSimple, Translate, Question
 } from '@phosphor-icons/react';
 
 
@@ -68,7 +68,7 @@ function LangSwitcher({ collapsed }) {
   );
 }
 
-export default function Sidebar({ activeView, setActiveView, isProjectView }) {
+export default function Sidebar({ activeView, setActiveView, isProjectView, onHelpOpen }) {
   const { user, logout, api } = useAuth();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -215,6 +215,17 @@ export default function Sidebar({ activeView, setActiveView, isProjectView }) {
       )}
 
       <div className="flex-1" />
+
+      {/* Help */}
+      <button
+        className="sidebar-nav-item text-[var(--text-muted)]"
+        onClick={onHelpOpen}
+        title={collapsed ? 'Guida' : ''}
+        style={collapsed ? { justifyContent: 'center', padding: '0.75rem' } : {}}
+      >
+        <Question size={20} />
+        {!collapsed && <span>Guida</span>}
+      </button>
 
       {/* Notifications bell */}
       <button

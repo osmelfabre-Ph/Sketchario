@@ -14,6 +14,7 @@ import AdminConsole from './components/AdminConsole';
 import Billing from './components/Billing';
 import Notifications from './components/Notifications';
 import OnboardingTour from './components/OnboardingTour';
+import HelpCenter from './components/HelpCenter';
 
 function AppContent() {
   const { user, loading, api } = useAuth();
@@ -22,6 +23,7 @@ function AppContent() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [wizardResumeData, setWizardResumeData] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     if (user && api) {
@@ -81,7 +83,7 @@ function AppContent() {
 
   return (
     <div className="main-layout">
-      <Sidebar activeView={activeView} setActiveView={handleSetActiveView} isProjectView={isProjectView} />
+      <Sidebar activeView={activeView} setActiveView={handleSetActiveView} isProjectView={isProjectView} onHelpOpen={() => setShowHelp(true)} />
       <main className="main-content flex flex-col">
         <div className={`flex-1 ${isProjectView ? '' : 'p-4 md:p-8 overflow-y-auto'}`}>{renderView()}</div>
         {!isProjectView && (
@@ -96,6 +98,7 @@ function AppContent() {
         )}
       </main>
       {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
+      {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
