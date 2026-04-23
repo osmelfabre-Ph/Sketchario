@@ -266,5 +266,34 @@
     "terms": "Términos",
     "privacy": "Privacidad",
     "cookie": "Cookie"
+  },
+  "help": {
+    "title": "Guía de Sketchario",
+    "search": "Buscar en la guía...",
+    "index": "Índice",
+    "close": "Cerrar",
+    "backTo": "Volver a {{cat}}",
+    "results": "{{count}} resultados para",
+    "noResults": "No se encontraron resultados.",
+    "articles": "{{count}} artículos",
+    "comingSoon": "Artículos próximamente.",
+    "returnToDashboard": "Volver al Dashboard",
+    "categories": {
+      "start": "Primeros Pasos", "startDesc": "Visión general y configuración inicial",
+      "wizard": "Crear un Proyecto", "wizardDesc": "El Wizard guiado paso a paso",
+      "content": "Gestión de Contenidos", "contentDesc": "Lista, calendario y estados",
+      "editor": "Editor de Posts", "editorDesc": "Escritura, medios y optimización",
+      "publish": "Publicación", "publishDesc": "Social, programación y cola",
+      "integrations": "Integraciones", "integrationsDesc": "Drive, Canva, Feeds RSS",
+      "account": "Cuenta y Equipo", "accountDesc": "Perfil, planes y colaboradores"
+    }
+  },
+  "tour": {
+    "next": "Siguiente →", "back": "← Atrás", "skip": "Saltar tour", "close": "Cerrar", "last": "Fin",
+    "step1Title": "🏠 Dashboard", "step1": "La página principal con todos tus proyectos. Abre, archiva o elimina proyectos y ve cuántos contenidos has generado.",
+    "step2Title": "✨ Nuevo Proyecto", "step2": "Haz clic aquí para iniciar el Wizard guiado. En 5 pasos, la IA genera: buyer personas, tono de voz, hooks y contenidos para redes sociales.",
+    "step3Title": "📖 Guía", "step3": "Documentación completa de Sketchario: editor, publicación, integraciones, equipo y más. Siempre disponible aquí.",
+    "step4Title": "🔔 Notificaciones", "step4": "Notas de versión y actualizaciones de Sketchario. El punto rojo indica mensajes no leídos.",
+    "step5Title": "👤 Tu Perfil", "step5": "Edita nombre, sector y contraseña. Gestiona tu plan y ve las opciones de mejora."
   }
 }

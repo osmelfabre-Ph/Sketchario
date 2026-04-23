@@ -266,5 +266,50 @@
     "terms": "Terms",
     "privacy": "Privacy",
     "cookie": "Cookie"
+  },
+  "help": {
+    "title": "Sketchario Help",
+    "search": "Search the help center...",
+    "index": "Index",
+    "close": "Close",
+    "backTo": "Back to {{cat}}",
+    "results": "{{count}} results for",
+    "noResults": "No results found.",
+    "articles": "{{count}} articles",
+    "comingSoon": "Articles coming soon.",
+    "returnToDashboard": "Back to Dashboard",
+    "categories": {
+      "start": "Getting Started",
+      "startDesc": "Overview and initial setup",
+      "wizard": "Create a Project",
+      "wizardDesc": "The guided Wizard step by step",
+      "content": "Content Management",
+      "contentDesc": "List, calendar and statuses",
+      "editor": "Post Editor",
+      "editorDesc": "Writing, media and optimization",
+      "publish": "Publishing",
+      "publishDesc": "Social, scheduling and queue",
+      "integrations": "Integrations",
+      "integrationsDesc": "Drive, Canva, RSS Feeds",
+      "account": "Account & Team",
+      "accountDesc": "Profile, plans and collaborators"
+    }
+  },
+  "tour": {
+    "next": "Next →",
+    "back": "← Back",
+    "skip": "Skip tour",
+    "close": "Close",
+    "last": "Done",
+    "step1Title": "🏠 Dashboard",
+    "step1": "Your main home with all your projects. Open, archive or delete projects, and see at a glance how many contents you've generated.",
+    "step2Title": "✨ New Project",
+    "step2": "Click here to start the guided Wizard. In 5 steps, AI generates for you: buyer personas, tone of voice, hooks and all content ready for social.",
+    "step3Title": "📖 Help",
+    "step3": "Complete Sketchario documentation: editor, publishing, integrations, team and much more. Always available here.",
+    "step4Title": "🔔 Notifications",
+    "step4": "Release notes and Sketchario updates. The red dot indicates unread messages.",
+    "step5Title": "👤 Your Profile",
+    "step5": "Edit name, sector and password. Manage your subscription plan and view upgrade options."
   }
 }

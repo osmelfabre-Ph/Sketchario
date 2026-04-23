@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   X, MagnifyingGlass, ArrowLeft, CaretRight,
   House, Sparkle, Article, PencilSimple, PaperPlaneTilt,
@@ -576,9 +577,16 @@ function Block({ b }) {
 
 // ─── COMPONENTE PRINCIPALE ───────────────────────────────────
 export default function HelpCenter({ onClose }) {
+  const { t } = useTranslation();
   const [catId, setCatId]       = useState(null);
   const [articleId, setArticleId] = useState(null);
   const [search, setSearch]     = useState('');
+
+  const tCats = useMemo(() => CATEGORIES.map(c => ({
+    ...c,
+    title: t(`help.categories.${c.id}`, c.title),
+    desc:  t(`help.categories.${c.id}Desc`, c.desc),
+  })), [t]);
 
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
@@ -593,7 +601,7 @@ export default function HelpCenter({ onClose }) {
     );
   }, [search]);
 
-  const currentCat     = CATEGORIES.find(c => c.id === catId);
+  const currentCat     = tCats.find(c => c.id === catId);
   const currentArticle = ARTICLES.find(a => a.id === articleId);
   const catArticles    = ARTICLES.filter(a => a.categoryId === catId);
 
@@ -608,18 +616,18 @@ export default function HelpCenter({ onClose }) {
         {/* Logo cliccabile → torna alla dashboard */}
         <button
           onClick={onClose}
-          title="Torna alla Dashboard"
+          title={t('help.returnToDashboard')}
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
         >
           <img src="/assets/favicon.jpg" alt="Sketchario" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'contain' }} />
         </button>
-        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', flexShrink: 0 }}>Guida di Sketchario</span>
+        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', flexShrink: 0 }}>{t('help.title')}</span>
         <div style={{ flex: 1, position: 'relative', maxWidth: 480 }}>
           <MagnifyingGlass size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
             value={search}
             onChange={e => { setSearch(e.target.value); setCatId(null); setArticleId(null); }}
-            placeholder="Cerca nella guida..."
+            placeholder={t('help.search')}
             style={{ width: '100%', paddingLeft: 36, paddingRight: 12, paddingTop: 8, paddingBottom: 8, background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '0.625rem', color: 'var(--text-primary)', fontSize: '0.875rem', outline: 'none' }}
           />
         </div>
@@ -629,7 +637,7 @@ export default function HelpCenter({ onClose }) {
           title="Chiudi guida"
           style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '0.625rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 500, flexShrink: 0 }}
         >
-          <X size={14} /> Chiudi
+          <X size={14} /> {t('help.close')}
         </button>
       </div>
 
@@ -639,9 +647,9 @@ export default function HelpCenter({ onClose }) {
         {/* Sidebar categorie */}
         <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflowY: 'auto', padding: '1.25rem 0.75rem' }}>
           <button onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.8rem', marginBottom: '1rem', padding: '0.25rem 0.5rem' }}>
-            <BookOpen size={14} /> Indice
+            <BookOpen size={14} /> {t('help.index')}
           </button>
-          {CATEGORIES.map(cat => (
+          {tCats.map(cat => (
             <button
               key={cat.id}
               onClick={() => { setCatId(cat.id); setArticleId(null); setSearch(''); }}
@@ -666,11 +674,11 @@ export default function HelpCenter({ onClose }) {
           {search.trim() && (
             <div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-                {searchResults.length} risultati per "<strong style={{ color: 'var(--text-secondary)' }}>{search}</strong>"
+                {t('help.results', { count: searchResults.length })} "<strong style={{ color: 'var(--text-secondary)' }}>{search}</strong>"
               </p>
               {searchResults.length === 0
-                ? <p style={{ color: 'var(--text-muted)' }}>Nessun risultato trovato.</p>
-                : searchResults.map(a => <ArticleCard key={a.id} article={a} categories={CATEGORIES} onClick={() => { setCatId(a.categoryId); setArticleId(a.id); setSearch(''); }} />)
+                ? <p style={{ color: 'var(--text-muted)' }}>{t('help.noResults')}</p>
+                : searchResults.map(a => <ArticleCard key={a.id} article={a} categories={tCats} onClick={() => { setCatId(a.categoryId); setArticleId(a.id); setSearch(''); }} />)
               }
             </div>
           )}
@@ -678,10 +686,9 @@ export default function HelpCenter({ onClose }) {
           {/* HOME */}
           {!search.trim() && !catId && (
             <div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Come possiamo aiutarti?</h1>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '0.9rem' }}>Esplora la guida completa di Sketchario per imparare a usare tutte le funzionalità.</p>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{t('help.title')}</h1>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-                {CATEGORIES.map(cat => (
+                {tCats.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => setCatId(cat.id)}
@@ -694,7 +701,7 @@ export default function HelpCenter({ onClose }) {
                     </div>
                     <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{cat.title}</p>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{cat.desc}</p>
-                    <p style={{ fontSize: '0.75rem', color: cat.color, marginTop: '0.5rem' }}>{ARTICLES.filter(a => a.categoryId === cat.id).length} articoli</p>
+                    <p style={{ fontSize: '0.75rem', color: cat.color, marginTop: '0.5rem' }}>{t('help.articles', { count: ARTICLES.filter(a => a.categoryId === cat.id).length })}</p>
                   </button>
                 ))}
               </div>
@@ -714,8 +721,8 @@ export default function HelpCenter({ onClose }) {
                 </div>
               </div>
               {catArticles.length === 0
-                ? <p style={{ color: 'var(--text-muted)' }}>Articoli in arrivo presto.</p>
-                : catArticles.map(a => <ArticleCard key={a.id} article={a} categories={CATEGORIES} onClick={() => setArticleId(a.id)} />)
+                ? <p style={{ color: 'var(--text-muted)' }}>{t('help.comingSoon')}</p>
+                : catArticles.map(a => <ArticleCard key={a.id} article={a} categories={tCats} onClick={() => setArticleId(a.id)} />)
               }
             </div>
           )}
@@ -727,7 +734,7 @@ export default function HelpCenter({ onClose }) {
                 onClick={() => setArticleId(null)}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.8rem', marginBottom: '1.5rem' }}
               >
-                <ArrowLeft size={14} /> Torna a {currentCat?.title}
+                <ArrowLeft size={14} /> {t('help.backTo', { cat: currentCat?.title })}
               </button>
               <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>{currentArticle.title}</h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.75rem' }}>{currentArticle.desc}</p>

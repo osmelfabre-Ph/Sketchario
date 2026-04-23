@@ -266,5 +266,34 @@
     "terms": "Conditions",
     "privacy": "Confidentialité",
     "cookie": "Cookie"
+  },
+  "help": {
+    "title": "Guide Sketchario",
+    "search": "Rechercher dans le guide...",
+    "index": "Index",
+    "close": "Fermer",
+    "backTo": "Retour à {{cat}}",
+    "results": "{{count}} résultats pour",
+    "noResults": "Aucun résultat trouvé.",
+    "articles": "{{count}} articles",
+    "comingSoon": "Articles bientôt disponibles.",
+    "returnToDashboard": "Retour au Dashboard",
+    "categories": {
+      "start": "Premiers Pas", "startDesc": "Vue d'ensemble et configuration initiale",
+      "wizard": "Créer un Projet", "wizardDesc": "Le Wizard guidé étape par étape",
+      "content": "Gestion du Contenu", "contentDesc": "Liste, calendrier et statuts",
+      "editor": "Éditeur de Posts", "editorDesc": "Rédaction, médias et optimisation",
+      "publish": "Publication", "publishDesc": "Social, planification et file d'attente",
+      "integrations": "Intégrations", "integrationsDesc": "Drive, Canva, Flux RSS",
+      "account": "Compte et Équipe", "accountDesc": "Profil, plans et collaborateurs"
+    }
+  },
+  "tour": {
+    "next": "Suivant →", "back": "← Retour", "skip": "Passer le tour", "close": "Fermer", "last": "Terminer",
+    "step1Title": "🏠 Dashboard", "step1": "La page principale avec tous vos projets. Ouvrez, archivez ou supprimez des projets et voyez combien de contenus vous avez générés.",
+    "step2Title": "✨ Nouveau Projet", "step2": "Cliquez ici pour démarrer le Wizard guidé. En 5 étapes, l'IA génère : buyer personas, ton de voix, hooks et tous les contenus prêts pour les réseaux sociaux.",
+    "step3Title": "📖 Guide", "step3": "Documentation complète de Sketchario : éditeur, publication, intégrations, équipe et plus. Toujours disponible ici.",
+    "step4Title": "🔔 Notifications", "step4": "Notes de version et mises à jour de Sketchario. Le point rouge indique des messages non lus.",
+    "step5Title": "👤 Votre Profil", "step5": "Modifiez nom, secteur et mot de passe. Gérez votre plan d'abonnement et consultez les options de mise à niveau."
   }
 }

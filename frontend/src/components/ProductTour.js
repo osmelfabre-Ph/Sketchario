@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Joyride, STATUS, EVENTS } from 'react-joyride';
-import { X, ArrowRight } from '@phosphor-icons/react';
 
 const TOUR_KEY = 'sketchario_tour_done';
 
@@ -107,7 +107,14 @@ export function markTourDone() {
 }
 
 export default function ProductTour({ onFinish }) {
+  const { t } = useTranslation();
   const [run, setRun] = useState(true);
+
+  const steps = STEPS.map((s, i) => ({
+    ...s,
+    title: t(`tour.step${i + 1}Title`, s.title),
+    content: t(`tour.step${i + 1}`, s.content),
+  }));
 
   const handleCallback = useCallback((data) => {
     const { status, type } = data;
@@ -121,7 +128,7 @@ export default function ProductTour({ onFinish }) {
 
   return (
     <Joyride
-      steps={STEPS}
+      steps={steps}
       run={run}
       continuous
       showSkipButton
@@ -129,12 +136,12 @@ export default function ProductTour({ onFinish }) {
       scrollToFirstStep={false}
       disableScrolling
       locale={{
-        back: '← Indietro',
-        close: 'Chiudi',
-        last: 'Fine',
-        next: 'Prossimo →',
-        open: 'Apri',
-        skip: 'Salta tour',
+        back: t('tour.back'),
+        close: t('tour.close'),
+        last: t('tour.last'),
+        next: t('tour.next'),
+        open: 'Open',
+        skip: t('tour.skip'),
       }}
       styles={JOYRIDE_STYLES}
       callback={handleCallback}

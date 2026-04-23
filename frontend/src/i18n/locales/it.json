@@ -266,5 +266,50 @@
     "terms": "Termini",
     "privacy": "Privacy",
     "cookie": "Cookie"
+  },
+  "help": {
+    "title": "Guida di Sketchario",
+    "search": "Cerca nella guida...",
+    "index": "Indice",
+    "close": "Chiudi",
+    "backTo": "Torna a {{cat}}",
+    "results": "{{count}} risultati per",
+    "noResults": "Nessun risultato trovato.",
+    "articles": "{{count}} articoli",
+    "comingSoon": "Articoli in arrivo presto.",
+    "returnToDashboard": "Torna alla Dashboard",
+    "categories": {
+      "start": "Primi Passi",
+      "startDesc": "Panoramica e setup iniziale",
+      "wizard": "Creare un Progetto",
+      "wizardDesc": "Il Wizard guidato passo per passo",
+      "content": "Gestione Contenuti",
+      "contentDesc": "Lista, calendario e stati",
+      "editor": "Editor dei Post",
+      "editorDesc": "Scrivere, media e ottimizzazione",
+      "publish": "Pubblicazione",
+      "publishDesc": "Social, scheduling e coda",
+      "integrations": "Integrazioni",
+      "integrationsDesc": "Drive, Canva, Feed RSS",
+      "account": "Account e Team",
+      "accountDesc": "Profilo, piani e collaboratori"
+    }
+  },
+  "tour": {
+    "next": "Prossimo →",
+    "back": "← Indietro",
+    "skip": "Salta tour",
+    "close": "Chiudi",
+    "last": "Fine",
+    "step1Title": "🏠 Dashboard",
+    "step1": "La home principale con tutti i tuoi progetti. Da qui puoi aprire, archiviare o eliminare i progetti, e vedere quanti contenuti hai generato.",
+    "step2Title": "✨ Nuovo Progetto",
+    "step2": "Clicca qui per avviare il Wizard guidato. In 5 step l'AI genera per te: buyer personas, tone of voice, hook e tutti i contenuti pronti per i social.",
+    "step3Title": "📖 Guida",
+    "step3": "La documentazione completa di Sketchario: editor, pubblicazione, integrazioni, team e molto altro. Sempre disponibile da qui.",
+    "step4Title": "🔔 Notifiche",
+    "step4": "Release notes e aggiornamenti di Sketchario. Il pallino rosso indica messaggi non letti.",
+    "step5Title": "👤 Il tuo Profilo",
+    "step5": "Modifica nome, settore e password. Gestisci il tuo piano di abbonamento e visualizza le opzioni di upgrade."
   }
 }
