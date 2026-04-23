@@ -17,24 +17,28 @@ const STEPS = [
     placement: 'right',
     title: '✨ Nuovo Progetto',
     content: 'Clicca qui per avviare il Wizard guidato. In 5 step l\'AI genera per te: buyer personas, tone of voice, hook e tutti i contenuti pronti per i social.',
+    disableBeacon: true,
   },
   {
     target: '[data-testid="help-btn"]',
     placement: 'right',
     title: '📖 Guida',
     content: 'La documentazione completa di Sketchario: editor, pubblicazione, integrazioni, team e molto altro. Sempre disponibile da qui.',
+    disableBeacon: true,
   },
   {
     target: '[data-testid="notifications-bell"]',
     placement: 'right',
     title: '🔔 Notifiche',
     content: 'Release notes e aggiornamenti di Sketchario. Il pallino rosso indica messaggi non letti.',
+    disableBeacon: true,
   },
   {
     target: '[data-testid="nav-profile"]',
     placement: 'right',
     title: '👤 Il tuo Profilo',
     content: 'Modifica nome, settore e password. Gestisci il tuo piano di abbonamento e visualizza le opzioni di upgrade.',
+    disableBeacon: true,
   },
 ];
 
