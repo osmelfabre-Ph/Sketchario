@@ -7,7 +7,7 @@ import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
   CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check,
-  XCircle, Images, CaretLeft, CaretRight
+  XCircle, Images, CaretLeft, CaretRight, PencilSimple
 } from '@phosphor-icons/react';
 
 const PLATFORM_ICONS = {
@@ -22,8 +22,12 @@ const CanvaIcon = ({ size = 16 }) => (
   <img src="https://www.canva.com/favicon.ico" alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
-const MONTH_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-const DAY_IT   = ['L','M','M','G','V','S','D'];
+const MONTH_IT  = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const MONTH_ABB = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+const DAY_IT    = ['L','M','M','G','V','S','D'];
+const DAY_FULL  = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+const DOW_IT    = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+
 function calDays(monthStart) {
   const y = monthStart.getFullYear(), m = monthStart.getMonth();
   const pad = (new Date(y, m, 1).getDay() + 6) % 7;
@@ -31,6 +35,30 @@ function calDays(monthStart) {
   const cells = Array(pad).fill(null);
   for (let d = 1; d <= total; d++) cells.push(d);
   return cells;
+}
+
+function calDaysExtended(monthStart) {
+  const y = monthStart.getFullYear(), m = monthStart.getMonth();
+  const firstDow = (new Date(y, m, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const prevY = m === 0 ? y - 1 : y, prevM = m === 0 ? 11 : m - 1;
+  const daysInPrev = new Date(prevY, prevM + 1, 0).getDate();
+  const nextY = m === 11 ? y + 1 : y, nextM = m === 11 ? 0 : m + 1;
+  const cells = [];
+  for (let i = firstDow - 1; i >= 0; i--)
+    cells.push({ day: daysInPrev - i, month: prevM, year: prevY, isPrev: true });
+  for (let d = 1; d <= daysInMonth; d++)
+    cells.push({ day: d, month: m, year: y, isCurrent: true });
+  let nd = 1;
+  while (cells.length % 7 !== 0)
+    cells.push({ day: nd++, month: nextM, year: nextY, isNext: true });
+  return cells;
+}
+
+function formatScheduleHeader(dateStr) {
+  if (!dateStr) return 'Seleziona una data';
+  const d = new Date(dateStr + 'T12:00:00');
+  return `${DOW_IT[d.getDay()]}, ${MONTH_ABB[d.getMonth()]} ${d.getDate()}º`;
 }
 
 function useIsMobile() {
@@ -242,6 +270,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [scheduling, setScheduling] = useState(false);
   const [cancellingSchedule, setCancellingSchedule] = useState(false);
   const [contentQueueItems, setContentQueueItems] = useState([]);
+  const [customPerSocial, setCustomPerSocial] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [deletingMediaId, setDeletingMediaId] = useState(null);
@@ -584,7 +613,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
       }
       const socialSchedules = selectedSocials.map(id => ({
         social_profile_id: id,
-        scheduled_at: `${scheduleDate}T${socialTimes[id] || scheduleTime}:00Z`,
+        scheduled_at: `${scheduleDate}T${(customPerSocial ? socialTimes[id] : null) || scheduleTime}:00Z`,
       }));
       await api.post('/publish/schedule', {
         content_id: content.id,
@@ -1139,74 +1168,112 @@ export default function ContentDetail({ content: initialContent, project, onClos
     })()}
 
     {/* Schedule overlay — centered */}
-    {showSchedule && calViewDate && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowSchedule(false)}>
-        <div className="card p-5 w-80 max-w-full" style={{ background: 'var(--bg-card)' }} onClick={e => e.stopPropagation()}>
-          <p className="text-sm font-semibold mb-1">{contentQueueItems.length > 0 ? t('editor.scheduleModifyTitle') : t('editor.scheduleTitle')}</p>
-          <p className="text-[10px] text-[var(--text-muted)] mb-4">{t('editor.scheduleOnSocials', { count: selectedSocials.length })}</p>
+    {showSchedule && calViewDate && (() => {
+      const todayD = new Date();
+      return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.75)' }} onClick={() => { setShowSchedule(false); setCustomPerSocial(false); }}>
+        <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 400, background: 'var(--bg-card)', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
+          <div className="p-5 pb-0">
+            {/* Date header */}
+            <p className="text-sm text-[var(--text-muted)] mb-0.5">{calViewDate.getFullYear()}</p>
+            <p className="text-2xl font-bold mb-4">{formatScheduleHeader(scheduleDate)}</p>
 
-          {/* Mini calendar */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><CaretLeft size={14} /></button>
-              <span className="text-xs font-semibold">{MONTH_IT[calViewDate.getMonth()]} {calViewDate.getFullYear()}</span>
-              <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}><CaretRight size={14} /></button>
+            {/* Calendar */}
+            <div className="rounded-xl mb-4 p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <div className="flex items-center justify-between mb-3 px-1">
+                <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))}><CaretLeft size={16} /></button>
+                <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))}><CaretRight size={16} /></button>
+              </div>
+              <div className="grid grid-cols-7 mb-2">
+                {DAY_FULL.map(d => <div key={d} className="text-center text-xs font-bold text-[var(--text-muted)] py-1">{d}</div>)}
+              </div>
+              <div className="grid grid-cols-7">
+                {calDaysExtended(calViewDate).map((cell, i) => {
+                  const iso = `${cell.year}-${String(cell.month+1).padStart(2,'0')}-${String(cell.day).padStart(2,'0')}`;
+                  const isSelected = scheduleDate === iso;
+                  const isToday = cell.isCurrent && cell.day === todayD.getDate() && cell.month === todayD.getMonth() && cell.year === todayD.getFullYear();
+                  const isPast = cell.isCurrent && new Date(cell.year, cell.month, cell.day) < new Date(todayD.getFullYear(), todayD.getMonth(), todayD.getDate());
+                  const TEAL = '#14b8a6';
+                  return (
+                    <button key={i} onClick={() => !cell.isPrev && setScheduleDate(iso)}
+                      className="flex flex-col items-center py-1 transition-all"
+                      style={{ cursor: cell.isPrev ? 'default' : 'pointer' }}>
+                      {isToday && <span style={{ fontSize: 8, color: TEAL, fontWeight: 700, lineHeight: 1.2 }}>Oggi</span>}
+                      {cell.isNext && <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, lineHeight: 1.2 }}>{MONTH_ABB[cell.month]}</span>}
+                      {!isToday && !cell.isNext && <span style={{ fontSize: 8, lineHeight: 1.2 }}>&nbsp;</span>}
+                      <div style={{
+                        width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 14, fontWeight: isToday || isSelected ? 700 : 500,
+                        background: isToday || isSelected ? TEAL : 'transparent',
+                        color: isToday || isSelected ? 'white' : cell.isPrev ? 'rgba(255,255,255,0.2)' : isPast ? 'rgba(255,255,255,0.35)' : 'var(--text-primary)',
+                      }}>
+                        {cell.day}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="grid grid-cols-7 gap-0.5 mb-1">
-              {DAY_IT.map((d, i) => <div key={i} className="text-center text-[9px] font-semibold text-[var(--text-muted)] py-0.5">{d}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-0.5">
-              {calDays(calViewDate).map((day, i) => {
-                if (!day) return <div key={i} />;
-                const iso = `${calViewDate.getFullYear()}-${String(calViewDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-                const isSelected = scheduleDate === iso;
-                const today = new Date(); const isToday = day === today.getDate() && calViewDate.getMonth() === today.getMonth() && calViewDate.getFullYear() === today.getFullYear();
-                return (
-                  <button key={i} onClick={() => setScheduleDate(iso)}
-                    className="text-xs py-1.5 rounded-md font-medium transition-all"
-                    style={isSelected
-                      ? { background: 'linear-gradient(135deg,var(--gradient-start),var(--gradient-end))', color: 'white' }
-                      : isToday
-                        ? { background: 'rgba(168,85,247,0.15)', color: 'var(--accent-purple)', outline: '1px solid var(--accent-purple)' }
-                        : { color: 'var(--text-primary)' }
-                    }>
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
+
+            {/* Time section */}
+            {!customPerSocial ? (
+              <>
+                <p className="text-sm text-[var(--text-muted)] mb-2">Time</p>
+                <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)}
+                  className="w-full text-center text-xl font-semibold rounded-xl mb-4"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '14px', color: 'var(--text-primary)' }} />
+                <button className="w-full text-center text-sm text-[var(--text-muted)] mb-4 hover:text-white transition-colors"
+                  onClick={() => setCustomPerSocial(true)}>
+                  Personalizza l'orario per ogni account social <span style={{ opacity: 0.6 }}>ⓘ</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-[var(--text-muted)] mb-3">Seleziona ora o fascia oraria <span style={{ opacity: 0.6 }}>ⓘ</span></p>
+                {selectedProfiles.map(prof => {
+                  const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888' };
+                  return (
+                    <div key={prof.id} className="flex items-center gap-3 mb-3">
+                      <div className="relative flex-shrink-0">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
+                          style={{ background: `${pi.color}30`, border: `2px solid ${pi.color}60`, color: pi.color }}>
+                          {(prof.profile_name || '?')[0].toUpperCase()}
+                        </div>
+                        <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: pi.color }}>
+                          <pi.Icon size={10} color="white" weight="fill" />
+                        </div>
+                      </div>
+                      <div className="flex-1 flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)' }}>
+                        <input type="time" value={socialTimes[prof.id] || scheduleTime}
+                          onChange={e => setSocialTimes(prev => ({ ...prev, [prof.id]: e.target.value }))}
+                          className="text-base font-semibold bg-transparent border-0 outline-none flex-1 text-center"
+                          style={{ color: 'var(--text-primary)', minWidth: 0 }} />
+                      </div>
+                      <button className="btn-ghost p-1.5 flex-shrink-0" onClick={() => setSocialTimes(prev => ({ ...prev, [prof.id]: scheduleTime }))}>
+                        <PencilSimple size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button className="w-full text-center text-sm text-[var(--text-muted)] mb-4 hover:text-white transition-colors"
+                  onClick={() => setCustomPerSocial(false)}>
+                  Passa all'orario unificato
+                </button>
+              </>
+            )}
           </div>
 
-          {/* Per-social times */}
-          <div className="mb-4">
-            <p className="text-[10px] text-[var(--text-muted)] mb-2 font-semibold uppercase">Orario per piattaforma</p>
-            {selectedProfiles.map(prof => {
-              const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888' };
-              return (
-                <div key={prof.id} className="flex items-center gap-2 mb-2">
-                  <pi.Icon size={14} color={pi.color} weight="fill" />
-                  <span className="text-xs flex-1 truncate text-[var(--text-secondary)]">{prof.profile_name}</span>
-                  <input
-                    type="time"
-                    className="input-dark text-xs py-1"
-                    style={{ width: 90, paddingLeft: '0.5rem' }}
-                    value={socialTimes[prof.id] || scheduleTime}
-                    onChange={e => setSocialTimes(prev => ({ ...prev, [prof.id]: e.target.value }))}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-2">
-            <button className="btn-ghost flex-1 text-xs" onClick={() => setShowSchedule(false)} disabled={scheduling}>{t('common.cancel')}</button>
-            <button className="btn-gradient flex-1 text-xs" onClick={schedule} disabled={scheduling}>
-              {scheduling ? <><span className="animate-spin inline-block mr-1">⏳</span>{t('editor.publishing_')}</> : t('common.confirm')}
+          {/* Footer */}
+          <div className="flex gap-3 px-5 pb-5">
+            <button className="btn-ghost flex-1" onClick={() => { setShowSchedule(false); setCustomPerSocial(false); }} disabled={scheduling}>{t('common.cancel')}</button>
+            <button className="btn-gradient flex-1" onClick={schedule} disabled={scheduling || !scheduleDate}>
+              {scheduling ? '...' : 'Programma'}
             </button>
           </div>
         </div>
       </div>
-    )}
+      );
+    })()}
     </>
   );
 }
