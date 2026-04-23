@@ -277,7 +277,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [mobileTab, setMobileTab] = useState('editor');
   const [inputModal, setInputModal] = useState(null); // { title, placeholder, value, multiline, onConfirm }
   const [generatingImage, setGeneratingImage] = useState(false);
-  const [renderingVideo, setRenderingVideo] = useState(false);
   const [optimizingPrompt, setOptimizingPrompt] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState(null);
   const [calViewDate, setCalViewDate] = useState(null);
@@ -844,29 +843,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <Images size={16} color="#a855f7" />
           </button>
         </div>
-        <button
-          className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5"
-          style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 12, color: renderingVideo ? 'var(--text-muted)' : 'var(--accent-purple)' }}
-          disabled={renderingVideo}
-          title="Genera video animato con HyperFrames"
-          onClick={async () => {
-            setRenderingVideo(true);
-            const tid = toast.loading('Rendering video in corso… (1-2 min)');
-            try {
-              const { data } = await api.post('/media/render-video', { content_id: content.id });
-              const updated = { ...content, media: [...(content.media || []), data] };
-              setContent(updated); onUpdate?.(updated);
-              toast.success('Video generato e aggiunto ai media!', { id: tid, duration: 6000 });
-            } catch (e) {
-              toast.error('Errore rendering: ' + (e.response?.data?.detail || e.message), { id: tid });
-            }
-            setRenderingVideo(false);
-          }}
-        >
-          {renderingVideo
-            ? <><div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> {t('editor.renderingVideo')}</>
-            : <>🎬 {t('editor.generateVideo')}</>}
-        </button>
       </div>
     </div>
   );

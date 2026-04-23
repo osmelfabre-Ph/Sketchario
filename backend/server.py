@@ -1084,7 +1084,13 @@ async def _exchange_token_instagram(code: str, redirect_uri: str) -> dict:
             "code": code, "redirect_uri": redirect_uri,
         })
         r.raise_for_status()
-        token = r.json()["access_token"]
+        short_token = r.json()["access_token"]
+        # Exchange short-lived token (1-2h) for long-lived token (60 days)
+        ll = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "grant_type": "fb_exchange_token", "client_id": client_id,
+            "client_secret": client_secret, "fb_exchange_token": short_token,
+        })
+        token = ll.json().get("access_token", short_token) if ll.status_code == 200 else short_token
         # Get Instagram Business Account
         pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts", params={"access_token": token})
         pages_r.raise_for_status()
@@ -1113,9 +1119,13 @@ async def _exchange_token_facebook(code: str, redirect_uri: str) -> dict:
             "code": code, "redirect_uri": redirect_uri,
         })
         r.raise_for_status()
-        data = r.json()
-        token = data["access_token"]
-        # Get profile name
+        short_token = r.json()["access_token"]
+        # Exchange short-lived token (1-2h) for long-lived token (60 days)
+        ll = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "grant_type": "fb_exchange_token", "client_id": client_id,
+            "client_secret": client_secret, "fb_exchange_token": short_token,
+        })
+        token = ll.json().get("access_token", short_token) if ll.status_code == 200 else short_token
         pr = await c.get("https://graph.facebook.com/v19.0/me", params={"fields": "id,name", "access_token": token})
         pr.raise_for_status()
         profile = pr.json()
