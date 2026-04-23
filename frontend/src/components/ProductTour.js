@@ -41,7 +41,7 @@ const STEPS = [
 const JOYRIDE_STYLES = {
   options: {
     zIndex: 10000,
-    primaryColor: '#6366f1',
+    primaryColor: '#f472b6',
     backgroundColor: '#151d2e',
     textColor: '#ffffff',
     arrowColor: '#151d2e',
