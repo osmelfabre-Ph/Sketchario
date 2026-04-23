@@ -296,12 +296,17 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const items = r.data.filter(q => q.content_id === initialContent.id && q.status === 'queued');
       setContentQueueItems(items);
       if (items.length > 0) {
+        // Use local time methods so the popup shows the user's intended local time
         const dt = new Date(items[0].scheduled_at);
-        setScheduleDate(dt.toISOString().slice(0, 10));
-        setScheduleTime(dt.toISOString().slice(11, 16));
+        const pad = n => String(n).padStart(2, '0');
+        setScheduleDate(`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`);
+        setScheduleTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
         setSelectedSocials(items.map(q => q.social_profile_id).filter(Boolean));
         const times = {};
-        items.forEach(q => { times[q.social_profile_id] = new Date(q.scheduled_at).toISOString().slice(11, 16); });
+        items.forEach(q => {
+          const d = new Date(q.scheduled_at);
+          times[q.social_profile_id] = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        });
         setSocialTimes(times);
       }
     }).catch(() => {});
@@ -610,15 +615,17 @@ export default function ContentDetail({ content: initialContent, project, onClos
       if (contentQueueItems.length > 0) {
         await Promise.all(contentQueueItems.map(item => api.delete(`/publish/queue/${item.id}`).catch(() => {})));
       }
+      // Treat input times as local timezone, convert to UTC for storage
+      const toUtcIso = (date, time) => new Date(`${date}T${time}:00`).toISOString();
       const socialSchedules = selectedSocials.map(id => ({
         social_profile_id: id,
-        scheduled_at: `${scheduleDate}T${(customPerSocial ? socialTimes[id] : null) || scheduleTime}:00Z`,
+        scheduled_at: toUtcIso(scheduleDate, (customPerSocial ? socialTimes[id] : null) || scheduleTime),
       }));
       await api.post('/publish/schedule', {
         content_id: content.id,
         project_id: project.id,
         social_profile_ids: selectedSocials,
-        scheduled_at: `${scheduleDate}T${scheduleTime}:00Z`,
+        scheduled_at: toUtcIso(scheduleDate, scheduleTime),
         social_schedules: socialSchedules,
       });
       const { data: queueData } = await api.get(`/publish/queue/${project.id}`);
