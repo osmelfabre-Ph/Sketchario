@@ -1264,40 +1264,46 @@ async def _publish_facebook(token: str, text: str, image_urls: list) -> str:
         r.raise_for_status()
         return r.json().get("id", "")
 
-async def _publish_linkedin(token: str, text: str, profile_id: str, image_url: Optional[str] = None) -> str:
+async def _publish_linkedin(token: str, text: str, profile_id: str, image_url: Optional[str] = None, image_urls: Optional[list] = None) -> str:
     urn = f"urn:li:person:{profile_id}"
     headers = {"Authorization": f"Bearer {token}", "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}
-    asset_urn = None
+    urls_to_upload = image_urls if image_urls else ([image_url] if image_url else [])
+
+    async def _upload_one(c, url) -> Optional[str]:
+        reg = await c.post("https://api.linkedin.com/v2/assets?action=registerUpload", headers=headers, json={
+            "registerUploadRequest": {
+                "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+                "owner": urn,
+                "serviceRelationships": [{"relationshipType": "OWNER", "identifier": "urn:li:userGeneratedContent"}],
+            }
+        })
+        if reg.status_code != 200:
+            return None
+        val = reg.json().get("value", {})
+        asset = val.get("asset", "")
+        upload_url = val.get("uploadMechanism", {}).get(
+            "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest", {}
+        ).get("uploadUrl", "")
+        if upload_url:
+            img_resp = await c.get(url)
+            if img_resp.status_code == 200:
+                await c.put(upload_url, content=img_resp.content,
+                            headers={"Authorization": f"Bearer {token}",
+                                     "Content-Type": img_resp.headers.get("content-type", "image/jpeg")})
+        return asset or None
 
     async with httpx.AsyncClient(timeout=60) as c:
-        if image_url:
-            # Step 1: register upload
-            reg = await c.post("https://api.linkedin.com/v2/assets?action=registerUpload", headers=headers, json={
-                "registerUploadRequest": {
-                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-                    "owner": urn,
-                    "serviceRelationships": [{"relationshipType": "OWNER", "identifier": "urn:li:userGeneratedContent"}],
-                }
-            })
-            if reg.status_code == 200:
-                val = reg.json().get("value", {})
-                asset_urn = val.get("asset", "")
-                upload_url = val.get("uploadMechanism", {}).get(
-                    "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest", {}
-                ).get("uploadUrl", "")
-                # Step 2: upload image bytes
-                if upload_url:
-                    img_resp = await c.get(image_url)
-                    if img_resp.status_code == 200:
-                        await c.put(upload_url, content=img_resp.content,
-                                    headers={"Authorization": f"Bearer {token}",
-                                             "Content-Type": img_resp.headers.get("content-type", "image/jpeg")})
+        asset_urns = []
+        for url in urls_to_upload[:9]:  # LinkedIn max 9 images
+            asset = await _upload_one(c, url)
+            if asset:
+                asset_urns.append(asset)
 
         media_category = "NONE"
         media_list = []
-        if asset_urn:
+        if asset_urns:
             media_category = "IMAGE"
-            media_list = [{"status": "READY", "media": asset_urn, "description": {"text": ""}, "title": {"text": ""}}]
+            media_list = [{"status": "READY", "media": a, "description": {"text": ""}, "title": {"text": ""}} for a in asset_urns]
 
         payload = {
             "author": urn, "lifecycleState": "PUBLISHED",
@@ -1396,7 +1402,7 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     elif platform == "instagram":
         return await _publish_instagram(token, profile_id, text, image_urls)
     elif platform == "linkedin":
-        return await _publish_linkedin(token, text, profile_id, image_url)
+        return await _publish_linkedin(token, text, profile_id, image_urls=image_urls)
     elif platform == "pinterest":
         return await _publish_pinterest(token, text, title, image_url)
     elif platform == "tiktok":
