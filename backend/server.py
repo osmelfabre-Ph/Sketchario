@@ -919,7 +919,7 @@ Restituisci un oggetto JSON con:
 - script: lo script completo del contenuto (per reel: script parlato; per carousel: testo di ogni slide separato da ---)
 - caption: la caption per il post
 - hashtags: stringa di hashtag separati da spazi
-- slides: se carousel, array di 5-8 stringhe, una per slide. FORMATO OBBLIGATORIO di ogni stringa: inizia con "Slide N:" (es. "Slide 1:"), poi a capo TITOLO TUTTO MAIUSCOLO (max 7 parole), poi a capo 4-5 punti numerati nel formato "1 — descrizione dettagliata e concreta con dati/esempi\n2 — secondo punto\n3 — terzo punto\n4 — quarto punto". Struttura raccomandata: Slide 1 = hook/problema (1-2 frasi ad alto impatto), Slide 2 = promessa/contesto, Slide 3-6 = contenuto educativo ricco (dati, percentuali, esempi reali, casi studio), Slide 7 = riepilogo, Slide 8 = CTA. MAI contenuto vago. Se reel, array vuoto.
+- slides: se carousel, array di 5-8 stringhe, una per slide. FORMATO OBBLIGATORIO di ogni stringa: inizia con "Slide N:" poi a capo TITOLO TUTTO MAIUSCOLO (max 7 parole), poi a capo 3-4 punti numerati. OGNI PUNTO deve essere lungo 2-3 frasi complete (40-60 parole ciascuna), non una semplice etichetta. Includi: dati specifici con fonte, esempi concreti con nomi/numeri, spiegazione del perché questo conta, implicazione pratica. Il lettore deve impiegare almeno 7-10 secondi per leggere ogni slide. Struttura: Slide 1 = hook/problema emotivo (2-3 frasi d'impatto), Slide 2 = promessa/contesto dettagliato, Slide 3-6 = contenuto educativo profondo, Slide 7 = riepilogo pratico, Slide 8 = CTA convincente. Se reel, array vuoto.
 - opening_hook: stringa vuota
 - visual_direction: stringa vuota"""
         try:
@@ -1059,7 +1059,7 @@ Hook originale: {content.get('hook_text','')}
 Formato: {fmt}
 Settore: {project.get('sector','')}
 {tov_desc}
-Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 5-8 stringhe; ogni slide inizia con "Slide N:" poi TITOLO MAIUSCOLO poi 4-5 punti numerati "1 — dettaglio concreto"; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 5-8 stringhe; ogni slide = "Slide N:\nTITOLO MAIUSCOLO\n\n1 — frase completa di 2-3 frasi con dati e esempi concreti\n2 — altra frase completa di 2-3 frasi\n3 — altra ancora"; ogni punto deve essere leggibile in 7-10 secondi; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
@@ -1113,7 +1113,7 @@ Crea un carousel con 6-8 slide. FORMATO OBBLIGATORIO ogni slide: inizia con "Sli
 - Slide 7: riepilogo dei punti chiave
 - Slide 8: CTA diretto con invito all'azione
 
-Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 6-8 stringhe, ogni stringa = "Slide N:\nTITOLO MAIUSCOLO\n\n1 — punto\n2 — punto\n3 — punto\n4 — punto")"""
+Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 6-8 stringhe, ogni stringa = "Slide N:\nTITOLO MAIUSCOLO\n\n1 — testo di 2-3 frasi complete con dati specifici ed esempi concreti (40-60 parole)\n2 — testo di 2-3 frasi complete\n3 — testo di 2-3 frasi complete". Ogni slide deve richiedere 7-10 secondi di lettura.)"""
     else:
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Carousel in un Reel script parlato.
