@@ -2324,8 +2324,14 @@ async def delete_release_note(note_id: str, request: Request):
 
 # ── STRIPE BILLING ────────────────────────────────────
 PLANS = {
-    "creator": {"name": "Creator", "amount": 19.00, "currency": "eur"},
-    "strategist": {"name": "Strategist", "amount": 49.00, "currency": "eur"},
+    "creator": {
+        "name": "Creator", "amount": 25.00, "currency": "eur",
+        "stripe_link": "https://buy.stripe.com/bJe00i1Jl2AU4Y77eb5AQ00",
+    },
+    "strategist": {
+        "name": "Strategist", "amount": 49.00, "currency": "eur",
+        "stripe_link": "https://buy.stripe.com/9B66oGbjVcbueyH5635AQ01",
+    },
 }
 
 class CheckoutInput(BaseModel):
@@ -2338,6 +2344,14 @@ async def create_checkout(inp: CheckoutInput, request: Request):
     if inp.plan_id not in PLANS:
         raise HTTPException(400, "Piano non valido")
     plan = PLANS[inp.plan_id]
+    # Use Stripe Payment Link when available — encode userId:planId in client_reference_id
+    if plan.get("stripe_link"):
+        ref = f"{user['_id']}:{inp.plan_id}"
+        url = f"{plan['stripe_link']}?client_reference_id={ref}"
+        if user.get("email"):
+            from urllib.parse import quote as _quote
+            url += f"&prefilled_email={_quote(user['email'])}"
+        return {"url": url, "session_id": None}
     try:
         import stripe as stripe_sdk
         stripe_sdk.api_key = os.environ.get("STRIPE_API_KEY", "")
@@ -2345,7 +2359,7 @@ async def create_checkout(inp: CheckoutInput, request: Request):
         cancel_url = f"{inp.origin_url}?billing=cancelled"
         session = stripe_sdk.checkout.Session.create(
             payment_method_types=["card"],
-            line_items=[{"price_data": {"currency": plan["currency"], "product_data": {"name": plan.get("name", inp.plan_id)}, "unit_amount": plan["amount"]}, "quantity": 1}],
+            line_items=[{"price_data": {"currency": plan["currency"], "product_data": {"name": plan.get("name", inp.plan_id)}, "unit_amount": int(plan["amount"] * 100)}, "quantity": 1}],
             mode="payment",
             success_url=success_url,
             cancel_url=cancel_url,
@@ -2391,11 +2405,25 @@ async def stripe_webhook(request: Request):
         event = stripe_sdk.Webhook.construct_event(body, sig, webhook_secret)
         if event.type == "checkout.session.completed":
             session_obj = event.data.object
-            if session_obj.payment_status == "paid":
-                tx = await db.payment_transactions.find_one({"session_id": session_obj.id})
-                if tx and tx.get("payment_status") != "paid":
-                    await db.payment_transactions.update_one({"session_id": session_obj.id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
-                    await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
+            if session_obj.payment_status in ("paid", "no_payment_required"):
+                # Payment link flow: client_reference_id = "userId:planId"
+                client_ref = session_obj.get("client_reference_id") or ""
+                if client_ref and ":" in client_ref:
+                    user_id, plan_id = client_ref.split(":", 1)
+                    if plan_id in PLANS:
+                        try:
+                            await db.users.update_one(
+                                {"_id": ObjectId(user_id)},
+                                {"$set": {"plan": plan_id, "plan_activated_at": datetime.now(timezone.utc).isoformat()}}
+                            )
+                        except Exception as ex:
+                            logger.error(f"Webhook plan update error: {ex}")
+                else:
+                    # Legacy checkout session flow
+                    tx = await db.payment_transactions.find_one({"session_id": session_obj.id})
+                    if tx and tx.get("payment_status") != "paid":
+                        await db.payment_transactions.update_one({"session_id": session_obj.id}, {"$set": {"payment_status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}})
+                        await db.users.update_one({"email": tx.get("email")}, {"$set": {"plan": tx.get("plan_id")}})
         return {"ok": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")

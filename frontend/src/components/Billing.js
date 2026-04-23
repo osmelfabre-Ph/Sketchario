@@ -47,8 +47,8 @@ export default function Billing() {
   };
 
   const planFeatures = {
-    creator: ['5 progetti', '30 contenuti per progetto', 'AI illimitata', 'Feed RSS', 'Export CSV + JSON', 'Social profiles'],
-    strategist: ['Progetti illimitati', 'Contenuti illimitati', 'AI illimitata', 'Feed RSS + AI alt', 'Publishing Queue', 'Tutto Creator +', 'Admin console', 'Supporto prioritario'],
+    creator: ['3 progetti', '50 contenuti per progetto', 'Tutti i social', 'Canva + Drive', 'Calendario editoriale', 'AI illimitata', 'Export CSV + JSON'],
+    strategist: ['Progetti illimitati', 'Contenuti illimitati', 'AI illimitata', 'Feed RSS + AI', 'Publishing Queue', 'Admin console', 'Supporto prioritario'],
   };
 
   const planIcons = { creator: Lightning, strategist: Crown };

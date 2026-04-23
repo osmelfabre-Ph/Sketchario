@@ -4,19 +4,17 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import {
-  EnvelopeSimple, Lock, User, ArrowRight, GoogleLogo, FacebookLogo
+  EnvelopeSimple, Lock, ArrowRight, GoogleLogo, FacebookLogo
 } from '@phosphor-icons/react';
 
 export default function AuthScreen() {
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const { t } = useTranslation();
-  const [isLogin, setIsLogin] = useState(true);
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [socialError, setSocialError] = useState(() => {
+  const [socialError] = useState(() => {
     const p = new URLSearchParams(window.location.search);
     return p.get('social_error') || '';
   });
@@ -27,7 +25,6 @@ export default function AuthScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [resetMsg, setResetMsg] = useState('');
 
-  // Check URL for reset token
   useState(() => {
     const params = new URLSearchParams(window.location.search);
     const rt = params.get('reset_token');
@@ -56,14 +53,10 @@ export default function AuthScreen() {
     setError('');
     setLoading(true);
     try {
-      if (isLogin) {
-        await login(email, password);
-      } else {
-        await register(name, email, password);
-      }
+      await login(email, password);
     } catch (err) {
       const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(e => e.msg || '').join(' ') : t('auth.loginError'));
+      setError(typeof detail === 'string' ? detail : t('auth.loginError'));
     } finally {
       setLoading(false);
     }
@@ -83,21 +76,7 @@ export default function AuthScreen() {
           <p className="text-[var(--text-secondary)] text-sm">Content Strategy Engine</p>
         </div>
 
-        <div className="flex gap-2 mb-8">
-          <button data-testid="auth-tab-login" className={isLogin ? 'btn-gradient flex-1' : 'btn-ghost flex-1'} onClick={() => { setIsLogin(true); setError(''); }}>{t('auth.login')}</button>
-          <button data-testid="auth-tab-register" className={!isLogin ? 'btn-gradient flex-1' : 'btn-ghost flex-1'} onClick={() => { setIsLogin(false); setError(''); }}>{t('auth.register')}</button>
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">{t('auth.name')}</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
-                <input data-testid="auth-name-input" type="text" className="input-dark" placeholder={t('auth.name')} value={name} onChange={e => setName(e.target.value)} required />
-              </div>
-            </div>
-          )}
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">{t('auth.email')}</label>
             <div className="relative">
@@ -109,24 +88,22 @@ export default function AuthScreen() {
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">{t('auth.password')}</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
-              <input data-testid="auth-password-input" type="password" className="input-dark" placeholder="Min 8" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+              <input data-testid="auth-password-input" type="password" className="input-dark" placeholder="Min 8 caratteri" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
             </div>
           </div>
 
           {error && <p data-testid="auth-error" className="text-sm text-[var(--accent-pink)]">{error}</p>}
 
           <button data-testid="auth-submit-btn" className="btn-gradient w-full mt-6" type="submit" disabled={loading}>
-            {loading ? t('common.loading') : isLogin ? t('auth.login') : t('auth.register')}
+            {loading ? t('common.loading') : t('auth.login')}
             {!loading && <ArrowRight weight="bold" size={18} />}
           </button>
 
-          {isLogin && (
-            <p className="text-center mt-3">
-              <button type="button" data-testid="forgot-password-link" className="text-sm text-[var(--text-muted)] hover:text-[var(--gradient-start)] underline" onClick={() => setShowForgot(true)}>
-                {t('auth.forgotPassword')}
-              </button>
-            </p>
-          )}
+          <p className="text-center mt-3">
+            <button type="button" data-testid="forgot-password-link" className="text-sm text-[var(--text-muted)] hover:text-[var(--gradient-start)] underline" onClick={() => setShowForgot(true)}>
+              {t('auth.forgotPassword')}
+            </button>
+          </p>
         </form>
 
         <div className="flex items-center gap-4 my-8">
@@ -140,6 +117,7 @@ export default function AuthScreen() {
             {socialError === 'cancelled' ? 'Accesso annullato.' : 'Errore di accesso social. Riprova.'}
           </p>
         )}
+
         <div className="flex gap-3">
           <button
             data-testid="auth-google-btn"
@@ -156,9 +134,15 @@ export default function AuthScreen() {
             <FacebookLogo weight="fill" size={20} color="#1877F2" /> Facebook
           </button>
         </div>
+
+        <p className="text-center mt-6 text-xs text-[var(--text-muted)]">
+          Non hai un account?{' '}
+          <a href="https://www.sketchario.app" className="underline hover:text-white transition-colors">
+            Scopri i piani
+          </a>
+        </p>
       </motion.div>
 
-      {/* Forgot/Reset Password Modal */}
       {showForgot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowForgot(false)}>
           <div className="card w-full max-w-sm" onClick={e => e.stopPropagation()}>
