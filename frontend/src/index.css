@@ -382,3 +382,27 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
 }
+
+/* Rich Caption Editor (TipTap) */
+.rich-caption-editor .ProseMirror {
+  min-height: 100px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  outline: none;
+}
+.rich-caption-editor .ProseMirror p { margin: 0 0 0.4em; }
+.rich-caption-editor .ProseMirror p:last-child { margin-bottom: 0; }
+.rich-caption-editor .ProseMirror ul { padding-left: 1.4em; list-style: disc; margin: 0.4em 0; }
+.rich-caption-editor .ProseMirror li { margin-bottom: 0.2em; }
+.rich-caption-editor .ProseMirror strong { font-weight: 700; }
+.rich-caption-editor .ProseMirror em { font-style: italic; }
+.rich-caption-editor .ProseMirror u { text-decoration: underline; }
+.rich-caption-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}

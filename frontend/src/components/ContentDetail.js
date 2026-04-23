@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,8 +7,47 @@ import {
   X, Plus, Video, Image, Sparkle, ArrowClockwise, Download,
   InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo, Globe,
   CalendarBlank, PaperPlaneTilt, Copy, FloppyDisk, Eye, CheckCircle, Check,
-  XCircle, Images, CaretLeft, CaretRight, PencilSimple
+  XCircle, Images, CaretLeft, CaretRight, PencilSimple,
+  TextB, TextItalic, TextUnderline, ListBullets
 } from '@phosphor-icons/react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+
+function RichCaption({ value, onChange }) {
+  const editor = useEditor({
+    extensions: [StarterKit, Underline],
+    content: value || '',
+    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+  });
+
+  useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value || '', false);
+    }
+  }, [value, editor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!editor) return null;
+  const btn = (active, action, Icon, title) => (
+    <button type="button" title={title} onMouseDown={e => { e.preventDefault(); action(); }}
+      className="p-1.5 rounded transition-colors"
+      style={{ background: active ? 'rgba(99,102,241,0.25)' : 'transparent', color: active ? 'var(--accent-purple)' : 'var(--text-muted)' }}>
+      <Icon size={14} weight={active ? 'fill' : 'regular'} />
+    </button>
+  );
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b" style={{ borderColor: 'var(--border-color)', background: 'rgba(255,255,255,0.03)' }}>
+        {btn(editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), TextB, 'Grassetto')}
+        {btn(editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), TextItalic, 'Corsivo')}
+        {btn(editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), TextUnderline, 'Sottolineato')}
+        <div className="w-px h-4 mx-1" style={{ background: 'var(--border-color)' }} />
+        {btn(editor.isActive('bulletList'), () => editor.chain().focus().toggleBulletList().run(), ListBullets, 'Elenco puntato')}
+      </div>
+      <EditorContent editor={editor} className="rich-caption-editor" />
+    </div>
+  );
+}
 
 const PLATFORM_ICONS = {
   instagram: { Icon: InstagramLogo, color: '#E4405F', name: 'Instagram' },
@@ -725,8 +764,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
       )}
       <div className="mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">{t('editor.caption')}</p>
-        <textarea className="input-dark w-full text-sm" rows={isMobile ? 3 : 5} value={editCaption} onChange={e => setEditCaption(e.target.value)}
-          placeholder="Caption del post..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+        <RichCaption value={editCaption} onChange={setEditCaption} />
       </div>
       <div className="mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">{t('editor.hashtags')}</p>

@@ -1433,8 +1433,16 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
             raise ValueError(f"IG publish error: {fb_err.get('message', pub_r.text[:200])}")
         return pub_r.json().get("id", "")
 
+def _strip_html(s: str) -> str:
+    import re as _re
+    s = _re.sub(r'<br\s*/?>', '\n', s or '', flags=_re.IGNORECASE)
+    s = _re.sub(r'</p>', '\n', s, flags=_re.IGNORECASE)
+    s = _re.sub(r'<li[^>]*>', '• ', s, flags=_re.IGNORECASE)
+    s = _re.sub(r'<[^>]+>', '', s)
+    return s.strip()
+
 async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
-    text = content.get("caption") or content.get("hook_text") or content.get("title") or ""
+    text = _strip_html(content.get("caption") or content.get("hook_text") or content.get("title") or "")
     title = content.get("title") or content.get("hook_text") or "Post"
     app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
     media = content.get("media", [])
