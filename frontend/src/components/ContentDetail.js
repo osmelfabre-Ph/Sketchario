@@ -629,6 +629,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setContent(updated); onUpdate?.(updated);
       setShowSchedule(false);
       toast.success(t('editor.scheduleSuccess', { date: scheduleDate, time: scheduleTime }), { id: tid });
+      onClose?.();
     } catch (e) { toast.error('Errore programmazione: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     setScheduling(false);
   };
