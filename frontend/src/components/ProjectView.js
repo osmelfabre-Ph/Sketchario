@@ -9,8 +9,10 @@ import {
   Eye, Sparkle, Trash, Globe,
   RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
   BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp,
-  SquaresFour, ListBullets, Flag
+  SquaresFour, ListBullets, Flag, CaretLeft, CaretRight
 } from '@phosphor-icons/react';
+
+const MONTH_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
 import ContentDetail from './ContentDetail';
@@ -100,6 +102,11 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
   // Drag state for calendar
   const [dragContent, setDragContent] = useState(null);
+
+  // Calendar month navigation
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth()); // 0-based
 
   useEffect(() => {
     if (activeTab === 'analytics') {
@@ -520,38 +527,64 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               );
             })()}
 
-            {/* CALENDAR — with drag & drop */}
-            {tab === 'calendar' && (
-              <div className="calendar-container mt-2">
-                <div className="calendar-grid">
-                  {days.map(d => <div key={d} className="calendar-header">{d}</div>)}
-                  {Array.from({ length: 35 }, (_, i) => {
-                    const dayNum = i - 5 + 1;
-                    const dayContents = contents.filter(c => (c.day_offset || 0) === dayNum - 1 && (c.status === 'scheduled' || c.status === 'published'));
-                    const isMonth = dayNum > 0 && dayNum <= 31;
-                    return (
-                      <div key={i} className={`calendar-cell ${!isMonth ? 'opacity-30' : ''}`}
-                        onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
-                        onDragLeave={e => { e.currentTarget.style.background = ''; }}
-                        onDrop={e => { e.currentTarget.style.background = ''; handleDrop(dayNum - 1, e); }}>
-                        {isMonth && (
-                          <>
-                            <span className="text-xs font-medium text-[var(--text-secondary)]">{dayNum}</span>
-                            {dayContents.map(c => (
-                              <div key={c.id} className={`content-chip ${c.format}`} draggable
-                                onDragStart={() => setDragContent(c)} onClick={() => openContentDetail(c)}>
-                                {c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
-                                <span className="ml-1 truncate">{(c.hook_text || '').slice(0, 20)}</span>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
+            {/* CALENDAR — real date grid */}
+            {tab === 'calendar' && (() => {
+              const firstDow = (new Date(calYear, calMonth, 1).getDay() + 6) % 7; // 0=Mon…6=Sun
+              const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+              const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+              const todayD = new Date();
+              return (
+                <div className="calendar-container mt-2">
+                  {/* Month navigation */}
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <button className="btn-ghost py-1 px-2 text-sm flex items-center gap-1"
+                      onClick={() => { const d = new Date(calYear, calMonth - 1, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); }}>
+                      <CaretLeft size={14} />
+                    </button>
+                    <span className="font-semibold text-sm">{MONTH_IT[calMonth]} {calYear}</span>
+                    <button className="btn-ghost py-1 px-2 text-sm flex items-center gap-1"
+                      onClick={() => { const d = new Date(calYear, calMonth + 1, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); }}>
+                      <CaretRight size={14} />
+                    </button>
+                  </div>
+                  <div className="calendar-grid">
+                    {days.map(d => <div key={d} className="calendar-header">{d}</div>)}
+                    {Array.from({ length: totalCells }, (_, i) => {
+                      const dayNum = i - firstDow + 1;
+                      const isMonth = dayNum >= 1 && dayNum <= daysInMonth;
+                      const isToday = isMonth && dayNum === todayD.getDate() && calMonth === todayD.getMonth() && calYear === todayD.getFullYear();
+                      const iso = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                      const dayContents = isMonth ? contents.filter(c => {
+                        const q = queueItems.find(qi => qi.content_id === c.id && (qi.status === 'queued' || qi.status === 'published'));
+                        if (!q?.scheduled_at) return false;
+                        const d2 = new Date(q.scheduled_at);
+                        return d2.getFullYear() === calYear && d2.getMonth() === calMonth && d2.getDate() === dayNum;
+                      }) : [];
+                      return (
+                        <div key={i} className={`calendar-cell ${!isMonth ? 'opacity-20' : ''}`}
+                          style={isToday ? { background: 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.4)' } : {}}
+                          onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                          onDragLeave={e => { e.currentTarget.style.background = isToday ? 'rgba(99,102,241,0.08)' : ''; }}
+                          onDrop={e => { e.currentTarget.style.background = ''; handleDrop(dayNum - 1, e); }}>
+                          {isMonth && (
+                            <>
+                              <span className="text-xs font-medium" style={{ color: isToday ? 'var(--accent-purple)' : 'var(--text-secondary)', fontWeight: isToday ? 700 : 500 }}>{dayNum}</span>
+                              {dayContents.map(c => (
+                                <div key={c.id} className={`content-chip ${c.format}`} draggable
+                                  onDragStart={() => setDragContent(c)} onClick={() => openContentDetail(c)}>
+                                  {c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
+                                  <span className="ml-1 truncate">{(c.hook_text || c.caption || '').slice(0, 20)}</span>
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* PERSONAS + TOV LIBRARY */}
             {tab === 'personas' && (
