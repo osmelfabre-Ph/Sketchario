@@ -317,6 +317,200 @@ export const ARTICLES = [
       { type: 'tip', text: 'Puoi rigenerare singolarmente ogni sezione (Hook, Script, Regia) con l\'icona "Rigenera" senza perdere le altre.' },
     ],
   },
+
+  // ══════════════ PUBBLICAZIONE ══════════════
+  {
+    id: 'publish-connect', categoryId: 'publish',
+    title: 'Connettere i Social Media',
+    desc: 'Come collegare Instagram, Facebook, LinkedIn, TikTok, Pinterest e Google Drive.',
+    content: [
+      { type: 'para', text: 'Per pubblicare, devi prima collegare i tuoi account social nel tab Social della Project View. Ogni piattaforma usa il proprio flusso OAuth.' },
+      { type: 'h3', text: 'Piattaforme supportate' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Instagram', desc: 'OAuth tramite Facebook Login. Richiede un account Instagram Business o Creator collegato a una Pagina Facebook.' },
+        { title: 'Facebook', desc: 'OAuth tramite Facebook Login. Pubblica su Pagine di cui sei amministratore.' },
+        { title: 'LinkedIn', desc: 'OAuth tramite LinkedIn. Pubblica sul profilo personale o su Company Page.' },
+        { title: 'TikTok', desc: 'OAuth tramite TikTok for Developers. Pubblica video direttamente.' },
+        { title: 'Pinterest', desc: 'OAuth tramite Pinterest API. Pubblica Pin su board selezionate.' },
+        { title: 'Google Drive', desc: 'OAuth tramite Google. Consente di importare media dal tuo Drive nell\'editor.' },
+      ]},
+      { type: 'h3', text: 'Come connettersi' },
+      { type: 'steps', items: [
+        { title: 'Apri il tab Social', desc: 'Nella Project View, clicca il tab "Social".' },
+        { title: 'Clicca "Connetti"', desc: 'Premi il pulsante accanto alla piattaforma desiderata.' },
+        { title: 'Autorizza Sketchario', desc: 'Si apre un popup OAuth. Accedi con il tuo account e concedi le autorizzazioni.' },
+        { title: 'Verifica la connessione', desc: 'L\'icona diventa verde con il badge "Connesso".' },
+      ]},
+      { type: 'warn', text: 'I token di Instagram e Facebook durano 60 giorni. Se la pubblicazione fallisce con errore di autenticazione, disconnetti e riconnetti l\'account per rinnovare il token.' },
+    ],
+  },
+
+  {
+    id: 'publish-schedule', categoryId: 'publish',
+    title: 'Programmare un Post',
+    desc: 'Come impostare data, ora e social per la pubblicazione automatica.',
+    content: [
+      { type: 'steps', items: [
+        { title: 'Apri l\'editor del contenuto', desc: 'Clicca sul post dalla Project View.' },
+        { title: 'Seleziona i social', desc: 'Nel pannello destro, spunta le piattaforme su cui vuoi pubblicare. Puoi selezionarne più di una.' },
+        { title: 'Clicca "Programma"', desc: 'Il popup di schedulazione si apre con il mini-calendario.' },
+        { title: 'Scegli giorno e ora', desc: 'Clicca il giorno nel calendario, poi inserisci l\'orario nel campo ore:minuti.' },
+        { title: 'Conferma', desc: 'Clicca "Conferma". L\'editor si chiude e il post passa allo stato Programmato.' },
+      ]},
+      { type: 'h3', text: 'Orario e fuso orario' },
+      { type: 'para', text: 'L\'ora che inserisci è sempre interpretata come ora locale del tuo browser. Il sistema la converte automaticamente in UTC per la coda. Quello che vedi nella barra di stato è l\'ora locale.' },
+      { type: 'h3', text: 'Modificare o annullare la programmazione' },
+      { type: 'para', text: 'Riapri l\'editor: nella barra in basso trovi i pulsanti "Modifica" (per cambiare data/ora) e "Annulla prog." (per riportare il post in bozza).' },
+      { type: 'tip', text: 'Se non hai ancora selezionato nessun social, il pulsante Programma rimane disabilitato. Seleziona almeno una piattaforma prima.' },
+    ],
+  },
+
+  {
+    id: 'publish-queue', categoryId: 'publish',
+    title: 'Coda di Pubblicazione',
+    desc: 'Come funziona la pubblicazione automatica e come monitorare lo stato.',
+    content: [
+      { type: 'para', text: 'La coda di pubblicazione è gestita dal backend di Sketchario. Ogni 60 secondi il sistema controlla se ci sono post schedulati in scadenza e li invia alle rispettive piattaforme social.' },
+      { type: 'h3', text: 'Il pannello Queue & Analytics' },
+      { type: 'para', text: 'Nel pannello a destra della Project View, la sezione Queue mostra gli ultimi elementi della coda con il loro stato:' },
+      { type: 'grid', cols: 2, items: [
+        { title: '🔵 In coda', desc: 'Il post è schedulato e in attesa della pubblicazione.' },
+        { title: '✅ Pubblicato', desc: 'Il post è stato inviato con successo. Icona verde.' },
+        { title: '❌ Fallito', desc: 'Errore durante la pubblicazione. Il messaggio di errore è visibile sotto.' },
+        { title: '🔴 Annullato', desc: 'La programmazione è stata annullata manualmente.' },
+      ]},
+      { type: 'h3', text: 'Cosa fare in caso di errore' },
+      { type: 'bullets', items: [
+        'Leggi il messaggio di errore nel pannello Queue.',
+        'Se l\'errore è "token scaduto" o "autenticazione fallita": vai nel tab Social, disconnetti e riconnetti l\'account.',
+        'Se l\'errore è "account non trovato" o "permessi insufficienti": verifica che il tuo account Instagram/Facebook sia di tipo Business.',
+        'Riapri l\'editor del post e ripubblica manualmente con "Pubblica".',
+      ]},
+      { type: 'note', text: 'I contenuti pubblicati cambiano colore in verde nel calendario, nelle card e nella lista per rendere immediatamente visibile lo stato.' },
+    ],
+  },
+
+  // ══════════════ INTEGRAZIONI ══════════════
+  {
+    id: 'integration-drive', categoryId: 'integrations',
+    title: 'Google Drive',
+    desc: 'Importare immagini e documenti direttamente dal proprio Google Drive.',
+    content: [
+      { type: 'h3', text: 'Connettere Google Drive' },
+      { type: 'para', text: 'Nel tab Social della Project View, trovi Google Drive nella sezione Integrazioni. Clicca "Connetti Google Drive" e autorizza Sketchario con permesso di sola lettura (drive.readonly).' },
+      { type: 'h3', text: 'Importare un file nell\'editor' },
+      { type: 'steps', items: [
+        { title: 'Apri l\'editor del post', desc: 'Clicca sul contenuto.' },
+        { title: 'Clicca l\'icona Google Drive', desc: 'Nella sezione Media, clicca l\'icona del Drive (freccia giù su sfondo colorato).' },
+        { title: 'Seleziona il file', desc: 'Si apre il Google Picker. Naviga nelle cartelle e seleziona l\'immagine o il documento.' },
+        { title: 'Il file viene importato', desc: 'Il media viene scaricato e aggiunto al post.' },
+      ]},
+      { type: 'warn', text: 'Se compare l\'avviso "autorizzazioni scadute", disconnetti e riconnetti Google Drive dal tab Social.' },
+    ],
+  },
+
+  {
+    id: 'integration-canva', categoryId: 'integrations',
+    title: 'Canva',
+    desc: 'Creare un design in Canva e importarlo direttamente nel post.',
+    content: [
+      { type: 'para', text: 'L\'integrazione Canva permette di aprire l\'editor Canva direttamente da Sketchario, lavorare sul design e reimportare le immagini esportate nel post.' },
+      { type: 'h3', text: 'Flusso di utilizzo' },
+      { type: 'steps', items: [
+        { title: 'Clicca "Apri in Canva"', desc: 'Nell\'editor del post, sezione Media, clicca l\'icona Canva.' },
+        { title: 'Sketchario crea un design', desc: 'Viene creato automaticamente un design Canva con il formato corretto.' },
+        { title: 'Modifica il design', desc: 'Si apre Canva nel browser. Lavora liberamente sul tuo design.' },
+        { title: 'Torna a Sketchario', desc: 'Clicca il pulsante "Torna a Sketchario" presente nel design Canva.' },
+        { title: 'Importazione automatica', desc: 'Le immagini esportate vengono importate nel post come media.' },
+      ]},
+      { type: 'warn', text: 'La sessione Canva ha una scadenza. Se appare l\'errore "Sessione Canva scaduta", clicca di nuovo sull\'icona Canva per avviare una nuova sessione.' },
+    ],
+  },
+
+  {
+    id: 'integration-feeds', categoryId: 'integrations',
+    title: 'Feed RSS e Suggerimenti AI',
+    desc: 'Usare le notizie del settore e le idee AI per ispirare i contenuti.',
+    content: [
+      { type: 'para', text: 'La Project View include due strip orizzontali in fondo alla pagina: una con notizie RSS del settore, una con idee generate dall\'AI.' },
+      { type: 'h3', text: 'Feed Notizie (RSS)' },
+      { type: 'para', text: 'Mostra articoli di notizie pertinenti al settore del progetto (Google News, Reddit, ecc.). Clicca su un articolo per aprire la modale con il dettaglio. Da lì puoi creare un post ispirato all\'articolo o salvarlo (pin).' },
+      { type: 'h3', text: 'Suggerimenti AI' },
+      { type: 'para', text: 'L\'AI genera periodicamente idee di contenuto specifiche per il tuo settore e tone of voice. Cliccando su un\'idea puoi creare direttamente un nuovo post con quell\'angolazione.' },
+      { type: 'h3', text: 'Pin e Refresh' },
+      { type: 'bullets', items: [
+        '"Pin" (puntina) salva l\'articolo per tornare a vederlo dopo.',
+        '"Refresh" ricarica i feed RSS con contenuti più recenti.',
+        '"Rigenera" chiede all\'AI nuove idee per il progetto.',
+      ]},
+    ],
+  },
+
+  // ══════════════ ACCOUNT E TEAM ══════════════
+  {
+    id: 'account-profile', categoryId: 'account',
+    title: 'Profilo e Impostazioni Account',
+    desc: 'Modificare nome, settore e password. Eliminare l\'account.',
+    content: [
+      { type: 'para', text: 'Clicca sul tuo nome in fondo alla sidebar (o sulla voce "Profilo" nel menu mobile) per accedere alle impostazioni del tuo account.' },
+      { type: 'h3', text: 'Dati profilo' },
+      { type: 'bullets', items: [
+        'Nome — modificabile in qualsiasi momento.',
+        'Email — visibile ma non modificabile (usata per il login).',
+        'Settore — il tuo ambito professionale (es. Fotografo, Coach). Usato per personalizzare i Feed RSS.',
+      ]},
+      { type: 'h3', text: 'Cambio password' },
+      { type: 'para', text: 'Inserisci la password attuale e poi la nuova password (minimo 8 caratteri). Clicca Salva. Un messaggio verde conferma il cambiamento.' },
+      { type: 'h3', text: 'Eliminare l\'account' },
+      { type: 'para', text: 'Nella sezione "Zona Pericolosa" trovi il pulsante Elimina Account. Verrai disconnesso e tutti i tuoi dati verranno cancellati definitivamente. L\'operazione richiede una doppia conferma.' },
+      { type: 'warn', text: 'L\'eliminazione dell\'account è irreversibile. Tutti i progetti, contenuti e media verranno cancellati permanentemente.' },
+    ],
+  },
+
+  {
+    id: 'account-plans', categoryId: 'account',
+    title: 'Piani e Upgrade',
+    desc: 'Differenze tra Free, Creator e Strategist. Come effettuare l\'upgrade.',
+    content: [
+      { type: 'h3', text: 'Confronto Piani' },
+      { type: 'grid', cols: 3, items: [
+        { title: '🆓 Free', desc: '1 progetto, 7 contenuti/progetto, AI base, Export JSON.' },
+        { title: '✨ Creator', desc: '5 progetti, 30 contenuti/progetto, AI illimitata, Feed RSS, Export CSV+JSON, Social profiles.' },
+        { title: '🚀 Strategist', desc: 'Progetti e contenuti illimitati, AI illimitata, Feed, Publishing Queue, Team, Admin Console, Supporto prioritario.' },
+      ]},
+      { type: 'h3', text: 'Come fare l\'upgrade' },
+      { type: 'steps', items: [
+        { title: 'Vai alla sezione Billing', desc: 'Clicca su "Upgrade" nella sidebar o nelle impostazioni profilo.' },
+        { title: 'Scegli il piano', desc: 'Confronta i piani e clicca il bottone del piano desiderato.' },
+        { title: 'Checkout Stripe', desc: 'Verrai reindirizzato alla pagina di pagamento sicura Stripe.' },
+        { title: 'Confermato', desc: 'Dopo il pagamento, il piano si aggiorna automaticamente.' },
+      ]},
+      { type: 'note', text: 'Il piano corrente è evidenziato con il badge "Piano Attuale". Il piano Strategist è contrassegnato come "Popolare".' },
+    ],
+  },
+
+  {
+    id: 'account-team', categoryId: 'account',
+    title: 'Team e Collaboratori',
+    desc: 'Invitare membri, assegnare ruoli e gestire le collaborazioni.',
+    content: [
+      { type: 'para', text: 'Puoi invitare altri utenti a collaborare su un progetto. Il pannello Team è accessibile dal tab Social della Project View, in fondo alla pagina.' },
+      { type: 'h3', text: 'Ruoli disponibili' },
+      { type: 'grid', cols: 2, items: [
+        { title: '👑 Owner', desc: 'Chi ha creato il progetto. Può invitare, rimuovere e gestire tutti i contenuti.' },
+        { title: '✏️ Editor', desc: 'Può creare, modificare e pubblicare contenuti. Non può eliminare il progetto.' },
+        { title: '👁 Viewer', desc: 'Può visualizzare i contenuti ma non modificarli né pubblicarli.' },
+      ]},
+      { type: 'h3', text: 'Come invitare un collaboratore' },
+      { type: 'steps', items: [
+        { title: 'Apri il pannello Team', desc: 'Tab Social → scorri in fondo alla pagina.' },
+        { title: 'Inserisci l\'email', desc: 'Nel form di invito, inserisci l\'email del collaboratore.' },
+        { title: 'Scegli il ruolo', desc: 'Seleziona Editor o Viewer dal menu a tendina.' },
+        { title: 'Clicca Invita', desc: 'L\'utente riceverà una notifica in-app. Apparirà come "In attesa" finché non accetta.' },
+      ]},
+      { type: 'tip', text: 'Il collaboratore deve essere già registrato su Sketchario per ricevere l\'invito. Troverà gli inviti in sospeso nella sezione Team del proprio account.' },
+    ],
+  },
 ];
 
 // ─── BLOCCHI RENDER ──────────────────────────────────────────
