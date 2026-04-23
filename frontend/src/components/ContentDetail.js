@@ -1263,10 +1263,33 @@ export default function ContentDetail({ content: initialContent, project, onClos
             )}
           </div>
 
+          {/* Selected socials indicator */}
+          <div className="px-5 pb-3">
+            {selectedProfiles.length === 0 ? (
+              <p className="text-xs text-center py-2 rounded-xl" style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                ⚠ Seleziona almeno un social dalla colonna sinistra
+              </p>
+            ) : (
+              <div className="flex items-center gap-2 py-2 px-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <div className="flex -space-x-1.5">
+                  {selectedProfiles.map(prof => {
+                    const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888' };
+                    return (
+                      <div key={prof.id} className="w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-[var(--bg-card)]" style={{ background: pi.color }}>
+                        <pi.Icon size={12} color="white" weight="fill" />
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">{selectedProfiles.length} social selezionati</span>
+              </div>
+            )}
+          </div>
+
           {/* Footer */}
           <div className="flex gap-3 px-5 pb-5">
             <button className="btn-ghost flex-1" onClick={() => { setShowSchedule(false); setCustomPerSocial(false); }} disabled={scheduling}>{t('common.cancel')}</button>
-            <button className="btn-gradient flex-1" onClick={schedule} disabled={scheduling || !scheduleDate}>
+            <button className="btn-gradient flex-1" onClick={schedule} disabled={scheduling || !scheduleDate || selectedSocials.length === 0}>
               {scheduling ? '...' : 'Programma'}
             </button>
           </div>
