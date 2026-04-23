@@ -396,15 +396,28 @@ export default function ContentDetail({ content: initialContent, project, onClos
 
           if (urls.length === 0) { toast.info(t('canva.noImages'), { id: importTid }); return; }
 
-          // Step 3: download and save
+          // Step 3: download client-side (browser→CDN, no Railway timeout) then upload via FormData
           toast.loading(t('canva.downloading'), { id: importTid });
-          const { data: imp } = await api.post(`/canva/export-download/${content.id}`, { urls });
-          if (imp.count > 0) {
-            const updated = { ...content, media: [...(content.media || []), ...(imp.media || [])] };
+          const newMedia = [];
+          for (let i = 0; i < urls.length; i++) {
+            const resp = await fetch(urls[i]);
+            if (!resp.ok) continue;
+            const blob = await resp.blob();
+            const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+            const file = new File([blob], `canva_export_${i + 1}.${ext}`, { type: blob.type || 'image/png' });
+            const fd = new FormData();
+            fd.append('file', file);
+            const { data: mediaDoc } = await api.post(`/media/upload/${content.id}`, fd, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            newMedia.push(mediaDoc);
+          }
+          if (newMedia.length > 0) {
+            const updated = { ...content, media: [...(content.media || []), ...newMedia] };
             setContent(updated); onUpdate?.(updated);
-            toast.success(t('canva.importSuccess_other', { count: imp.count }), { id: importTid, duration: 5000 });
+            toast.success(t('canva.importSuccess_other', { count: newMedia.length }), { id: importTid, duration: 5000 });
           } else {
-            toast.info('Nessuna immagine salvata', { id: importTid });
+            toast.info(t('canva.noImages'), { id: importTid });
           }
         } catch (e) {
           if (e.response?.status === 401) {

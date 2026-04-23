@@ -2647,7 +2647,16 @@ async def canva_export_status(job_id: str, request: Request):
             headers={"Authorization": f"Bearer {access_token}"}
         )
     job = r.json().get("job", {})
-    return {"status": job.get("status", "in_progress"), "urls": [u["url"] for u in job.get("urls", []) if u.get("url")]}
+    # Canva returns urls as array of objects {"url":...} or plain strings — handle both
+    raw = job.get("urls") or job.get("pages") or []
+    urls = []
+    for u in raw:
+        if isinstance(u, str):
+            urls.append(u)
+        elif isinstance(u, dict):
+            urls.append(u.get("url") or u.get("download_url") or "")
+    urls = [u for u in urls if u]
+    return {"status": job.get("status", "in_progress"), "urls": urls}
 
 @api.post("/canva/export-download/{content_id}")
 async def canva_export_download(content_id: str, request: Request):
