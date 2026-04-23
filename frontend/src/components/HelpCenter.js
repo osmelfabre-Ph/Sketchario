@@ -604,9 +604,16 @@ export default function HelpCenter({ onClose }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
 
       {/* Header */}
-      <div style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
-        <img src="/assets/favicon.jpg" alt="Sketchario" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'contain' }} />
-        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Guida di Sketchario</span>
+      <div style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', padding: '0.875rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+        {/* Logo cliccabile → torna alla dashboard */}
+        <button
+          onClick={onClose}
+          title="Torna alla Dashboard"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+        >
+          <img src="/assets/favicon.jpg" alt="Sketchario" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'contain' }} />
+        </button>
+        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', flexShrink: 0 }}>Guida di Sketchario</span>
         <div style={{ flex: 1, position: 'relative', maxWidth: 480 }}>
           <MagnifyingGlass size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
@@ -616,8 +623,13 @@ export default function HelpCenter({ onClose }) {
             style={{ width: '100%', paddingLeft: 36, paddingRight: 12, paddingTop: 8, paddingBottom: 8, background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '0.625rem', color: 'var(--text-primary)', fontSize: '0.875rem', outline: 'none' }}
           />
         </div>
-        <button onClick={onClose} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
-          <X size={20} />
+        {/* Pulsante chiudi visibile */}
+        <button
+          onClick={onClose}
+          title="Chiudi guida"
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '0.625rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 500, flexShrink: 0 }}
+        >
+          <X size={14} /> Chiudi
         </button>
       </div>
 
@@ -627,7 +639,7 @@ export default function HelpCenter({ onClose }) {
         {/* Sidebar categorie */}
         <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflowY: 'auto', padding: '1.25rem 0.75rem' }}>
           <button onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.8rem', marginBottom: '1rem', padding: '0.25rem 0.5rem' }}>
-            <House size={14} /> Home
+            <BookOpen size={14} /> Indice
           </button>
           {CATEGORIES.map(cat => (
             <button
