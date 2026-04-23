@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import {
-  Users, Palette, Lightning, Sparkle, ArrowRight, Check, PencilSimple, Video, Image, ArrowLeft
+  Users, Palette, Lightning, Sparkle, ArrowRight, Check, PencilSimple, Video, Image, ArrowLeft,
+  FileText, UploadSimple, X
 } from '@phosphor-icons/react';
 
 export default function Wizard({ setActiveView, setSelectedProject, resumeData, setWizardResumeData }) {
@@ -24,6 +25,9 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
   const [durationWeeks, setDurationWeeks] = useState(1);
   const [geo, setGeo] = useState('');
   const [briefNotes, setBriefNotes] = useState('');
+  const [projectInstructions, setProjectInstructions] = useState('');
+  const [instructionsFileName, setInstructionsFileName] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [projectId, setProjectId] = useState(null);
 
   // Step 1: Personas
@@ -105,7 +109,8 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
       const { data } = await api.post('/projects', {
         name: projectName, sector, description, objective_awareness: awareness,
         objective_education: education, objective_monetizing: monetizing,
-        formats, duration_weeks: durationWeeks, geo, brief_notes: briefNotes
+        formats, duration_weeks: durationWeeks, geo, brief_notes: briefNotes,
+        custom_instructions: projectInstructions
       });
       setProjectId(data.id);
       setStep(1);
@@ -254,7 +259,47 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Note per l'AI</label>
-                <textarea className="input-dark" rows={2} placeholder="Es. Tono leggermente pi&ugrave; urgente, uscita corso online..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <textarea className="input-dark" rows={2} placeholder="Es. Tono leggermente più urgente, uscita corso online..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Istruzioni personalizzate <span className="text-[var(--text-muted)] font-normal">(opzionale)</span></label>
+                <p className="text-xs text-[var(--text-muted)] mb-2">Carica un file con le tue linee guida brand, positioning, tono, target — verranno usate in tutte le generazioni AI (personas, hook, contenuti, ToV).</p>
+                {projectInstructions ? (
+                  <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)' }}>
+                    <FileText size={16} color="var(--accent-purple)" />
+                    <span className="text-sm flex-1 truncate text-[var(--accent-purple)]">{instructionsFileName}</span>
+                    <span className="text-xs text-[var(--text-muted)]">{projectInstructions.length} car.</span>
+                    <button className="p-1 hover:text-red-400 transition-colors" onClick={() => { setProjectInstructions(''); setInstructionsFileName(''); }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 p-3 rounded-xl cursor-pointer transition-colors" style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed var(--border-color)' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-purple)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}>
+                    <UploadSimple size={16} color="var(--text-muted)" />
+                    <span className="text-sm text-[var(--text-muted)]">{uploadingFile ? 'Analisi in corso...' : 'Carica .txt .md .html .docx .pdf'}</span>
+                    <input type="file" className="hidden" accept=".txt,.md,.html,.htm,.docx,.pdf"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingFile(true);
+                        try {
+                          const fd = new FormData(); fd.append('file', file);
+                          const { data } = await api.post('/projects/parse-instructions-file', fd);
+                          setProjectInstructions(data.text);
+                          setInstructionsFileName(file.name);
+                        } catch (err) {
+                          setError('Errore lettura file: ' + (err.response?.data?.detail || err.message));
+                        }
+                        setUploadingFile(false);
+                        e.target.value = '';
+                      }} />
+                  </label>
+                )}
+                {projectInstructions && (
+                  <textarea className="input-dark mt-2 text-xs" rows={3} value={projectInstructions} onChange={e => setProjectInstructions(e.target.value)} style={{ paddingLeft: '1rem', color: 'var(--text-muted)' }} />
+                )}
               </div>
             </div>
             <button data-testid="wizard-next-btn" className="btn-gradient" onClick={createProject} disabled={loading}>

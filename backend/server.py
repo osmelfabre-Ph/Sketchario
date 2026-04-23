@@ -200,6 +200,7 @@ class ProjectCreate(BaseModel):
     duration_weeks: int = 1
     geo: Optional[str] = ""
     brief_notes: Optional[str] = ""
+    custom_instructions: Optional[str] = ""
     campaign_start: Optional[str] = None
     campaign_end: Optional[str] = None
 
@@ -417,6 +418,7 @@ async def create_project(inp: ProjectCreate, request: Request):
         "duration_weeks": inp.duration_weeks,
         "geo": inp.geo,
         "brief_notes": inp.brief_notes,
+        "custom_instructions": inp.custom_instructions,
         "campaign_start": inp.campaign_start,
         "campaign_end": inp.campaign_end,
         "status": "draft",
@@ -429,6 +431,37 @@ async def create_project(inp: ProjectCreate, request: Request):
     doc["id"] = str(result.inserted_id)
     doc.pop("_id", None)
     return doc
+
+@api.post("/projects/parse-instructions-file")
+async def parse_instructions_file(file: UploadFile = File(...), request: Request = None):
+    await get_current_user(request)
+    content_bytes = await file.read()
+    fname = (file.filename or "").lower()
+    import re as _re
+    try:
+        if fname.endswith('.txt') or fname.endswith('.md'):
+            text = content_bytes.decode('utf-8', errors='replace')
+        elif fname.endswith('.html') or fname.endswith('.htm'):
+            html = content_bytes.decode('utf-8', errors='replace')
+            text = _re.sub(r'<[^>]+>', ' ', html)
+            text = _re.sub(r'\s+', ' ', text).strip()
+        elif fname.endswith('.docx'):
+            from docx import Document
+            from io import BytesIO
+            doc = Document(BytesIO(content_bytes))
+            text = '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+        elif fname.endswith('.pdf'):
+            from pypdf import PdfReader
+            from io import BytesIO
+            reader = PdfReader(BytesIO(content_bytes))
+            text = '\n'.join(page.extract_text() or '' for page in reader.pages)
+        else:
+            raise HTTPException(400, "Formato non supportato. Usa .txt .md .html .docx .pdf")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Errore lettura file: {str(e)}")
+    return {"text": text[:12000]}
 
 @api.get("/projects/{project_id}")
 async def get_project(project_id: str, request: Request):
@@ -596,10 +629,12 @@ async def generate_personas(inp: GeneratePersonasInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
+    custom_inst = project.get("custom_instructions", "")
     system = "Sei un esperto di marketing strategico. Genera buyer personas dettagliate in formato JSON. Rispondi SOLO con un array JSON valido, senza markdown."
     prompt = f"""Genera 6 buyer personas MECE per un progetto nel settore: {project['sector']}.
 Descrizione: {project.get('description', '')}
 Area: {project.get('geo', 'Italia')}
+{f"Istruzioni personalizzate: {custom_inst}" if custom_inst else ""}
 
 Per ogni persona restituisci un oggetto JSON con:
 - role: professione o tipo di persona (es. "Insegnante", "Libero professionista", "Imprenditore")
@@ -654,9 +689,14 @@ async def generate_hooks(inp: GenerateHooksInput, request: Request):
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     weeks = project.get("duration_weeks", 1)
     num_hooks = weeks * 7
+    proj_inst_h = project.get("custom_instructions", "")
     tov_desc = ""
     if tov:
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
+        tov_inst_h = tov.get('custom_instructions', '')
+        combined_h = " ".join(filter(None, [proj_inst_h, tov_inst_h]))
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10.{' ' + combined_h if combined_h else ''}"
+    elif proj_inst_h:
+        tov_desc = f"Istruzioni: {proj_inst_h}"
     system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
     prompt = f"""Genera {num_hooks} hook per un progetto nel settore: {project['sector']}.
 Descrizione: {project.get('description','')}
@@ -732,9 +772,14 @@ async def generate_content(inp: GenerateContentInput, request: Request):
     if tov:
         cl = tov.get("caption_length", "medium")
         caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
+    proj_inst_c = project.get("custom_instructions", "")
     tov_desc = ""
     if tov:
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. Istruzioni: {tov.get('custom_instructions','')}"
+        tov_inst_c = tov.get('custom_instructions','')
+        combined_c = " ".join(filter(None, [proj_inst_c, tov_inst_c]))
+        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10.{' Istruzioni: ' + combined_c if combined_c else ''}"
+    elif proj_inst_c:
+        tov_desc = f"Istruzioni: {proj_inst_c}"
     generated = []
     for hook in hooks:
         system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
