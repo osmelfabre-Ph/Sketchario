@@ -412,7 +412,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 pt-2">
                 {contents.map((c, i) => (
                   <motion.div key={c.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
-                    className="card cursor-pointer group" onClick={() => openContentDetail(c)}>
+                    className="card cursor-pointer group" onClick={() => openContentDetail(c)}
+                    style={c.status === 'published' ? { borderColor: 'rgba(34,197,94,0.45)', background: 'linear-gradient(135deg, var(--bg-card) 80%, rgba(34,197,94,0.06) 100%)' } : {}}>
                     {c.media && c.media[0] && c.media[0].type === 'image' ? (
                       <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-28 md:h-36 rounded-t-[0.9rem] overflow-hidden">
                         <img src={`${process.env.REACT_APP_BACKEND_URL}${c.media[0].url}`} alt="" className="w-full h-full object-cover" />
@@ -481,6 +482,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                             return (
                               <div key={c.id}
                                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer group hover:bg-[var(--bg-card)] transition-colors"
+                                style={c.status === 'published' ? { background: 'rgba(34,197,94,0.07)', borderLeft: '2px solid rgba(34,197,94,0.5)' } : {}}
                                 onClick={() => openContentDetail(c)}>
                                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: dotColor }} />
                                 <div className="flex-shrink-0 text-[var(--text-muted)]">
@@ -570,9 +572,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                             <>
                               <span className="text-xs font-medium" style={{ color: isToday ? 'var(--accent-purple)' : 'var(--text-secondary)', fontWeight: isToday ? 700 : 500 }}>{dayNum}</span>
                               {dayContents.map(c => (
-                                <div key={c.id} className={`content-chip ${c.format}`} draggable
+                                <div key={c.id} className={`content-chip ${c.status === 'published' ? 'published' : c.format}`} draggable
                                   onDragStart={() => setDragContent(c)} onClick={() => openContentDetail(c)}>
-                                  {c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
+                                  {c.status === 'published' ? <CheckCircle size={10} weight="fill" /> : c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
                                   <span className="ml-1 truncate">{(c.hook_text || c.caption || '').slice(0, 20)}</span>
                                 </div>
                               ))}
