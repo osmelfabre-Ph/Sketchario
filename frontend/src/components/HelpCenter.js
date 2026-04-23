@@ -179,6 +179,144 @@ export const ARTICLES = [
       { type: 'tip', text: 'La generazione può richiedere 1-3 minuti a seconda del numero di contenuti. Non chiudere la pagina durante il processo.' },
     ],
   },
+
+  // ══════════════ GESTIONE CONTENUTI ══════════════
+  {
+    id: 'content-list', categoryId: 'content',
+    title: 'Vista Lista e Vista Cards',
+    desc: 'Come visualizzare, filtrare e organizzare i contenuti del progetto.',
+    content: [
+      { type: 'para', text: 'Nella Project View puoi alternare tra due modalità di visualizzazione usando i pulsanti in alto a destra: Cards (griglia) e Lista compatta.' },
+      { type: 'h3', text: 'Vista Cards (griglia)' },
+      { type: 'para', text: 'Ogni card mostra: anteprima del media, formato del contenuto (badge colorato), stato, testo dell\'hook e data di pubblicazione. I post pubblicati hanno un bordo verde.' },
+      { type: 'h3', text: 'Vista Lista compatta' },
+      { type: 'para', text: 'I contenuti sono raggruppati per stato: Pubblicati (verde), Programmati (arancione), Bozze (grigio/viola). Ogni riga mostra hook, formato e data.' },
+      { type: 'h3', text: 'Badge formato' },
+      { type: 'grid', cols: 3, items: [
+        { title: '🎬 Reel', desc: 'Contenuto video verticale. Badge rosa.' },
+        { title: '🖼️ Carousel', desc: 'Post multi-immagine. Badge blu.' },
+        { title: '🤖 Prompted Reel', desc: 'Reel generato con prompt AI specifico. Badge viola.' },
+      ]},
+      { type: 'h3', text: 'Azioni sui contenuti' },
+      { type: 'bullets', items: [
+        'Clicca su un contenuto per aprire l\'editor completo.',
+        'Hover su una card per mostrare il pulsante Elimina (rosso).',
+        'Il flag arancione segna il contenuto come urgente.',
+        'Il numero "G1", "G2"... indica il giorno offset della campagna.',
+      ]},
+    ],
+  },
+
+  {
+    id: 'content-calendar', categoryId: 'content',
+    title: 'Calendario Editoriale',
+    desc: 'Navigare e usare il calendario mensile dei contenuti programmati.',
+    content: [
+      { type: 'para', text: 'Il tab Calendario mostra una griglia mensile con i contenuti programmati posizionati sui giorni corrispondenti. Usa le frecce ← → per navigare tra i mesi.' },
+      { type: 'h3', text: 'Content Chip nel calendario' },
+      { type: 'para', text: 'Ogni contenuto schedulato appare come un "chip" colorato nel giorno di pubblicazione. Il colore indica il formato: rosa per i Reel, blu per i Carousel. I contenuti già pubblicati appaiono in verde con un\'icona di spunta.' },
+      { type: 'h3', text: 'Giorno corrente' },
+      { type: 'para', text: 'Il giorno odierno è evidenziato con un bordo colorato nel calendario per facilitare l\'orientamento.' },
+      { type: 'tip', text: 'Per programmare un contenuto su una data specifica, aprilo dall\'editor e usa il selettore data nel pannello di destra.' },
+      { type: 'note', text: 'Il calendario mostra i mesi in ordine corretto con allineamento reale dei giorni della settimana (Lunedì = prima colonna).' },
+    ],
+  },
+
+  {
+    id: 'content-statuses', categoryId: 'content',
+    title: 'Stati dei Contenuti',
+    desc: 'Bozza, Programmato, Pubblicato, Fallito — cosa significano e come cambiano.',
+    content: [
+      { type: 'h3', text: 'I 4 stati possibili' },
+      { type: 'grid', cols: 2, items: [
+        { title: '✏️ Bozza (Draft)', desc: 'Contenuto generato ma non ancora programmato né pubblicato. Puoi modificarlo liberamente.' },
+        { title: '🕐 Programmato', desc: 'Il contenuto ha una data/ora di pubblicazione futura. La coda lo pubblicherà automaticamente.' },
+        { title: '✅ Pubblicato', desc: 'Il contenuto è stato inviato con successo a tutti i social selezionati. Il bordo diventa verde.' },
+        { title: '❌ Fallito', desc: 'La pubblicazione ha incontrato un errore. Il motivo è visibile nel pannello Queue & Analytics.' },
+      ]},
+      { type: 'h3', text: 'Transizioni di stato' },
+      { type: 'steps', items: [
+        { title: 'Bozza → Programmato', desc: 'Seleziona data/ora nell\'editor e clicca "Programma". L\'editor si chiude automaticamente.' },
+        { title: 'Programmato → Pubblicato', desc: 'Il sistema controlla la coda ogni 60 secondi. Quando arriva l\'orario, pubblica automaticamente.' },
+        { title: 'Programmato → Bozza', desc: 'Clicca "Annulla prog." nell\'editor per riportarlo in bozza.' },
+        { title: 'Fallito → Ripubblica', desc: 'Riapri l\'editor, verifica i social selezionati e ripubblica manualmente.' },
+      ]},
+    ],
+  },
+
+  // ══════════════ EDITOR ══════════════
+  {
+    id: 'editor-overview', categoryId: 'editor',
+    title: "L'Editor dei Post",
+    desc: 'I tre pannelli dell\'editor e come navigarli.',
+    content: [
+      { type: 'para', text: 'L\'editor si apre cliccando su qualsiasi contenuto nella Project View. Occupa l\'intera schermata con tre colonne principali.' },
+      { type: 'h3', text: 'Le tre colonne' },
+      { type: 'grid', cols: 3, items: [
+        { title: '✏️ Editor (sinistra)', desc: 'Tutti i campi modificabili: hook, formato, caption, media, script, regia, hashtag.' },
+        { title: '👁 Anteprima (centro)', desc: 'Mockup visivo del post come apparirebbe su Instagram/TikTok. Si aggiorna in tempo reale.' },
+        { title: '📤 Pubblicazione (destra)', desc: 'Selezione social, calendario di scheduling, pulsanti di azione.' },
+      ]},
+      { type: 'h3', text: 'Barra di stato (in basso)' },
+      { type: 'para', text: 'In fondo all\'editor trovi: lo stato del contenuto a sinistra (Bozza / Programmato data+ora / Pubblicato), il pulsante Salva, e a destra i pulsanti di azione principali (Pubblica, Programma, Annulla prog.).' },
+      { type: 'h3', text: 'Chiudere l\'editor' },
+      { type: 'para', text: 'Clicca la X in alto a destra o usa il pulsante "← Torna al Progetto" per tornare alla Project View. Le modifiche vengono salvate automaticamente ogni volta che cambi campo.' },
+      { type: 'tip', text: 'Dopo aver programmato un post, l\'editor si chiude automaticamente e torna alla Project View.' },
+    ],
+  },
+
+  {
+    id: 'editor-caption', categoryId: 'editor',
+    title: 'Caption con Editor Rich Text',
+    desc: 'Usare grassetto, corsivo, sottolineato ed elenchi nella caption.',
+    content: [
+      { type: 'para', text: 'La sezione Caption nell\'editor supporta la formattazione rich text grazie all\'editor TipTap integrato.' },
+      { type: 'h3', text: 'Toolbar di formattazione' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'B — Grassetto', desc: 'Seleziona il testo e clicca B per renderlo in grassetto.' },
+        { title: 'I — Corsivo', desc: 'Clicca I per il corsivo. Utile per enfatizzare parole chiave.' },
+        { title: 'U — Sottolineato', desc: 'Clicca U per aggiungere la sottolineatura.' },
+        { title: '• Elenco', desc: 'Clicca l\'icona elenco per creare una lista puntata.' },
+      ]},
+      { type: 'h3', text: 'Come viene usata la caption' },
+      { type: 'para', text: 'La caption formattata viene inviata ai social come testo normale: i tag HTML vengono rimossi automaticamente e i ritorni a capo preservati. Elenchi puntati diventano il carattere "•". Le piattaforme social non supportano HTML nativo nelle caption.' },
+      { type: 'warn', text: 'Alcune piattaforme (es. LinkedIn) supportano il grassetto nei post tramite caratteri Unicode, non HTML. La formattazione nell\'editor è visiva e serve come guida durante la scrittura.' },
+    ],
+  },
+
+  {
+    id: 'editor-media', categoryId: 'editor',
+    title: 'Media, Immagini e Generazione AI',
+    desc: 'Caricare file, generare immagini AI, importare da Drive o Canva.',
+    content: [
+      { type: 'h3', text: 'Upload diretto' },
+      { type: 'para', text: 'Nella sezione Media dell\'editor, clicca l\'area di upload o trascina un file per caricare immagini o video. Il limite è 400 MB. I formati supportati includono jpg, png, mp4, mov.' },
+      { type: 'h3', text: 'Generazione immagine con FLUX AI' },
+      { type: 'para', text: 'Clicca l\'icona FLUX AI (bacchetta magica) per aprire il generatore di immagini. Inserisci un prompt in italiano o inglese e clicca Genera. L\'immagine viene aggiunta al media del post.' },
+      { type: 'h3', text: 'Importa da Google Drive' },
+      { type: 'para', text: 'Clicca l\'icona Google Drive per aprire il file picker. Seleziona un file dal tuo Drive e verrà scaricato e aggiunto al post. Richiede che Google Drive sia collegato nel tab Social.' },
+      { type: 'h3', text: 'Importa da Canva' },
+      { type: 'para', text: 'Clicca l\'icona Canva per aprire il design nel browser. Lavora su Canva e poi torna a Sketchario: il pulsante "Torna a Sketchario" importerà automaticamente le immagini esportate.' },
+      { type: 'h3', text: 'Libreria Media del Progetto' },
+      { type: 'para', text: 'L\'icona Libreria (foto-stack) apre tutti i media caricati in qualsiasi post del progetto. Puoi selezionare un media già esistente e aggiungerlo al post corrente.' },
+      { type: 'note', text: 'Per i Carousel multi-immagine, carica più file. Tutti verranno pubblicati come singole slide su Instagram, Facebook e LinkedIn.' },
+    ],
+  },
+
+  {
+    id: 'editor-script', categoryId: 'editor',
+    title: 'Script e Regia Visiva',
+    desc: 'Opening Hook, Script Avatar e Regia Visiva per i Reel.',
+    content: [
+      { type: 'h3', text: 'Opening Hook (primi 3-5 secondi)' },
+      { type: 'para', text: 'È la prima frase o azione che appare nel Reel. Determinante per catturare l\'attenzione prima che lo spettatore scrolli. Puoi modificarla o rigenerarla con l\'AI.' },
+      { type: 'h3', text: 'Script Avatar' },
+      { type: 'para', text: 'Lo script completo da leggere di fronte alla camera o da far leggere a un avatar AI. Include il testo parola per parola, suddiviso in sezioni. Clicca "Copia Script Avatar" per copiarlo negli appunti.' },
+      { type: 'h3', text: 'Regia Visiva' },
+      { type: 'para', text: 'Indicazioni sulla produzione video: inquadrature, transizioni, effetti, testo a schermo, musica consigliata. Utile come guida durante le riprese o per briefare un editor video.' },
+      { type: 'tip', text: 'Puoi rigenerare singolarmente ogni sezione (Hook, Script, Regia) con l\'icona "Rigenera" senza perdere le altre.' },
+    ],
+  },
 ];
 
 // ─── BLOCCHI RENDER ──────────────────────────────────────────
