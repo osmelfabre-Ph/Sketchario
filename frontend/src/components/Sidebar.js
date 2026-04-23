@@ -218,6 +218,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView, onHe
 
       {/* Help */}
       <button
+        data-testid="help-btn"
         className="sidebar-nav-item text-[var(--text-muted)]"
         onClick={onHelpOpen}
         title={collapsed ? 'Guida' : ''}

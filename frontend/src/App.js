@@ -15,6 +15,7 @@ import Billing from './components/Billing';
 import Notifications from './components/Notifications';
 import OnboardingTour from './components/OnboardingTour';
 import HelpCenter from './components/HelpCenter';
+import ProductTour, { shouldShowTour } from './components/ProductTour';
 
 function AppContent() {
   const { user, loading, api } = useAuth();
@@ -24,6 +25,7 @@ function AppContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [wizardResumeData, setWizardResumeData] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showTour, setShowTour] = useState(() => shouldShowTour());
 
   useEffect(() => {
     if (user && api) {
@@ -99,6 +101,9 @@ function AppContent() {
       </main>
       {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
+      {showTour && !showHelp && !showOnboarding && (
+        <ProductTour onFinish={() => setShowTour(false)} />
+      )}
     </div>
   );
 }
