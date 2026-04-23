@@ -1229,7 +1229,7 @@ async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
             "profile_name": ui.get("email", ui.get("name", "Google")),
         }
 
-async def _publish_facebook(token: str, text: str, image_url: Optional[str] = None) -> str:
+async def _publish_facebook(token: str, text: str, image_urls: list) -> str:
     async with httpx.AsyncClient(timeout=30) as c:
         pages_r = await c.get("https://graph.facebook.com/v19.0/me/accounts", params={"access_token": token})
         pages_r.raise_for_status()
@@ -1239,9 +1239,25 @@ async def _publish_facebook(token: str, text: str, image_url: Optional[str] = No
         page = pages[0]
         page_token = page["access_token"]
         page_id = page["id"]
-        if image_url:
+        if len(image_urls) > 1:
+            # Multi-photo post: upload each as unpublished, then attach to feed post
+            photo_ids = []
+            for url in image_urls[:10]:
+                pr = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/photos",
+                    params={"access_token": page_token}, data={"url": url, "published": "false"})
+                if pr.status_code == 200:
+                    pid = pr.json().get("id")
+                    if pid:
+                        photo_ids.append(pid)
+            if photo_ids:
+                r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/feed",
+                    params={"access_token": page_token},
+                    json={"message": text, "attached_media": [{"media_fbid": pid} for pid in photo_ids]})
+                r.raise_for_status()
+                return r.json().get("id", "")
+        if image_urls:
             r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/photos",
-                params={"access_token": page_token}, data={"url": image_url, "caption": text})
+                params={"access_token": page_token}, data={"url": image_urls[0], "caption": text})
         else:
             r = await c.post(f"https://graph.facebook.com/v19.0/{page_id}/feed",
                 params={"access_token": page_token}, data={"message": text})
@@ -1313,24 +1329,50 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
         r.raise_for_status()
         return r.json().get("id", "")
 
-async def _publish_instagram(token: str, ig_id: str, text: str, image_url: Optional[str] = None) -> str:
+async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list) -> str:
     if not ig_id:
         raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
-    if not image_url:
-        raise ValueError("Instagram richiede un'immagine. Carica prima un media sul contenuto.")
+    if not image_urls:
+        raise ValueError("Instagram richiede almeno un'immagine. Carica prima un media sul contenuto.")
     async with httpx.AsyncClient(timeout=60) as c:
-        # Step 1: create media container
-        container_r = await c.post(
-            f"https://graph.facebook.com/v19.0/{ig_id}/media",
-            data={"image_url": image_url, "caption": text, "access_token": token}
-        )
-        if container_r.status_code != 200:
-            fb_err = container_r.json().get("error", {})
-            raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}")
-        container_id = container_r.json().get("id", "")
-        if not container_id:
-            raise ValueError("IG container creation returned no ID")
-        # Step 2: publish
+        if len(image_urls) == 1:
+            # Single image post
+            container_r = await c.post(
+                f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                data={"image_url": image_urls[0], "caption": text, "access_token": token}
+            )
+            if container_r.status_code != 200:
+                fb_err = container_r.json().get("error", {})
+                raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}")
+            container_id = container_r.json().get("id", "")
+            if not container_id:
+                raise ValueError("IG container creation returned no ID")
+        else:
+            # Carousel post (max 10 slides)
+            child_ids = []
+            for url in image_urls[:10]:
+                item_r = await c.post(
+                    f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                    data={"image_url": url, "is_carousel_item": "true", "access_token": token}
+                )
+                if item_r.status_code == 200:
+                    item_id = item_r.json().get("id")
+                    if item_id:
+                        child_ids.append(item_id)
+            if not child_ids:
+                raise ValueError("Nessun media carousel creato su Instagram")
+            carousel_r = await c.post(
+                f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                data={"media_type": "CAROUSEL", "children": ",".join(child_ids),
+                      "caption": text, "access_token": token}
+            )
+            if carousel_r.status_code != 200:
+                fb_err = carousel_r.json().get("error", {})
+                raise ValueError(f"IG carousel error: {fb_err.get('message', carousel_r.text[:200])}")
+            container_id = carousel_r.json().get("id", "")
+            if not container_id:
+                raise ValueError("IG carousel container returned no ID")
+        # Publish container
         pub_r = await c.post(
             f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
             data={"creation_id": container_id, "access_token": token}
@@ -1343,15 +1385,16 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_url: Optio
 async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
     text = content.get("caption") or content.get("hook_text") or content.get("title") or ""
     title = content.get("title") or content.get("hook_text") or "Post"
+    app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
     media = content.get("media", [])
-    image_url = media[0].get("url") if media else None
-    if image_url and image_url.startswith("/"):
-        app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
-        image_url = f"{app_url}{image_url}"
+    def full_url(u):
+        return f"{app_url}{u}" if u and u.startswith("/") else u
+    image_urls = [full_url(m.get("url")) for m in media if m.get("type") == "image" and m.get("url")]
+    image_url = image_urls[0] if image_urls else None
     if platform == "facebook":
-        return await _publish_facebook(token, text, image_url)
+        return await _publish_facebook(token, text, image_urls)
     elif platform == "instagram":
-        return await _publish_instagram(token, profile_id, text, image_url)
+        return await _publish_instagram(token, profile_id, text, image_urls)
     elif platform == "linkedin":
         return await _publish_linkedin(token, text, profile_id, image_url)
     elif platform == "pinterest":
