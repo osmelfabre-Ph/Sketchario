@@ -66,6 +66,13 @@ body {
   box-shadow: 0 8px 25px rgba(99, 102, 241, 0.35);
 }
 
+.btn-gradient:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Ghost Button */
 .btn-ghost {
   background: transparent;
@@ -86,6 +93,11 @@ body {
   background: var(--bg-card);
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Card */

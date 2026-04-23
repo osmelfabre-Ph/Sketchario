@@ -1176,7 +1176,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <div className="p-5 pb-0">
             {/* Date header */}
             <p className="text-sm text-[var(--text-muted)] mb-0.5">{calViewDate.getFullYear()}</p>
-            <p className="text-2xl font-bold mb-4">{formatScheduleHeader(scheduleDate)}</p>
+            <p className={`text-2xl font-bold ${scheduleDate ? 'mb-4' : 'mb-1'}`} style={{ color: scheduleDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>{formatScheduleHeader(scheduleDate)}</p>
+            {!scheduleDate && <p className="text-xs mb-4" style={{ color: '#f59e0b' }}>← Seleziona un giorno nel calendario</p>}
 
             {/* Calendar */}
             <div className="rounded-xl mb-4 p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
