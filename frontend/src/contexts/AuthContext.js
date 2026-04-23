@@ -51,6 +51,20 @@ export function AuthProvider({ children }) {
   }, [setToken]);
 
   useEffect(() => {
+    // Handle social login redirect (Google/Facebook OAuth callback)
+    const params = new URLSearchParams(window.location.search);
+    const socialToken = params.get('social_token');
+    const socialError = params.get('social_error');
+    if (socialToken) {
+      setToken(socialToken);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (socialError) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [setToken]);
+
+  useEffect(() => {
     const t = localStorage.getItem('sk_token');
     if (!t) { setLoading(false); return; }
     api.get('/auth/me')

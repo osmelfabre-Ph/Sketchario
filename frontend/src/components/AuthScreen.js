@@ -16,6 +16,10 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [socialError, setSocialError] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('social_error') || '';
+  });
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotMsg, setForgotMsg] = useState('');
@@ -131,9 +135,26 @@ export default function AuthScreen() {
           <div className="flex-1 h-px bg-[var(--border-color)]" />
         </div>
 
+        {socialError && (
+          <p className="text-sm text-center mb-3" style={{ color: 'var(--accent-pink)' }}>
+            {socialError === 'cancelled' ? 'Accesso annullato.' : 'Errore di accesso social. Riprova.'}
+          </p>
+        )}
         <div className="flex gap-3">
-          <button data-testid="auth-google-btn" className="btn-ghost flex-1"><GoogleLogo weight="bold" size={20} /> Google</button>
-          <button data-testid="auth-facebook-btn" className="btn-ghost flex-1"><FacebookLogo weight="fill" size={20} color="#1877F2" /> Facebook</button>
+          <button
+            data-testid="auth-google-btn"
+            className="btn-ghost flex-1"
+            onClick={() => { window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/google/login`; }}
+          >
+            <GoogleLogo weight="bold" size={20} /> Google
+          </button>
+          <button
+            data-testid="auth-facebook-btn"
+            className="btn-ghost flex-1"
+            onClick={() => { window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/facebook/login`; }}
+          >
+            <FacebookLogo weight="fill" size={20} color="#1877F2" /> Facebook
+          </button>
         </div>
       </motion.div>
 

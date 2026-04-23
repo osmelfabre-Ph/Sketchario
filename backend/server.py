@@ -11,7 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, html as html_lib
 from contextlib import asynccontextmanager
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from starlette.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
@@ -348,6 +348,115 @@ async def refresh_token(request: Request, response: Response):
         return {"user": user_response({**user, "_id": user_id}), "access_token": access}
     except pyjwt.InvalidTokenError:
         raise HTTPException(401, "Invalid refresh token")
+
+# ── SOCIAL LOGIN ─────────────────────────────────────
+
+def _backend_url() -> str:
+    return os.environ.get("BACKEND_URL", os.environ.get("APP_URL", "http://localhost:8000")).rstrip("/")
+
+def _frontend_base() -> str:
+    return os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
+
+async def _social_login_user(email: str, name: str, provider: str) -> str:
+    """Find or create user from social login, return JWT."""
+    email = email.lower()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        doc = {
+            "email": email, "name": name or email.split("@")[0],
+            "password_hash": "", "role": "user", "plan": "free",
+            "sector": "", "social_login": provider,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = await db.users.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        user = doc
+    else:
+        user["_id"] = str(user["_id"])
+    return create_access_token(user["_id"], email)
+
+@api.get("/auth/google/login")
+async def google_login_redirect():
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(500, "Google OAuth non configurato")
+    redirect_uri = f"{_backend_url()}/api/auth/google/callback"
+    params = urlencode({
+        "client_id": client_id, "redirect_uri": redirect_uri,
+        "response_type": "code", "scope": "openid email profile",
+        "prompt": "select_account",
+    })
+    from fastapi.responses import RedirectResponse as RR
+    return RR(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+@api.get("/auth/google/callback")
+async def google_login_callback(code: str = None, error: str = None):
+    from fastapi.responses import RedirectResponse as RR
+    frontend = _frontend_base()
+    if error or not code:
+        return RR(f"{frontend}/?social_error=cancelled")
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri = f"{_backend_url()}/api/auth/google/callback"
+    async with httpx.AsyncClient(timeout=15) as c:
+        tok = await c.post("https://oauth2.googleapis.com/token", data={
+            "code": code, "client_id": client_id, "client_secret": client_secret,
+            "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+        })
+        if tok.status_code != 200:
+            return RR(f"{frontend}/?social_error=google_token")
+        access_token = tok.json().get("access_token", "")
+        info_r = await c.get("https://www.googleapis.com/oauth2/v3/userinfo",
+                             headers={"Authorization": f"Bearer {access_token}"})
+        if info_r.status_code != 200:
+            return RR(f"{frontend}/?social_error=google_info")
+        info = info_r.json()
+        email = info.get("email", "")
+        if not email:
+            return RR(f"{frontend}/?social_error=google_no_email")
+        jwt_token = await _social_login_user(email, info.get("name", ""), "google")
+    return RR(f"{frontend}/?social_token={jwt_token}")
+
+@api.get("/auth/facebook/login")
+async def facebook_login_redirect():
+    app_id = os.environ.get("FACEBOOK_APP_ID", "")
+    if not app_id:
+        raise HTTPException(500, "Facebook OAuth non configurato")
+    redirect_uri = f"{_backend_url()}/api/auth/facebook/callback"
+    params = urlencode({
+        "client_id": app_id, "redirect_uri": redirect_uri,
+        "scope": "email,public_profile", "response_type": "code",
+    })
+    from fastapi.responses import RedirectResponse as RR
+    return RR(f"https://www.facebook.com/v19.0/dialog/oauth?{params}")
+
+@api.get("/auth/facebook/callback")
+async def facebook_login_callback(code: str = None, error: str = None):
+    from fastapi.responses import RedirectResponse as RR
+    frontend = _frontend_base()
+    if error or not code:
+        return RR(f"{frontend}/?social_error=cancelled")
+    app_id = os.environ.get("FACEBOOK_APP_ID", "")
+    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
+    redirect_uri = f"{_backend_url()}/api/auth/facebook/callback"
+    async with httpx.AsyncClient(timeout=15) as c:
+        tok = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
+            "client_id": app_id, "client_secret": app_secret,
+            "redirect_uri": redirect_uri, "code": code,
+        })
+        if tok.status_code != 200:
+            return RR(f"{frontend}/?social_error=facebook_token")
+        access_token = tok.json().get("access_token", "")
+        info_r = await c.get("https://graph.facebook.com/me",
+                             params={"fields": "id,name,email", "access_token": access_token})
+        if info_r.status_code != 200:
+            return RR(f"{frontend}/?social_error=facebook_info")
+        info = info_r.json()
+        email = info.get("email", "")
+        if not email:
+            return RR(f"{frontend}/?social_error=facebook_no_email")
+        jwt_token = await _social_login_user(email, info.get("name", ""), "facebook")
+    return RR(f"{frontend}/?social_token={jwt_token}")
 
 # ── PROFILE ROUTES ───────────────────────────────────
 @api.get("/profile")
