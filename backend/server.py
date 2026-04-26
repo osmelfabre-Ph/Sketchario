@@ -513,7 +513,10 @@ async def delete_account(request: Request):
 @api.get("/projects")
 async def list_projects(request: Request):
     user = await get_current_user(request)
-    projects = await db.projects.find({"user_id": user["_id"]}, {"_id": 1, "name": 1, "sector": 1, "status": 1, "created_at": 1, "content_count": 1, "archived": 1}).to_list(100)
+    projects = await db.projects.find(
+        {"user_id": user["_id"]},
+        {"_id": 1, "name": 1, "sector": 1, "status": 1, "created_at": 1, "content_count": 1, "archived": 1, "cover_url": 1}
+    ).to_list(100)
     for p in projects:
         p["id"] = str(p.pop("_id"))
     return projects
