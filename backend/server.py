@@ -816,31 +816,55 @@ Struttura OBBLIGATORIA della caption:
 Usa una formattazione visiva forte: righe brevi, contrasti chiari, niente muro di testo, niente paragrafi casuali."""
 
 def build_carousel_requirements() -> str:
-    return """Se il formato e carousel:
-- genera SEMPRE un vero carousel editoriale da 6-8 slide
-- ogni slide deve avere almeno 15 secondi di lettura: niente testi rapidi, niente frasi decorative, niente riassunti poveri
-- formato tassativo di ogni slide:
-  SLIDE N — TITOLO
+    return """Se il formato e carousel, agisci come un esperto di comunicazione e content strategy per creator.
 
-  poi una riga vuota
+STRUTTURA:
+- massimo 6 slide, mai di piu
+- ogni slide deve essere densa di contenuto, senza riempitivi
+- ogni slide deve richiedere almeno 10-15 secondi di lettura
+- ogni slide deve sviluppare un'idea completa, non una frase isolata
 
-  poi un corpo denso, costruito in righe brevi e leggibili mobile-first
-- il titolo deve essere presente in OGNI slide
-- il numero slide deve essere presente in OGNI slide
-- il corpo della slide deve sembrare una mini-pagina di libro o una slide premium: denso, ritmato, leggibile, con progressione narrativa
-- usa spesso questa dinamica: frase breve -> approfondimento -> contrasto -> chiusura forte
-- puoi usare mini-bullet solo quando servono davvero, ma NON trasformare ogni slide in un elenco tecnico
-- struttura narrativa consigliata:
-  slide 1 = hook + verità
-  slide 2 = vero problema
-  slide 3 = verità scomoda / errore
-  slide 4 = svolta / cambio di prospettiva
-  slide 5 = nuovo approccio pratico
-  slide 6 = chiusura forte
-  slide 7-8 = approfondimento o CTA, solo se servono
-- se il brief menziona asset proprietari (es. libro), la CTA finale deve sfruttarli in modo naturale e non ignorarli
-- NON scrivere slide scarne da una sola riga
-- NON restituire paragrafi generici separati solo da trattini o divisori senza titolo slide."""
+STILE:
+- tono autorevole, chiaro, diretto
+- linguaggio semplice ma non superficiale
+- evita cliché, frasi motivazionali vuote e banalità
+- ogni frase deve aggiungere valore reale
+
+CONTENUTO:
+- inizia con una verita forte, scomoda o controintuitiva
+- identifica un errore comune o un fraintendimento diffuso
+- sviluppa un ragionamento logico e progressivo
+- introduci un cambio di prospettiva
+- porta il lettore a rivedere il proprio approccio
+- concludi con una sintesi chiara e incisiva, senza vendita
+
+REGOLE:
+- niente emoji
+- niente hashtag nelle slide
+- niente CTA commerciali come "scrivimi", "seguimi", "contattami", "compra"
+- evita frasi corte inutili o decorative
+- evita elenchi superficiali; usa bullet solo se servono davvero
+- NON restituire paragrafi generici separati solo da trattini o divisori senza struttura slide
+
+FORMATO OUTPUT TASSATIVO:
+SLIDE 1:
+(testo denso della slide)
+
+SLIDE 2:
+(testo denso della slide)
+
+...
+
+SLIDE 6:
+(testo denso della slide)
+
+PROGRESSIONE CONSIGLIATA:
+- slide 1 = verita forte / hook
+- slide 2 = errore o fraintendimento
+- slide 3 = spiegazione del perche
+- slide 4 = cambio di prospettiva
+- slide 5 = nuovo approccio
+- slide 6 = sintesi finale incisiva"""
 
 def build_carousel_script_from_slides(slides: list) -> str:
     return "\n\n-----\n\n".join(coerce_str(slide).strip() for slide in slides if coerce_str(slide).strip())
@@ -848,17 +872,17 @@ def build_carousel_script_from_slides(slides: list) -> str:
 def carousel_slides_are_structured(slides) -> bool:
     if not isinstance(slides, list):
         return False
-    if len(slides) < 6:
+    if len(slides) < 4 or len(slides) > 6:
         return False
     for index, slide in enumerate(slides, start=1):
         text = coerce_str(slide).strip()
         if not text:
             return False
         lines = [line.strip() for line in text.splitlines() if line.strip()]
-        if len(lines) < 3:
+        if len(lines) < 2:
             return False
-        title_line = lines[0]
-        if not re.match(rf"(?i)^slide\s*{index}\s*[—:-]\s*.+$", title_line):
+        title_line = lines[0].upper()
+        if not re.match(rf"^SLIDE\s*{index}\s*:", title_line):
             return False
         body_word_count = len(re.findall(r"\b\w+\b", " ".join(lines[1:])))
         if body_word_count < 28:
@@ -882,13 +906,14 @@ Hook: {hook_text}
 {context_block}
 
 REGOLE TASSATIVE:
-- crea 6-8 slide
-- ogni slide deve iniziare con: SLIDE N — TITOLO
-- dopo il titolo lascia una riga vuota
+- crea massimo 6 slide
+- ogni slide deve iniziare con: SLIDE N:
 - il corpo di ogni slide deve essere denso e leggibile, con almeno 15 secondi di lettura
 - niente slide scarne, niente testo generico, niente divisori senza titolo
 - usa una progressione narrativa forte: hook, problema, verità scomoda, svolta, nuovo approccio, chiusura
-- se il brief menziona asset proprietari, usali nella CTA finale quando pertinente
+- niente CTA commerciali
+- niente emoji
+- niente hashtag
 
 Materiale da ristrutturare:
 SCRIPT ORIGINALE:
@@ -901,7 +926,7 @@ CAPTION ORIGINALE:
 {source_caption}
 
 Restituisci SOLO JSON con:
-- slides: array di 6-8 stringhe, una per slide, già formattate con "SLIDE N — TITOLO"
+- slides: array di massimo 6 stringhe, una per slide, già formattate con "SLIDE N:"
 - script: testo completo ottenuto unendo tutte le slide con il separatore \\n\\n-----\\n\\n
 """
     repaired = extract_json(await call_ai(repair_system, repair_prompt))
