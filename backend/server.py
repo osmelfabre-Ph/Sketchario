@@ -3450,7 +3450,7 @@ async def export_csv(project_id: str, request: Request):
     writer = csv.writer(output)
     writer.writerow(["Hook", "Format", "Pillar", "Persona", "Day", "Script", "Caption", "Hashtags", "Status"])
     for c in contents:
-        writer.writerow([c.get("hook_text",""), c.get("format",""), c.get("pillar",""), c.get("persona_target",""), c.get("day_offset",""), c.get("script",""), c.get("caption",""), c.get("hashtags",""), c.get("status","")])
+        writer.writerow([c.get("hook_text",""), c.get("format",""), c.get("pillar",""), c.get("persona_target",""), c.get("day_offset",""), c.get("script",""), _strip_html(c.get("caption","")), c.get("hashtags",""), c.get("status","")])
     csv_content = output.getvalue()
     return Response(content=csv_content, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=sketchario_export_{project_id}.csv"})
 @api.get("/export/{project_id}/json")

@@ -13,6 +13,7 @@ import {
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
+import { richTextToPlainText } from '../lib/utils';
 
 function RichCaption({ value, onChange }) {
   const editor = useEditor({
@@ -116,6 +117,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
   const isReel = format === 'reel' || format === 'prompted_reel' || prof.platform === 'tiktok';
   const short = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
   const initials = (prof.profile_name || '?')[0].toUpperCase();
+  const captionText = richTextToPlainText(caption);
 
   /* ── REEL / TIKTOK ── */
   if (isReel) {
@@ -143,7 +145,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
               </div>
               <span style={{ color: 'white', fontSize: 9, fontWeight: 600 }}>@{short(prof.profile_name, 14)}</span>
             </div>
-            <p style={{ color: 'white', fontSize: 9, lineHeight: 1.35, margin: 0 }}>{short(caption, 80)}</p>
+            <p style={{ color: 'white', fontSize: 9, lineHeight: 1.35, margin: 0, whiteSpace: 'pre-line' }}>{short(captionText, 80)}</p>
             {hashtags && <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 8, margin: '2px 0 0' }}>{short(hashtags, 40)}</p>}
           </div>
           {/* Platform watermark */}
@@ -168,7 +170,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
           <button style={{ position: 'absolute', top: 8, right: 8, background: '#e60023', color: 'white', border: 'none', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'default' }}>Salva</button>
         </div>
         <div style={{ padding: '8px 10px 10px' }}>
-          <p style={{ fontSize: 12, fontWeight: 700, margin: '0 0 4px', lineHeight: 1.3 }}>{short(caption, 60)}</p>
+          <p style={{ fontSize: 12, fontWeight: 700, margin: '0 0 4px', lineHeight: 1.3, whiteSpace: 'pre-line' }}>{short(captionText, 60)}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#e60023', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ color: 'white', fontSize: 8, fontWeight: 700 }}>{initials}</span>
@@ -195,7 +197,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
           <span style={{ color: '#666', fontSize: 16, cursor: 'default' }}>···</span>
         </div>
         <div style={{ padding: '0 12px 8px' }}>
-          <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0 }}>{short(caption, 180)}</p>
+          <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-line' }}>{short(captionText, 180)}</p>
           {hashtags && <p style={{ fontSize: 10, color: '#0a66c2', margin: '4px 0 0' }}>{short(hashtags, 80)}</p>}
         </div>
         {firstImg && (
@@ -230,7 +232,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
           <span style={{ color: '#606770', fontSize: 16, cursor: 'default' }}>···</span>
         </div>
         <div style={{ padding: '0 12px 8px' }}>
-          <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, color: '#050505' }}>{short(caption, 180)}</p>
+          <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, color: '#050505', whiteSpace: 'pre-line' }}>{short(captionText, 180)}</p>
           {hashtags && <p style={{ fontSize: 10, color: '#1877f2', margin: '4px 0 0' }}>{short(hashtags, 80)}</p>}
         </div>
         {firstImg && (
@@ -278,7 +280,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
         </div>
         <p style={{ fontSize: 11, margin: '0 0 3px' }}>
           <span style={{ fontWeight: 700 }}>{prof.profile_name} </span>
-          {short(caption, 120)}
+          {short(captionText, 120)}
         </p>
         {hashtags && <p style={{ fontSize: 10, color: '#00376b', margin: '2px 0 0' }}>{short(hashtags, 80)}</p>}
         <p style={{ fontSize: 10, color: '#8e8e8e', margin: '4px 0 0' }}>1 ORA FA</p>
@@ -848,7 +850,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             🤖 {t('editor.copyAvatarScript')}
           </button>
         ) : (
-          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${editCaption}\n\n${editHashtags}`); toast.success('Copiato!'); }}>
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${richTextToPlainText(editCaption)}\n\n${editHashtags}`); toast.success('Copiato!'); }}>
             <Copy size={14} /> {t('common.copy')}
           </button>
         )}

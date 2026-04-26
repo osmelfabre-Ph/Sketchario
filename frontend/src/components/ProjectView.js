@@ -16,6 +16,7 @@ const MONTH_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Lugli
 import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
 import ContentDetail from './ContentDetail';
+import { richTextToPlainText } from '../lib/utils';
 
 const GoogleDriveIcon = ({ size = 16 }) => (
   <img src="https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png" alt="Google Drive" style={{ width: size, height: size, objectFit: 'contain' }} />
@@ -428,7 +429,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                       <span className={`badge text-[9px] ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
                     </div>
                     <h4 className="text-sm font-semibold mb-1 line-clamp-2">{c.hook_text}</h4>
-                    <p className="text-xs text-[var(--text-muted)] line-clamp-2">{(c.caption || '').slice(0, 100)}</p>
+                    <p className="text-xs text-[var(--text-muted)] line-clamp-2">{richTextToPlainText(c.caption || '').slice(0, 100)}</p>
                     <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
                       <span className="text-[10px] text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -575,7 +576,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                                 <div key={c.id} className={`content-chip ${c.status === 'published' ? 'published' : c.format}`} draggable
                                   onDragStart={() => setDragContent(c)} onClick={() => openContentDetail(c)}>
                                   {c.status === 'published' ? <CheckCircle size={10} weight="fill" /> : c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
-                                  <span className="ml-1 truncate">{(c.hook_text || c.caption || '').slice(0, 20)}</span>
+                                  <span className="ml-1 truncate">{(c.hook_text || richTextToPlainText(c.caption || '') || '').slice(0, 20)}</span>
                                 </div>
                               ))}
                             </>
