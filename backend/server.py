@@ -827,11 +827,95 @@ REDDIT_FEED_PRESETS = [
         ],
     },
     {
+        "match": ("auto", "automotive", "car", "cars", "dealer", "concessionaria", "veicoli", "motori"),
+        "feeds": [
+            ("Reddit /r/cars", "https://www.reddit.com/r/cars/.rss"),
+            ("Reddit /r/whatcarshouldIbuy", "https://www.reddit.com/r/whatcarshouldIbuy/.rss"),
+            ("Reddit /r/Autos", "https://www.reddit.com/r/Autos/.rss"),
+        ],
+    },
+    {
+        "match": ("immobil", "real estate", "casa", "case", "property", "properties"),
+        "feeds": [
+            ("Reddit /r/RealEstate", "https://www.reddit.com/r/RealEstate/.rss"),
+            ("Reddit /r/realtors", "https://www.reddit.com/r/realtors/.rss"),
+        ],
+    },
+    {
         "match": ("fitness", "wellness", "nutrizione", "health", "salute", "coach", "coaching"),
         "feeds": [
             ("Reddit /r/fitness", "https://www.reddit.com/r/fitness/.rss"),
             ("Reddit /r/nutrition", "https://www.reddit.com/r/nutrition/.rss"),
             ("Reddit /r/selfimprovement", "https://www.reddit.com/r/selfimprovement/.rss"),
+        ],
+    },
+]
+
+RSS_CATEGORY_PRESETS = [
+    {
+        "match": ("fotograf", "photo", "ritratt", "portrait", "arte", "artist", "visual", "mostra"),
+        "feeds": [
+            ("ANSA Cultura", "http://www.ansa.it/sito/notizie/cultura/cultura_rss.xml"),
+            ("Il Sole 24 Ore Cultura", "https://www.ilsole24ore.com/rss/cultura.xml"),
+        ],
+    },
+    {
+        "match": ("tech", "tecnolog", "software", "app", "startup", "ai", "saas", "digital"),
+        "feeds": [
+            ("Internetto", "https://internetto.it/feed/"),
+            ("Il Sole 24 Ore Tecnologia", "https://www.ilsole24ore.com/rss/tecnologia.xml"),
+            ("FSF News", "https://www.fsf.org/static/fsforg/rss/news.xml"),
+        ],
+    },
+    {
+        "match": ("scienza", "science", "medicina", "salute", "wellness", "health", "ricerca"),
+        "feeds": [
+            ("OggiScienza", "https://oggiscienza.it/feed/"),
+            ("Il Sole 24 Ore Salute", "https://www.ilsole24ore.com/rss/salute.xml"),
+            ("Corriere Scienze", "https://www.corriere.it/rss/scienze.xml"),
+        ],
+    },
+    {
+        "match": ("economia", "finance", "finanza", "business", "invest", "startup", "sales", "vendite"),
+        "feeds": [
+            ("Il Sole 24 Ore Finanza", "https://www.ilsole24ore.com/rss/finanza.xml"),
+            ("Il Sole 24 Ore Norme e Tributi", "https://www.ilsole24ore.com/rss/norme-e-tributi.xml"),
+            ("ANSA Economia", "http://www.ansa.it/sito/notizie/economia/economia_rss.xml"),
+        ],
+    },
+    {
+        "match": ("auto", "automotive", "car", "cars", "dealer", "concessionaria", "veicoli", "motori"),
+        "feeds": [
+            ("Il Sole 24 Ore Motori", "https://www.ilsole24ore.com/rss/motori.xml"),
+            ("ANSA Top News", "http://www.ansa.it/sito/notizie/topnews/topnews_rss.xml"),
+        ],
+    },
+    {
+        "match": ("food", "ristor", "cucina", "chef", "gastronom", "ricette"),
+        "feeds": [
+            ("Il Sole 24 Ore Food", "https://www.ilsole24ore.com/rss/food.xml"),
+            ("GialloZafferano Ricette", "https://www.giallozafferano.it/ricerca-ricette/rss/"),
+        ],
+    },
+    {
+        "match": ("moda", "fashion", "luxury", "beauty", "stile"),
+        "feeds": [
+            ("Il Sole 24 Ore Moda", "https://www.ilsole24ore.com/rss/moda.xml"),
+            ("Il Sole 24 Ore Arteconomy", "https://www.ilsole24ore.com/rss/arteconomy.xml"),
+        ],
+    },
+    {
+        "match": ("sport", "calcio", "fitness", "tennis", "padel", "allenamento"),
+        "feeds": [
+            ("Gazzetta dello Sport", "https://www.gazzetta.it/rss/home.xml"),
+            ("Il Sole 24 Ore Sport24", "https://www.ilsole24ore.com/rss/sport24.xml"),
+        ],
+    },
+    {
+        "match": ("travel", "viaggi", "turismo", "hotel", "vacanze", "destination"),
+        "feeds": [
+            ("Il Sole 24 Ore Viaggi", "https://www.ilsole24ore.com/rss/viaggi.xml"),
+            ("Pirati in Viaggio", "https://www.piratinviaggio.it/rss.xml"),
         ],
     },
 ]
@@ -907,6 +991,18 @@ def build_default_project_feeds(project: Optional[dict]) -> List[dict]:
         "source_type": "google_news",
     }]
 
+    matched_rss_category = False
+    for preset in RSS_CATEGORY_PRESETS:
+        if any(term in sector_text for term in preset["match"]):
+            matched_rss_category = True
+            for feed_name, feed_url in preset["feeds"]:
+                feeds.append({
+                    "feed_url": feed_url,
+                    "feed_name": f"{feed_name} — {project_sector}",
+                    "source_type": "editorial_rss",
+                })
+            break
+
     for preset in REDDIT_FEED_PRESETS:
         if any(term in sector_text for term in preset["match"]):
             for feed_name, feed_url in preset["feeds"]:
@@ -916,6 +1012,20 @@ def build_default_project_feeds(project: Optional[dict]) -> List[dict]:
                     "source_type": "reddit",
                 })
             break
+
+    if not matched_rss_category:
+        feeds.extend([
+            {
+                "feed_url": "http://www.ansa.it/sito/ansait_rss.xml",
+                "feed_name": f"ANSA Italia — {project_sector}",
+                "source_type": "editorial_rss",
+            },
+            {
+                "feed_url": "https://www.ilsole24ore.com/rss/commenti.xml",
+                "feed_name": f"Il Sole 24 Ore Commenti — {project_sector}",
+                "source_type": "editorial_rss",
+            },
+        ])
 
     seen_urls = set()
     deduped = []
