@@ -25,12 +25,13 @@ function AppContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [wizardResumeData, setWizardResumeData] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [showTour, setShowTour] = useState(() => shouldShowTour());
+  const [showTour, setShowTour] = useState(false);
 
   useEffect(() => {
     if (user && api) {
       api.get('/onboarding/status').then(r => {
         if (!r.data.completed) setShowOnboarding(true);
+        if (shouldShowTour(r.data)) setShowTour(true);
       }).catch(() => {});
     }
   }, [user, api]);
@@ -115,8 +116,8 @@ function AppContent() {
       </main>
       {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
-      {showTour && !showHelp && !showOnboarding && (
-        <ProductTour onFinish={() => setShowTour(false)} />
+      {showTour && !showHelp && !showOnboarding && activeView === 'dashboard' && (
+        <ProductTour api={api} onFinish={() => setShowTour(false)} />
       )}
     </div>
   );

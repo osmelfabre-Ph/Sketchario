@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Joyride, STATUS, EVENTS } from 'react-joyride';
+import { Joyride, STATUS, EVENTS, ACTIONS } from 'react-joyride';
 
 const TOUR_KEY = 'sketchario_tour_done';
 
@@ -70,6 +70,13 @@ const JOYRIDE_STYLES = {
     color: '#8b95a5',
     padding: 0,
   },
+  beaconInner: {
+    backgroundColor: '#fbcfe8',
+  },
+  beaconOuter: {
+    backgroundColor: 'rgba(251, 207, 232, 0.36)',
+    border: '2px solid rgba(251, 207, 232, 0.95)',
+  },
   buttonNext: {
     background: 'linear-gradient(135deg, #6366f1, #ec4899)',
     borderRadius: '0.625rem',
@@ -98,7 +105,8 @@ const JOYRIDE_STYLES = {
   },
 };
 
-export function shouldShowTour() {
+export function shouldShowTour(status) {
+  if (status?.product_tour_completed) return false;
   return !localStorage.getItem(TOUR_KEY);
 }
 
@@ -106,9 +114,10 @@ export function markTourDone() {
   localStorage.setItem(TOUR_KEY, '1');
 }
 
-export default function ProductTour({ onFinish }) {
+export default function ProductTour({ api, onFinish }) {
   const { t } = useTranslation();
-  const [run, setRun] = useState(true);
+  const [run, setRun] = useState(false);
+  const didFinishRef = useRef(false);
 
   const steps = STEPS.map((s, i) => ({
     ...s,
@@ -116,15 +125,48 @@ export default function ProductTour({ onFinish }) {
     content: t(`tour.step${i + 1}`, s.content),
   }));
 
-  const handleCallback = useCallback((data) => {
-    const { status, type } = data;
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status) ||
-        type === EVENTS.TOUR_END) {
-      markTourDone();
-      setRun(false);
-      onFinish?.();
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+
+    const startWhenReady = () => {
+      if (cancelled) return;
+      const firstTarget = document.querySelector(STEPS[0].target);
+      if (firstTarget) {
+        setRun(true);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 40) {
+        window.setTimeout(startWhenReady, 150);
+      }
+    };
+
+    startWhenReady();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const finishTour = useCallback(async () => {
+    if (didFinishRef.current) return;
+    didFinishRef.current = true;
+    markTourDone();
+    setRun(false);
+    if (api) {
+      await api.post('/onboarding/product-tour').catch(() => {});
     }
-  }, [onFinish]);
+    onFinish?.();
+  }, [api, onFinish]);
+
+  const handleCallback = useCallback((data) => {
+    const { status, type, action } = data;
+    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status) ||
+        type === EVENTS.TOUR_END ||
+        action === ACTIONS.CLOSE) {
+      finishTour();
+    }
+  }, [finishTour]);
 
   return (
     <Joyride
@@ -140,7 +182,7 @@ export default function ProductTour({ onFinish }) {
         close: t('tour.close'),
         last: t('tour.last'),
         next: t('tour.next'),
-        open: 'Open',
+        open: t('tour.next'),
         skip: t('tour.skip'),
       }}
       styles={JOYRIDE_STYLES}

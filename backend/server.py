@@ -3564,8 +3564,16 @@ async def onboarding_status(request: Request):
     user = await get_current_user(request)
     ob = await db.onboarding.find_one({"user_id": user["_id"]}, {"_id": 0})
     if not ob:
-        return {"completed": False, "current_step": 0, "steps_done": []}
-    return ob
+        return {
+            "completed": False,
+            "current_step": 0,
+            "steps_done": [],
+            "product_tour_completed": False,
+        }
+    return {
+        **ob,
+        "product_tour_completed": bool(ob.get("product_tour_completed")),
+    }
 
 @api.post("/onboarding/complete-step")
 async def complete_onboarding_step(request: Request):
@@ -3593,6 +3601,22 @@ async def skip_onboarding(request: Request):
         upsert=True
     )
     return {"ok": True}
+
+
+@api.post("/onboarding/product-tour")
+async def complete_product_tour(request: Request):
+    user = await get_current_user(request)
+    await db.onboarding.update_one(
+        {"user_id": user["_id"]},
+        {"$set": {
+            "user_id": user["_id"],
+            "product_tour_completed": True,
+            "product_tour_completed_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True
+    )
+    return {"ok": True, "product_tour_completed": True}
 
 # ── TEAM COLLABORATION ────────────────────────────────
 class TeamInviteInput(BaseModel):
