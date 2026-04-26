@@ -817,24 +817,104 @@ Usa una formattazione visiva forte: righe brevi, contrasti chiari, niente muro d
 
 def build_carousel_requirements() -> str:
     return """Se il formato e carousel:
-- genera SEMPRE 8-10 slide, non meno di 8
-- ogni slide deve essere sostanziosa: 110-180 parole complessive, lettura lenta e densa, non etichette veloci
+- genera SEMPRE un vero carousel editoriale da 6-8 slide
+- ogni slide deve avere almeno 15 secondi di lettura: niente testi rapidi, niente frasi decorative, niente riassunti poveri
 - formato tassativo di ogni slide:
-  Slide N:
-  TITOLO TUTTO MAIUSCOLO (max 7 parole)
+  SLIDE N — TITOLO
 
-  1) punto concreto in 1-2 frasi complete
-  2) punto concreto in 1-2 frasi complete
-  3) punto concreto in 1-2 frasi complete
-  4) punto concreto in 1-2 frasi complete
-- ogni punto deve includere almeno uno tra: esempio reale, dato numerico, micro-caso, conseguenza pratica, errore comune da evitare
-- slide 1 = hook/problema emotivo
-- slide 2 = promessa e cornice
-- slide 3-8 = contenuto educativo molto ricco
-- slide 9 = sintesi operativa
-- slide 10 = CTA o passo successivo concreto, se ci sono abbastanza slide
+  poi una riga vuota
+
+  poi un corpo denso, costruito in righe brevi e leggibili mobile-first
+- il titolo deve essere presente in OGNI slide
+- il numero slide deve essere presente in OGNI slide
+- il corpo della slide deve sembrare una mini-pagina di libro o una slide premium: denso, ritmato, leggibile, con progressione narrativa
+- usa spesso questa dinamica: frase breve -> approfondimento -> contrasto -> chiusura forte
+- puoi usare mini-bullet solo quando servono davvero, ma NON trasformare ogni slide in un elenco tecnico
+- struttura narrativa consigliata:
+  slide 1 = hook + verità
+  slide 2 = vero problema
+  slide 3 = verità scomoda / errore
+  slide 4 = svolta / cambio di prospettiva
+  slide 5 = nuovo approccio pratico
+  slide 6 = chiusura forte
+  slide 7-8 = approfondimento o CTA, solo se servono
 - se il brief menziona asset proprietari (es. libro), la CTA finale deve sfruttarli in modo naturale e non ignorarli
-- NON scrivere slide scarne da una sola riga."""
+- NON scrivere slide scarne da una sola riga
+- NON restituire paragrafi generici separati solo da trattini o divisori senza titolo slide."""
+
+def build_carousel_script_from_slides(slides: list) -> str:
+    return "\n\n-----\n\n".join(coerce_str(slide).strip() for slide in slides if coerce_str(slide).strip())
+
+def carousel_slides_are_structured(slides) -> bool:
+    if not isinstance(slides, list):
+        return False
+    if len(slides) < 6:
+        return False
+    for index, slide in enumerate(slides, start=1):
+        text = coerce_str(slide).strip()
+        if not text:
+            return False
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if len(lines) < 3:
+            return False
+        title_line = lines[0]
+        if not re.match(rf"(?i)^slide\s*{index}\s*[—:-]\s*.+$", title_line):
+            return False
+        body_word_count = len(re.findall(r"\b\w+\b", " ".join(lines[1:])))
+        if body_word_count < 28:
+            return False
+    return True
+
+async def ensure_carousel_payload(content_data: dict, hook_text: str, context_block: str) -> dict:
+    if carousel_slides_are_structured(content_data.get("slides")):
+        content_data["script"] = build_carousel_script_from_slides(content_data.get("slides", []))
+        return content_data
+
+    source_script = coerce_str(content_data.get("script", ""))
+    source_caption = coerce_str(content_data.get("caption", ""))
+    source_slides = content_data.get("slides", [])
+    source_slides_text = "\n\n".join(coerce_str(slide) for slide in source_slides) if isinstance(source_slides, list) else coerce_str(source_slides)
+
+    repair_system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un editor senior specializzato in carousel premium per social. Rispondi SOLO con JSON valido."
+    repair_prompt = f"""Ristruttura questo contenuto in un carousel premium.
+
+Hook: {hook_text}
+{context_block}
+
+REGOLE TASSATIVE:
+- crea 6-8 slide
+- ogni slide deve iniziare con: SLIDE N — TITOLO
+- dopo il titolo lascia una riga vuota
+- il corpo di ogni slide deve essere denso e leggibile, con almeno 15 secondi di lettura
+- niente slide scarne, niente testo generico, niente divisori senza titolo
+- usa una progressione narrativa forte: hook, problema, verità scomoda, svolta, nuovo approccio, chiusura
+- se il brief menziona asset proprietari, usali nella CTA finale quando pertinente
+
+Materiale da ristrutturare:
+SCRIPT ORIGINALE:
+{source_script}
+
+SLIDES ORIGINALI:
+{source_slides_text}
+
+CAPTION ORIGINALE:
+{source_caption}
+
+Restituisci SOLO JSON con:
+- slides: array di 6-8 stringhe, una per slide, già formattate con "SLIDE N — TITOLO"
+- script: testo completo ottenuto unendo tutte le slide con il separatore \\n\\n-----\\n\\n
+"""
+    repaired = extract_json(await call_ai(repair_system, repair_prompt))
+    repaired_slides = repaired.get("slides", [])
+    if carousel_slides_are_structured(repaired_slides):
+        content_data["slides"] = repaired_slides
+        content_data["script"] = coerce_str(repaired.get("script", "")) or build_carousel_script_from_slides(repaired_slides)
+        return content_data
+
+    # Fallback finale: conserva quello che c'è ma sincronizza lo script se possibile.
+    if isinstance(content_data.get("slides"), list) and content_data.get("slides"):
+        content_data["script"] = build_carousel_script_from_slides(content_data.get("slides", []))
+    return content_data
 
 # ── PERSONAS ─────────────────────────────────────────
 @api.post("/personas/generate")
@@ -1013,6 +1093,8 @@ Restituisci un oggetto JSON con:
         try:
             result = await call_ai(system, prompt)
             content_data = extract_json(result)
+            if fmt == 'carousel':
+                content_data = await ensure_carousel_payload(content_data, hook.get('hook_text', ''), context_block)
             content_doc = {
                 "id": str(uuid.uuid4()),
                 "project_id": inp.project_id,
@@ -1051,9 +1133,9 @@ async def create_post(inp: PostCreate, request: Request):
     content_doc = {
         "id": str(uuid.uuid4()),
         "project_id": inp.project_id,
-        "hook_id": "",
-        "hook_text": inp.hook_text,
-        "format": inp.format,
+                "hook_id": "",
+                "hook_text": inp.hook_text,
+                "format": inp.format,
         "pillar": "",
         "persona_target": "",
         "day_offset": 0,
@@ -1098,6 +1180,8 @@ JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_d
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
+            if inp.format == 'carousel':
+                data = await ensure_carousel_payload(data, inp.hook_text, context_block)
             content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook"]})
             if "visual_direction" in data:
                 content_doc["visual_direction"] = coerce_str(data["visual_direction"])
@@ -1176,6 +1260,8 @@ Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel:
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
+        if fmt == 'carousel':
+            data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block)
         updates = {}
         for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
@@ -1239,6 +1325,8 @@ Restituisci JSON con: hook_text, script (script parlato completo), caption, hash
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
+        if inp.target_format == "carousel":
+            data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block)
         updates = {"format": inp.target_format}
         for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
@@ -1984,6 +2072,8 @@ Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
+        if data.get("format", "reel") == "carousel":
+            data = await ensure_carousel_payload(data, data.get("hook_text", inp.feed_item_title), context_block)
         content_doc = {
             "id": str(uuid.uuid4()),
             "project_id": inp.project_id,
