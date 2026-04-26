@@ -825,7 +825,6 @@ STRUTTURA:
 - ogni slide deve sviluppare un'idea completa, non una frase isolata
 
 STILE:
-- tono autorevole, chiaro, diretto
 - linguaggio semplice ma non superficiale
 - evita cliché, frasi motivazionali vuote e banalità
 - ogni frase deve aggiungere valore reale
