@@ -226,8 +226,10 @@ export default function Dashboard({ setActiveView, setSelectedProject, setWizard
                     {project.status}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-sm text-[var(--text-secondary)] mb-4">
+                <div className="flex items-center gap-3 flex-wrap text-sm text-[var(--text-secondary)] mb-4">
                   <span className="flex items-center gap-1"><Article size={14} /> {project.content_count || 0} {t('dashboard.contents')}</span>
+                  <span className="badge text-[10px] orange">{project.scheduled_count || 0} {t('status.scheduled')}</span>
+                  <span className="badge text-[10px] purple">{project.draft_count || 0} {t('status.draft')}</span>
                 </div>
                 <div className="flex gap-2">
                   {project.status === 'draft' && (project.wizard_step || 0) < 4

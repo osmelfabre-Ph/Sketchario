@@ -517,8 +517,39 @@ async def list_projects(request: Request):
         {"user_id": user["_id"]},
         {"_id": 1, "name": 1, "sector": 1, "status": 1, "created_at": 1, "content_count": 1, "archived": 1, "cover_url": 1}
     ).to_list(100)
+
+    project_ids = [str(p["_id"]) for p in projects]
+    counts_by_project: Dict[str, Dict[str, int]] = {}
+    if project_ids:
+        status_rows = await db.contents.aggregate([
+            {"$match": {"project_id": {"$in": project_ids}}},
+            {"$project": {"project_id": 1, "status": {"$ifNull": ["$status", "draft"]}}},
+            {"$group": {"_id": {"project_id": "$project_id", "status": "$status"}, "count": {"$sum": 1}}},
+        ]).to_list(500)
+
+        for row in status_rows:
+            project_id = row["_id"]["project_id"]
+            status = row["_id"]["status"] or "draft"
+            bucket = counts_by_project.setdefault(project_id, {
+                "draft_count": 0,
+                "scheduled_count": 0,
+                "published_count": 0,
+            })
+            if status == "scheduled":
+                bucket["scheduled_count"] += row["count"]
+            elif status == "published":
+                bucket["published_count"] += row["count"]
+            else:
+                bucket["draft_count"] += row["count"]
+
     for p in projects:
-        p["id"] = str(p.pop("_id"))
+        project_id = str(p.pop("_id"))
+        p["id"] = project_id
+        p.update(counts_by_project.get(project_id, {
+            "draft_count": 0,
+            "scheduled_count": 0,
+            "published_count": 0,
+        }))
     return projects
 
 @api.post("/projects")
@@ -741,6 +772,218 @@ def coerce_str(val) -> str:
 
 def compact_text(value) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+FEED_KEYWORD_STOPWORDS = {
+    "della", "delle", "degli", "dello", "dell", "dell'", "nella", "nelle", "negli", "sulla",
+    "sulle", "sugli", "dalla", "dalle", "dagli", "questo", "questa", "questi", "queste", "anche",
+    "come", "sono", "solo", "dopo", "prima", "quindi", "molto", "poco", "degli", "delle",
+    "the", "and", "for", "with", "that", "your", "have", "from", "into", "about", "over",
+    "per", "del", "dei", "con", "nel", "nei", "una", "uno", "sua", "suo", "alla", "allo",
+    "dai", "delle", "della",
+}
+
+REDDIT_FEED_PRESETS = [
+    {
+        "match": ("fotograf", "photo", "ritratt", "portrait", "postprodu", "camera"),
+        "feeds": [
+            ("Reddit /r/photography", "https://www.reddit.com/r/photography/.rss"),
+            ("Reddit /r/AskPhotography", "https://www.reddit.com/r/AskPhotography/.rss"),
+            ("Reddit /r/portraits", "https://www.reddit.com/r/portraits/.rss"),
+            ("Reddit /r/postprocessing", "https://www.reddit.com/r/postprocessing/.rss"),
+        ],
+    },
+    {
+        "match": ("marketing", "social media", "copy", "branding", "advertising", "content"),
+        "feeds": [
+            ("Reddit /r/marketing", "https://www.reddit.com/r/marketing/.rss"),
+            ("Reddit /r/socialmedia", "https://www.reddit.com/r/socialmedia/.rss"),
+            ("Reddit /r/copywriting", "https://www.reddit.com/r/copywriting/.rss"),
+            ("Reddit /r/advertising", "https://www.reddit.com/r/advertising/.rss"),
+        ],
+    },
+    {
+        "match": ("design", "grafica", "graphic", "ux", "ui", "brand identity", "logo"),
+        "feeds": [
+            ("Reddit /r/design", "https://www.reddit.com/r/design/.rss"),
+            ("Reddit /r/graphic_design", "https://www.reddit.com/r/graphic_design/.rss"),
+            ("Reddit /r/web_design", "https://www.reddit.com/r/web_design/.rss"),
+        ],
+    },
+    {
+        "match": ("ai", "intelligenza artificiale", "machine learning", "openai", "automation"),
+        "feeds": [
+            ("Reddit /r/artificial", "https://www.reddit.com/r/artificial/.rss"),
+            ("Reddit /r/OpenAI", "https://www.reddit.com/r/OpenAI/.rss"),
+            ("Reddit /r/MachineLearning", "https://www.reddit.com/r/MachineLearning/.rss"),
+        ],
+    },
+    {
+        "match": ("business", "startup", "imprend", "sales", "vendite", "finanza", "finance"),
+        "feeds": [
+            ("Reddit /r/Entrepreneur", "https://www.reddit.com/r/Entrepreneur/.rss"),
+            ("Reddit /r/smallbusiness", "https://www.reddit.com/r/smallbusiness/.rss"),
+            ("Reddit /r/startups", "https://www.reddit.com/r/startups/.rss"),
+        ],
+    },
+    {
+        "match": ("fitness", "wellness", "nutrizione", "health", "salute", "coach", "coaching"),
+        "feeds": [
+            ("Reddit /r/fitness", "https://www.reddit.com/r/fitness/.rss"),
+            ("Reddit /r/nutrition", "https://www.reddit.com/r/nutrition/.rss"),
+            ("Reddit /r/selfimprovement", "https://www.reddit.com/r/selfimprovement/.rss"),
+        ],
+    },
+]
+
+
+def build_project_feed_keywords(project: Optional[dict]) -> List[str]:
+    if not project:
+        return []
+
+    raw_parts = [
+        project.get("sector", ""),
+        project.get("name", ""),
+        project.get("description", ""),
+        project.get("brief_notes", ""),
+        project.get("custom_instructions", ""),
+    ]
+    full_text = " ".join(compact_text(part) for part in raw_parts if compact_text(part))
+    normalized = compact_text(full_text).lower()
+    if not normalized:
+        return []
+
+    keywords: List[str] = []
+    sector = compact_text(project.get("sector", "")).lower()
+    if sector:
+        keywords.append(sector)
+
+    for match in re.findall(r"[a-zA-ZÀ-ÿ0-9][a-zA-ZÀ-ÿ0-9'/-]+", normalized):
+        token = match.strip("'/-")
+        if len(token) < 4:
+            continue
+        if token in FEED_KEYWORD_STOPWORDS:
+            continue
+        keywords.append(token)
+
+    for preset in REDDIT_FEED_PRESETS:
+        if any(term in normalized for term in preset["match"]):
+            keywords.extend(preset["match"])
+            break
+
+    unique_keywords: List[str] = []
+    seen = set()
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            unique_keywords.append(kw)
+    return unique_keywords[:12]
+
+
+def build_google_news_query(project: Optional[dict]) -> str:
+    keywords = build_project_feed_keywords(project)
+    if not keywords:
+        return "marketing digitale"
+
+    primary = keywords[0]
+    secondary = [kw for kw in keywords[1:] if kw != primary][:3]
+    terms = [f'"{primary}"'] if " " in primary else [primary]
+    for kw in secondary:
+        terms.append(f'"{kw}"' if " " in kw else kw)
+    return f"{' OR '.join(terms)} when:14d"
+
+
+def build_default_project_feeds(project: Optional[dict]) -> List[dict]:
+    project_sector = compact_text((project or {}).get("sector", "")) or "settore"
+    sector_text = " ".join(
+        compact_text((project or {}).get(field, "")).lower()
+        for field in ("sector", "description", "brief_notes", "custom_instructions")
+    )
+    google_query = quote(build_google_news_query(project))
+
+    feeds = [{
+        "feed_url": f"https://news.google.com/rss/search?q={google_query}&hl=it&gl=IT&ceid=IT:it",
+        "feed_name": f"Google News: {project_sector}",
+        "source_type": "google_news",
+    }]
+
+    for preset in REDDIT_FEED_PRESETS:
+        if any(term in sector_text for term in preset["match"]):
+            for feed_name, feed_url in preset["feeds"]:
+                feeds.append({
+                    "feed_url": feed_url,
+                    "feed_name": f"{feed_name} — {project_sector}",
+                    "source_type": "reddit",
+                })
+            break
+
+    seen_urls = set()
+    deduped = []
+    for feed in feeds:
+        if feed["feed_url"] in seen_urls:
+            continue
+        seen_urls.add(feed["feed_url"])
+        deduped.append(feed)
+    return deduped
+
+
+def score_feed_item_relevance(item: dict, project: Optional[dict]) -> int:
+    keywords = build_project_feed_keywords(project)
+    if not keywords:
+        return 1
+
+    title = compact_text(item.get("title", "")).lower()
+    summary = compact_text(item.get("summary", "")).lower()
+    feed_name = compact_text(item.get("feed_name", "")).lower()
+    score = 0
+
+    for idx, kw in enumerate(keywords):
+        if len(kw) < 4:
+            continue
+        title_match = re.search(rf"\b{re.escape(kw)}\b", title)
+        summary_match = re.search(rf"\b{re.escape(kw)}\b", summary)
+        feed_match = re.search(rf"\b{re.escape(kw)}\b", feed_name)
+
+        if title_match:
+            score += 6 if idx == 0 else 4
+        if summary_match:
+            score += 3 if idx == 0 else 2
+        if feed_match:
+            score += 2
+        if " " in kw and kw in f"{title} {summary}":
+            score += 3
+
+    return score
+
+
+def filter_and_rank_feed_items(items: List[dict], project: Optional[dict]) -> List[dict]:
+    deduped = []
+    seen_keys = set()
+    for item in items:
+        dedupe_key = item.get("link") or compact_text(item.get("title", "")).lower()
+        if not dedupe_key or dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        deduped.append(item)
+
+    scored = []
+    for item in deduped:
+        score = score_feed_item_relevance(item, project)
+        if score > 0:
+            scored.append({**item, "relevance_score": score})
+
+    if not scored:
+        return deduped[:18]
+
+    scored.sort(
+        key=lambda item: (
+            item.get("relevance_score", 0),
+            item.get("published", ""),
+            item.get("cached_at", ""),
+        ),
+        reverse=True,
+    )
+    return scored[:18]
 
 def build_tov_summary(project: dict, tov: Optional[dict]) -> str:
     project_instructions = compact_text(project.get("custom_instructions", ""))
@@ -2016,6 +2259,35 @@ class FeedGenerateInput(BaseModel):
     feed_item_title: str
     feed_item_summary: Optional[str] = ""
 
+
+@api.post("/feeds/bootstrap/{project_id}")
+async def bootstrap_project_feeds(project_id: str, request: Request):
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
+    if not project:
+        raise HTTPException(404, "Progetto non trovato")
+
+    existing = await db.feeds.find({"project_id": project_id, "user_id": user["_id"]}, {"_id": 0}).to_list(50)
+    existing_urls = {feed.get("feed_url") for feed in existing}
+
+    created = list(existing)
+    for default_feed in build_default_project_feeds(project):
+        if default_feed["feed_url"] in existing_urls:
+            continue
+        doc = {
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "user_id": user["_id"],
+            "feed_url": default_feed["feed_url"],
+            "feed_name": default_feed["feed_name"],
+            "source_type": default_feed.get("source_type", "rss"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.feeds.insert_one(doc)
+        doc.pop("_id", None)
+        created.append(doc)
+    return created
+
 @api.post("/feeds/add")
 async def add_feed(inp: FeedAddInput, request: Request):
     user = await get_current_user(request)
@@ -2046,7 +2318,8 @@ async def delete_feed(feed_id: str, request: Request):
 
 @api.get("/feeds/{project_id}/items")
 async def get_feed_items(project_id: str, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"_id": 0})
     feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
     all_items = []
     for feed in feeds:
@@ -2085,7 +2358,7 @@ async def get_feed_items(project_id: str, request: Request):
                         all_items.append(item)
             except Exception as e:
                 logger.error(f"Feed fetch error {feed['feed_url']}: {e}")
-    return all_items
+    return filter_and_rank_feed_items(all_items, project)
 
 @api.post("/feeds/refresh/{project_id}")
 async def refresh_feeds(project_id: str, request: Request):

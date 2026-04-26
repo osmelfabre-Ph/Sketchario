@@ -133,25 +133,22 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       }).catch(() => {});
       api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {});
     }, 600000);
-    // Auto-add default feeds if none exist
-    if (feeds.length === 0 && project.sector) {
-      const searchTerm = encodeURIComponent(project.sector);
-      const defaultFeeds = [
-        { url: `https://news.google.com/rss/search?q=${searchTerm}&hl=it&gl=IT&ceid=IT:it`, name: `Google News: ${project.sector}` },
-        { url: `https://www.reddit.com/search.rss?q=${searchTerm}&sort=new&limit=10`, name: `Reddit: ${project.sector}` },
-      ];
-      Promise.all(defaultFeeds.map(f =>
-        api.post('/feeds/add', { project_id: project.id, feed_url: f.url, feed_name: f.name }).catch(() => null)
-      )).then(results => {
-        const added = results.filter(Boolean);
-        if (added.length > 0) {
-          setFeeds(prev => [...prev, ...added.map(r => r.data)]);
-          api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {});
-        }
-      });
-    }
     return () => clearInterval(interval);
-  }, [project?.id, loading]);
+  }, [api, project?.id, loading]);
+
+  useEffect(() => {
+    if (!project?.id || loading) return;
+    api.post(`/feeds/bootstrap/${project.id}`)
+      .then(({ data }) => {
+        if (Array.isArray(data)) {
+          setFeeds(data);
+          if (data.length > 0) {
+            return api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {});
+          }
+        }
+      })
+      .catch(() => {});
+  }, [api, project?.id, loading]);
 
   const openContentDetail = (c) => setSelectedContent(c);
   const handleContentUpdate = (updated) => setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
