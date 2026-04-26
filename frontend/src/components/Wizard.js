@@ -80,6 +80,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
     setDurationWeeks(project.duration_weeks || 1);
     setGeo(project.geo || '');
     setBriefNotes(project.brief_notes || '');
+    setProjectInstructions(project.custom_instructions || '');
     if (p?.length) setPersonas(p);
     if (tov) {
       setTovPreset(tov.preset || '');
@@ -259,7 +260,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Note per l'AI</label>
-                <textarea className="input-dark" rows={2} placeholder="Es. Tono leggermente più urgente, uscita corso online..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <textarea className="input-dark" rows={3} placeholder="Es. Ho scritto un libro, voglio spingere quello nelle CTA; tono più autorevole; focus su consulenze premium..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Istruzioni personalizzate <span className="text-[var(--text-muted)] font-normal">(opzionale)</span></label>

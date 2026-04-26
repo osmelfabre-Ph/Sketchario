@@ -1,35 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import {
-  CalendarBlank, Video, Image, PencilSimple, X,
-  Plus, ArrowLeft, InstagramLogo, LinkedinLogo, FacebookLogo, TiktokLogo, PinterestLogo,
-  Eye, Sparkle, Trash, Globe,
-  RssSimple, Queue, Clock, CheckCircle, XCircle, ArrowClockwise, PaperPlaneTilt,
-  BookOpen, Download, ChartBar, Article, DotsSixVertical, CaretDown, CaretUp,
-  SquaresFour, ListBullets, Flag, CaretLeft, CaretRight
+  Video, Image, X,
+  Plus, ArrowLeft,
+  Sparkle, Trash, Globe,
+  RssSimple, ArrowClockwise,
+  BookOpen, Download, ChartBar,
+  SquaresFour, ListBullets
 } from '@phosphor-icons/react';
-
-const MONTH_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-import Analytics from './Analytics';
 import TeamPanel from './TeamPanel';
 import ContentDetail from './ContentDetail';
-import { richTextToPlainText } from '../lib/utils';
-
-const GoogleDriveIcon = ({ size = 16 }) => (
-  <img src="https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png" alt="Google Drive" style={{ width: size, height: size, objectFit: 'contain' }} />
-);
-
-const PLATFORM_ICONS = {
-  instagram: { Icon: InstagramLogo, color: '#E4405F', name: 'Instagram' },
-  facebook: { Icon: FacebookLogo, color: '#1877F2', name: 'Facebook' },
-  linkedin: { Icon: LinkedinLogo, color: '#0A66C2', name: 'LinkedIn' },
-  tiktok: { Icon: TiktokLogo, color: '#ffffff', name: 'TikTok' },
-  pinterest: { Icon: PinterestLogo, color: '#E60023', name: 'Pinterest' },
-  google_slides: { Icon: GoogleDriveIcon, color: '#1EA362', name: 'Google Drive' },
-};
+import { PLATFORM_ICONS } from './project-view/constants';
+import ContentCardsView from './project-view/ContentCardsView';
+import ContentListView from './project-view/ContentListView';
+import ContentCalendarView from './project-view/ContentCalendarView';
+import FeedStrips from './project-view/FeedStrips';
+import RightPanelContent from './project-view/RightPanelContent';
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -336,7 +325,39 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setPinningItemId(null);
   };
 
+  const refreshFeeds = async () => {
+    setRefreshingFeeds(true);
+    const tid = toast.loading('Aggiornamento feed...');
+    try {
+      await api.post(`/feeds/refresh/${project.id}`);
+      const response = await api.get(`/feeds/${project.id}/items`);
+      setFeedItems(response.data);
+      toast.success('Feed aggiornati', { id: tid });
+    } catch {
+      toast.error('Errore aggiornamento feed', { id: tid });
+    }
+    setRefreshingFeeds(false);
+  };
+
+  const refreshAiSuggestions = async () => {
+    setRefreshingAi(true);
+    const tid = toast.loading('Generazione idee AI...');
+    try {
+      const response = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`);
+      setAiFeedItems(response.data || []);
+      toast.success('Idee AI aggiornate', { id: tid });
+    } catch {
+      toast.error('Errore generazione idee AI', { id: tid });
+    }
+    setRefreshingAi(false);
+  };
+
   const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+  const listGroups = [
+    { key: 'published', label: t('status.published'), items: contents.filter(c => c.status === 'published') },
+    { key: 'scheduled', label: t('status.scheduled'), items: contents.filter(c => c.status === 'scheduled') },
+    { key: 'draft', label: t('status.draft'), items: contents.filter(c => !c.status || c.status === 'draft') },
+  ].filter(group => group.items.length > 0);
 
   if (loading) return <p className="text-[var(--text-muted)] text-center py-12">{t('common.loading')}</p>;
 
@@ -410,184 +431,44 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
             {/* LIST VIEW — CARDS */}
             {tab === 'list' && viewMode === 'cards' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 pt-2">
-                {contents.map((c, i) => (
-                  <motion.div key={c.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
-                    className="card cursor-pointer group" onClick={() => openContentDetail(c)}
-                    style={c.status === 'published' ? { borderColor: 'rgba(34,197,94,0.45)', background: 'linear-gradient(135deg, var(--bg-card) 80%, rgba(34,197,94,0.06) 100%)' } : {}}>
-                    {c.media && c.media[0] && c.media[0].type === 'image' ? (
-                      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-28 md:h-36 rounded-t-[0.9rem] overflow-hidden">
-                        <img src={`${process.env.REACT_APP_BACKEND_URL}${c.media[0].url}`} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-16 md:h-20 rounded-t-[0.9rem] flex items-center justify-center" style={{ background: c.format === 'reel' ? 'rgba(236,72,153,0.08)' : c.format === 'prompted_reel' ? 'rgba(168,85,247,0.08)' : 'rgba(99,102,241,0.08)' }}>
-                        {c.format === 'reel' ? <Video size={24} className="text-[var(--accent-pink)] opacity-40" /> : c.format === 'prompted_reel' ? <span style={{ fontSize: 24, opacity: 0.4 }}>🤖</span> : <Image size={24} className="text-[var(--gradient-start)] opacity-40" />}
-                      </div>
-                    )}
-                    <div className="flex items-start gap-2 mb-2">
-                      <span className={`badge text-[9px] ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>{c.format === 'prompted_reel' ? '🤖 prompted reel' : c.format}</span>
-                      <span className={`badge text-[9px] ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
-                    </div>
-                    <h4 className="text-sm font-semibold mb-1 line-clamp-2">{c.hook_text}</h4>
-                    <p className="text-xs text-[var(--text-muted)] line-clamp-2">{richTextToPlainText(c.caption || '').slice(0, 100)}</p>
-                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
-                      <span className="text-[10px] text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1 rounded hover:bg-[var(--bg-secondary)]" disabled={deletingContentId === c.id} onClick={e => { e.stopPropagation(); deleteContent(c.id); }}>
-                          {deletingContentId === c.id ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> : <Trash size={12} />}
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-                {contents.length === 0 && (
-                  <div className="col-span-full text-center py-12">
-                    <p className="text-[var(--text-muted)] mb-4">{t('project.content.noContent')}</p>
-                    <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
-                  </div>
-                )}
-              </div>
+              <ContentCardsView
+                contents={contents}
+                openContentDetail={openContentDetail}
+                deletingContentId={deletingContentId}
+                deleteContent={deleteContent}
+                setShowNewPost={setShowNewPost}
+              />
             )}
 
             {/* LIST VIEW — COMPACT LIST */}
-            {tab === 'list' && viewMode === 'list' && (() => {
-              const groups = [
-                { key: 'published', label: t('status.published'), items: contents.filter(c => c.status === 'published') },
-                { key: 'scheduled', label: t('status.scheduled'), items: contents.filter(c => c.status === 'scheduled') },
-                { key: 'draft', label: t('status.draft'), items: contents.filter(c => !c.status || c.status === 'draft') },
-              ].filter(g => g.items.length > 0);
-              return (
-                <div className="pt-2 space-y-5">
-                  {groups.map(group => (
-                    <div key={group.key}>
-                      <button
-                        className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1.5 hover:text-white transition-colors w-full text-left"
-                        onClick={() => toggleGroupCollapse(group.key)}
-                      >
-                        {collapsedGroups.has(group.key) ? <CaretDown size={11} /> : <CaretUp size={11} />}
-                        {group.label}
-                        <span className="font-normal opacity-60 ml-0.5">({group.items.length})</span>
-                      </button>
-                      {!collapsedGroups.has(group.key) && (
-                        <div className="space-y-0.5">
-                          {group.items.map(c => {
-                            const hasContent = !!(c.script || c.caption);
-                            const dotColor = c.status === 'published' ? '#22c55e'
-                              : (c.status === 'scheduled' || hasContent) ? '#f97316'
-                              : '#6b7280';
-                            const queueItem = queueItems.find(q => q.content_id === c.id);
-                            let dateLabel;
-                            if (c.status === 'published') dateLabel = t('status.published');
-                            else if (queueItem?.scheduled_at) dateLabel = new Date(queueItem.scheduled_at).toLocaleDateString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-                            else dateLabel = `G${(c.day_offset || 0) + 1}`;
-                            return (
-                              <div key={c.id}
-                                className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer group hover:bg-[var(--bg-card)] transition-colors"
-                                style={c.status === 'published' ? { background: 'rgba(34,197,94,0.07)', borderLeft: '2px solid rgba(34,197,94,0.5)' } : {}}
-                                onClick={() => openContentDetail(c)}>
-                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: dotColor }} />
-                                <div className="flex-shrink-0 text-[var(--text-muted)]">
-                                  {c.format === 'reel' ? <Video size={13} /> : c.format === 'prompted_reel' ? <span style={{ fontSize: 12 }}>🤖</span> : <Image size={13} />}
-                                </div>
-                                <p className="flex-1 text-sm truncate min-w-0">
-                                  {c.hook_text || <span className="text-[var(--text-muted)] italic text-xs">Senza titolo</span>}
-                                </p>
-                                <span className={`badge text-[9px] flex-shrink-0 hidden sm:inline-flex ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
-                                  {c.format === 'prompted_reel' ? 'prompted' : c.format}
-                                </span>
-                                <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 w-20 text-right">{dateLabel}</span>
-                                <button
-                                  className="flex-shrink-0 transition-opacity opacity-40 group-hover:opacity-100"
-                                  style={{ color: c.urgent ? '#ef4444' : 'var(--text-muted)' }}
-                                  onClick={e => { e.stopPropagation(); toggleUrgent(c); }}
-                                  title={c.urgent ? 'Urgente — clicca per rimuovere' : 'Segna urgente'}
-                                >
-                                  <Flag size={14} weight={c.urgent ? 'fill' : 'regular'} />
-                                </button>
-                                <button
-                                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--accent-pink)]"
-                                  disabled={deletingContentId === c.id}
-                                  onClick={e => { e.stopPropagation(); deleteContent(c.id); }}
-                                >
-                                  {deletingContentId === c.id
-                                    ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                                    : <Trash size={13} />}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {contents.length === 0 && (
-                    <div className="text-center py-12">
-                      <p className="text-[var(--text-muted)] mb-4">{t('project.content.noContent')}</p>
-                      <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+            {tab === 'list' && viewMode === 'list' && (
+              <ContentListView
+                groups={listGroups}
+                collapsedGroups={collapsedGroups}
+                toggleGroupCollapse={toggleGroupCollapse}
+                queueItems={queueItems}
+                openContentDetail={openContentDetail}
+                toggleUrgent={toggleUrgent}
+                deletingContentId={deletingContentId}
+                deleteContent={deleteContent}
+              />
+            )}
 
             {/* CALENDAR — real date grid */}
-            {tab === 'calendar' && (() => {
-              const firstDow = (new Date(calYear, calMonth, 1).getDay() + 6) % 7; // 0=Mon…6=Sun
-              const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-              const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
-              const todayD = new Date();
-              return (
-                <div className="calendar-container mt-2">
-                  {/* Month navigation */}
-                  <div className="flex items-center justify-between mb-3 px-1">
-                    <button className="btn-ghost py-1 px-2 text-sm flex items-center gap-1"
-                      onClick={() => { const d = new Date(calYear, calMonth - 1, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); }}>
-                      <CaretLeft size={14} />
-                    </button>
-                    <span className="font-semibold text-sm">{MONTH_IT[calMonth]} {calYear}</span>
-                    <button className="btn-ghost py-1 px-2 text-sm flex items-center gap-1"
-                      onClick={() => { const d = new Date(calYear, calMonth + 1, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); }}>
-                      <CaretRight size={14} />
-                    </button>
-                  </div>
-                  <div className="calendar-grid">
-                    {days.map(d => <div key={d} className="calendar-header">{d}</div>)}
-                    {Array.from({ length: totalCells }, (_, i) => {
-                      const dayNum = i - firstDow + 1;
-                      const isMonth = dayNum >= 1 && dayNum <= daysInMonth;
-                      const isToday = isMonth && dayNum === todayD.getDate() && calMonth === todayD.getMonth() && calYear === todayD.getFullYear();
-                      const iso = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-                      const dayContents = isMonth ? contents.filter(c => {
-                        const q = queueItems.find(qi => qi.content_id === c.id && (qi.status === 'queued' || qi.status === 'published'));
-                        if (!q?.scheduled_at) return false;
-                        const d2 = new Date(q.scheduled_at);
-                        return d2.getFullYear() === calYear && d2.getMonth() === calMonth && d2.getDate() === dayNum;
-                      }) : [];
-                      return (
-                        <div key={i} className={`calendar-cell ${!isMonth ? 'opacity-20' : ''}`}
-                          style={isToday ? { background: 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.4)' } : {}}
-                          onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
-                          onDragLeave={e => { e.currentTarget.style.background = isToday ? 'rgba(99,102,241,0.08)' : ''; }}
-                          onDrop={e => { e.currentTarget.style.background = ''; handleDrop(dayNum - 1, e); }}>
-                          {isMonth && (
-                            <>
-                              <span className="text-xs font-medium" style={{ color: isToday ? 'var(--accent-purple)' : 'var(--text-secondary)', fontWeight: isToday ? 700 : 500 }}>{dayNum}</span>
-                              {dayContents.map(c => (
-                                <div key={c.id} className={`content-chip ${c.status === 'published' ? 'published' : c.format}`} draggable
-                                  onDragStart={() => setDragContent(c)} onClick={() => openContentDetail(c)}>
-                                  {c.status === 'published' ? <CheckCircle size={10} weight="fill" /> : c.format === 'reel' ? <Video size={10} /> : <Image size={10} />}
-                                  <span className="ml-1 truncate">{(c.hook_text || richTextToPlainText(c.caption || '') || '').slice(0, 20)}</span>
-                                </div>
-                              ))}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
+            {tab === 'calendar' && (
+              <ContentCalendarView
+                contents={contents}
+                queueItems={queueItems}
+                calYear={calYear}
+                calMonth={calMonth}
+                setCalYear={setCalYear}
+                setCalMonth={setCalMonth}
+                days={days}
+                handleDrop={handleDrop}
+                setDragContent={setDragContent}
+                openContentDetail={openContentDetail}
+              />
+            )}
 
             {/* PERSONAS + TOV LIBRARY */}
             {tab === 'personas' && (
@@ -744,12 +625,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold flex items-center gap-2"><RssSimple size={16} /> News & Reddit — {project.sector}</p>
-                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingFeeds} onClick={async () => {
-                      setRefreshingFeeds(true); const tid = toast.loading('Aggiornamento feed...');
-                      try { await api.post(`/feeds/refresh/${project.id}`); const r = await api.get(`/feeds/${project.id}/items`); setFeedItems(r.data); toast.success('Feed aggiornati', { id: tid }); }
-                      catch { toast.error('Errore aggiornamento feed', { id: tid }); }
-                      setRefreshingFeeds(false);
-                    }}>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingFeeds} onClick={refreshFeeds}>
                       <ArrowClockwise size={12} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : t('project.feeds.refresh')}
                     </button>
                   </div>
@@ -768,12 +644,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold flex items-center gap-2"><Sparkle size={16} weight="fill" /> Idee AI — {project.sector}</p>
-                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingAi} onClick={async () => {
-                      setRefreshingAi(true); const tid = toast.loading('Generazione idee AI...');
-                      try { const r = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`); setAiFeedItems(r.data || []); toast.success('Idee AI aggiornate', { id: tid }); }
-                      catch { toast.error('Errore generazione idee AI', { id: tid }); }
-                      setRefreshingAi(false);
-                    }}>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingAi} onClick={refreshAiSuggestions}>
                       <ArrowClockwise size={12} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : t('editor.regenerate')}
                     </button>
                   </div>
@@ -799,67 +670,19 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             )}
           </div>
 
-          {/* FEED STRIPS — desktop only, above footer */}
-          <div className="flex-shrink-0 border-t border-[var(--border-color)]" style={{ background: 'var(--bg-secondary)', display: isMobile ? 'none' : undefined }}>
-            {/* Strip 1: Google News / Reddit */}
-            <div className="px-4 md:px-6 pt-3 pb-2">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1 truncate"><RssSimple size={12} /> News & Reddit — {project.sector}</p>
-                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" disabled={refreshingFeeds} onClick={async () => {
-                  setRefreshingFeeds(true); const tid = toast.loading('Aggiornamento feed...');
-                  try { await api.post(`/feeds/refresh/${project.id}`); const r = await api.get(`/feeds/${project.id}/items`); setFeedItems(r.data); toast.success('Feed aggiornati', { id: tid }); }
-                  catch { toast.error('Errore', { id: tid }); }
-                  setRefreshingFeeds(false);
-                }}>
-                  <ArrowClockwise size={10} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : t('project.feeds.refresh')}
-                </button>
-              </div>
-              <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
-                {feedItems.slice(0, 6).map(item => (
-                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--gradient-start)] transition-colors relative"
-                    style={{ background: 'var(--bg-card)', border: `1px solid ${pinnedItemIds.has(item.id) ? 'var(--gradient-start)' : 'var(--border-color)'}` }}
-                    onClick={() => setSelectedFeedItem({ ...item, _type: 'rss' })}>
-                    {pinnedItemIds.has(item.id) && <span className="absolute top-1 right-1 text-[9px]">📌</span>}
-                    <p className="text-xs font-medium line-clamp-2 mb-1 pr-3">{item.title}</p>
-                    <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.feed_name}</p>
-                  </div>
-                ))}
-                {feedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">{t('project.feeds.noFeeds')}</p>}
-              </div>
-            </div>
-
-            {/* Strip 2: AI-Generated Suggestions */}
-            <div className="px-4 md:px-6 pt-1 pb-3 border-t border-[var(--border-color)]" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1 truncate"><Sparkle size={12} weight="fill" /> Idee AI — {project.sector}</p>
-                <button className="text-[10px] text-[var(--text-muted)] hover:text-white flex items-center gap-1 flex-shrink-0" disabled={refreshingAi} onClick={async () => {
-                  setRefreshingAi(true); const tid = toast.loading('Generazione idee AI...');
-                  try { const r = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`); setAiFeedItems(r.data || []); toast.success('Idee aggiornate', { id: tid }); }
-                  catch { toast.error('Errore', { id: tid }); }
-                  setRefreshingAi(false);
-                }}>
-                  <ArrowClockwise size={10} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : t('editor.regenerate')}
-                </button>
-              </div>
-              <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
-                {aiFeedItems.map(item => (
-                  <div key={item.id} className="flex-shrink-0 w-44 md:w-52 p-2.5 md:p-3 rounded-lg cursor-pointer hover:border-[var(--accent-purple)] transition-colors relative"
-                    style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: `1px solid ${pinnedItemIds.has(item.id) ? 'rgba(168,85,247,0.6)' : 'rgba(99,102,241,0.15)'}` }}
-                    onClick={() => setSelectedFeedItem({ ...item, _type: 'ai' })}>
-                    {pinnedItemIds.has(item.id) && <span className="absolute top-1 right-1 text-[9px]">📌</span>}
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
-                      <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase">{item.format || 'reel'}</span>
-                      {item.trend_tag && <span className="text-[9px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
-                    </div>
-                    <p className="text-xs font-medium line-clamp-2 mb-1 pr-3">{item.title}</p>
-                    <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{item.summary}</p>
-                  </div>
-                ))}
-                {aiFeedItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">Generazione idee AI...</p>}
-              </div>
-            </div>
-          </div>
+          <FeedStrips
+            isMobile={isMobile}
+            project={project}
+            feedItems={feedItems}
+            aiFeedItems={aiFeedItems}
+            pinnedItemIds={pinnedItemIds}
+            refreshingFeeds={refreshingFeeds}
+            refreshingAi={refreshingAi}
+            refreshFeeds={refreshFeeds}
+            refreshAiSuggestions={refreshAiSuggestions}
+            setSelectedFeedItem={setSelectedFeedItem}
+            t={t}
+          />
         </div>
 
         {/* RIGHT PANEL — Overlay drawer (desktop + mobile) */}
@@ -1019,45 +842,5 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-/* Extracted right panel content to reuse in desktop inline + mobile overlay */
-function RightPanelContent({ queueItems, contents, cancelQueueItem, cancellingQueueId, project }) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <div className="mb-6">
-        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><Queue size={12} /> Publishing Queue <span className="badge blue text-[8px] ml-1">{queueItems.length}</span></p>
-        {queueItems.slice(0, 8).map(item => {
-          const pi = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
-          const isFailed = item.status === 'failed';
-          return (
-            <div key={item.id} className="py-1.5 px-2 rounded mb-1" style={{ background: isFailed ? 'rgba(239,68,68,0.08)' : 'var(--bg-card)', border: isFailed ? '1px solid rgba(239,68,68,0.3)' : '1px solid transparent' }}>
-              <div className="flex items-center gap-2">
-                <pi.Icon weight="fill" size={12} color={pi.color} />
-                <p className="text-[10px] flex-1 truncate">{contents.find(c => c.id === item.content_id)?.hook_text?.slice(0, 30) || '...'}</p>
-                <span className={`text-[8px] font-semibold ${item.status === 'queued' ? 'text-[var(--accent-blue)]' : item.status === 'published' ? 'text-[var(--accent-green)]' : isFailed ? 'text-red-400' : 'text-[var(--accent-orange)]'}`}>{item.status}</span>
-                {item.status === 'queued' && (
-                  <button onClick={() => cancelQueueItem(item.id)} disabled={cancellingQueueId === item.id}>
-                    {cancellingQueueId === item.id
-                      ? <div className="w-2 h-2 border border-current border-t-transparent rounded-full animate-spin" />
-                      : <X size={10} />}
-                  </button>
-                )}
-              </div>
-              {isFailed && item.error_message && (
-                <p className="text-[9px] mt-0.5 text-red-400 leading-tight">{item.error_message.slice(0, 120)}</p>
-              )}
-            </div>
-          );
-        })}
-        {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">{t('project.queue.empty')}</p>}
-      </div>
-      <div>
-        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> Analytics</p>
-        <Analytics project={project} compact />
-      </div>
-    </>
   );
 }

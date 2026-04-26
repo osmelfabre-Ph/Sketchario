@@ -107,6 +107,7 @@ GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIA
 - Chiusura: CTA specifico e personale (non generico "clicca qui")
 - Emoji: massimo 3-4, strategicamente posizionate, mai a caso
 - Paragrafi brevi con spazi per leggibilità mobile
+- La caption deve avere una gerarchia visiva evidente: apertura forte, sviluppo leggibile, blocco valore strutturato, CTA finale
 
 ## FORMATTAZIONE TESTO (OBBLIGATORIA — non negoziabile)
 - Script: SEMPRE strutturato in 4 blocchi VISIVAMENTE SEPARATI con una riga vuota (\n\n) tra ogni blocco:
@@ -117,7 +118,11 @@ GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIA
   Blocco 3 (Soluzione/Valore): 2-4 frasi concrete
   \n\n
   Blocco 4 (CTA): 1-2 frasi di chiusura
-- Caption: SEMPRE strutturata in 3 blocchi separati da \n\n: Hook → Corpo → CTA
+- Caption: SEMPRE strutturata in 4 blocchi separati da \n\n:
+  Blocco 1 = Hook autonomo di 1 riga
+  Blocco 2 = Risonanza/contesto di 2-3 frasi
+  Blocco 3 = Valore strutturato in 3 mini-bullet o 3 righe guida
+  Blocco 4 = CTA specifico e personale
 - MAI scrivere script o caption come flusso unico di testo senza interruzioni di paragrafo.
 - Il \n\n DEVE essere presente nella stringa JSON come sequenza \\n\\n.
 
@@ -731,6 +736,106 @@ def coerce_str(val) -> str:
         return " ".join(str(i) for i in val)
     return str(val) if val is not None else ""
 
+def compact_text(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+def build_tov_summary(project: dict, tov: Optional[dict]) -> str:
+    project_instructions = compact_text(project.get("custom_instructions", ""))
+    if tov:
+        tov_instructions = compact_text(tov.get("custom_instructions", ""))
+        combined = " ".join(filter(None, [project_instructions, tov_instructions]))
+        tone_bits = [
+            f"formalita {tov.get('formality', 5)}/10",
+            f"energia {tov.get('energy', 5)}/10",
+            f"empatia {tov.get('empathy', 5)}/10",
+            f"humor {tov.get('humor', 3)}/10",
+            f"storytelling {tov.get('storytelling', 5)}/10",
+        ]
+        return f"Tono di voce: {', '.join(tone_bits)}.{f' Istruzioni ToV/brand: {combined}' if combined else ''}"
+    if project_instructions:
+        return f"Istruzioni brand/progetto: {project_instructions}"
+    return ""
+
+def infer_owned_asset_guidance(project: dict) -> str:
+    combined = " ".join(
+        compact_text(project.get(key, ""))
+        for key in ("description", "brief_notes", "custom_instructions")
+    ).lower()
+    cues = []
+    if any(token in combined for token in ["libro", "book", "ebook"]):
+        cues.append("cita e valorizza il libro dell'autore come asset reale nelle CTA, negli esempi o nella prova di autorevolezza")
+    if any(token in combined for token in ["corso", "masterclass", "academy", "workshop"]):
+        cues.append("quando coerente guida verso corso, masterclass o workshop come step successivo")
+    if any(token in combined for token in ["newsletter", "mailing list", "lista email"]):
+        cues.append("usa CTA che invitino all'iscrizione newsletter quando il contenuto lo permette")
+    if any(token in combined for token in ["podcast"]):
+        cues.append("se utile richiama il podcast come asset di approfondimento")
+    if any(token in combined for token in ["community", "gruppo", "membership"]):
+        cues.append("se pertinente usa CTA verso community, gruppo o membership")
+    if not cues:
+        return ""
+    return "Asset proprietari da sfruttare: " + "; ".join(cues) + "."
+
+def build_project_context(project: dict, personas: Optional[List[dict]] = None, tov: Optional[dict] = None) -> str:
+    context_lines = [
+        f"Settore: {project.get('sector', '')}",
+        f"Descrizione progetto: {project.get('description', '') or 'non specificata'}",
+        f"Area geografica: {project.get('geo', 'Italia')}",
+    ]
+    objectives = project.get("objectives") or {}
+    if objectives:
+        context_lines.append(
+            f"Obiettivi: Awareness {objectives.get('awareness', 0)}%, Educazione {objectives.get('education', 0)}%, Monetizing {objectives.get('monetizing', 0)}%"
+        )
+    if project.get("formats"):
+        context_lines.append(f"Formati disponibili: {', '.join(project.get('formats', []))}")
+    if personas:
+        persona_summary = [f"{p.get('name') or p.get('role', '')} - {p.get('role', '')}".strip(" -") for p in personas]
+        context_lines.append(f"Personas: {json.dumps(persona_summary, ensure_ascii=False)}")
+    brief_notes = compact_text(project.get("brief_notes", ""))
+    if brief_notes:
+        context_lines.append(f"Note strategiche dal brief: {brief_notes}")
+    tov_summary = build_tov_summary(project, tov)
+    if tov_summary:
+        context_lines.append(tov_summary)
+    asset_guidance = infer_owned_asset_guidance(project)
+    if asset_guidance:
+        context_lines.append(asset_guidance)
+    context_lines.append(
+        "Le note del brief NON sono decorative: devono influenzare topic, esempi, prova di autorevolezza e CTA finali."
+    )
+    return "\n".join(context_lines)
+
+def build_caption_requirements(caption_len: str) -> str:
+    return f"""Caption: lunghezza {caption_len}.
+Struttura OBBLIGATORIA della caption:
+- Blocco 1: una singola riga-hook autonoma, incisiva e memorabile
+- Blocco 2: 2-3 frasi brevi che approfondiscono il problema o ribaltano una credenza
+- Blocco 3: 3 mini-bullet o 3 righe guida che iniziano con "• " oppure "1)", "2)", "3)" e contengono valore pratico concreto
+- Blocco 4: CTA specifica, personale e coerente con gli asset reali del progetto (es. libro, corso, newsletter), se presenti nel brief
+Usa una formattazione visiva forte: righe brevi, contrasti chiari, niente muro di testo, niente paragrafi casuali."""
+
+def build_carousel_requirements() -> str:
+    return """Se il formato e carousel:
+- genera SEMPRE 8-10 slide, non meno di 8
+- ogni slide deve essere sostanziosa: 110-180 parole complessive, lettura lenta e densa, non etichette veloci
+- formato tassativo di ogni slide:
+  Slide N:
+  TITOLO TUTTO MAIUSCOLO (max 7 parole)
+
+  1) punto concreto in 1-2 frasi complete
+  2) punto concreto in 1-2 frasi complete
+  3) punto concreto in 1-2 frasi complete
+  4) punto concreto in 1-2 frasi complete
+- ogni punto deve includere almeno uno tra: esempio reale, dato numerico, micro-caso, conseguenza pratica, errore comune da evitare
+- slide 1 = hook/problema emotivo
+- slide 2 = promessa e cornice
+- slide 3-8 = contenuto educativo molto ricco
+- slide 9 = sintesi operativa
+- slide 10 = CTA o passo successivo concreto, se ci sono abbastanza slide
+- se il brief menziona asset proprietari (es. libro), la CTA finale deve sfruttarli in modo naturale e non ignorarli
+- NON scrivere slide scarne da una sola riga."""
+
 # ── PERSONAS ─────────────────────────────────────────
 @api.post("/personas/generate")
 async def generate_personas(inp: GeneratePersonasInput, request: Request):
@@ -738,12 +843,9 @@ async def generate_personas(inp: GeneratePersonasInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
-    custom_inst = project.get("custom_instructions", "")
     system = "Sei un esperto di marketing strategico. Genera buyer personas dettagliate in formato JSON. Rispondi SOLO con un array JSON valido, senza markdown."
-    prompt = f"""Genera 6 buyer personas MECE per un progetto nel settore: {project['sector']}.
-Descrizione: {project.get('description', '')}
-Area: {project.get('geo', 'Italia')}
-{f"Istruzioni personalizzate: {custom_inst}" if custom_inst else ""}
+    prompt = f"""Genera 6 buyer personas MECE per questo progetto.
+{build_project_context(project)}
 
 Per ogni persona restituisci un oggetto JSON con:
 - role: professione o tipo di persona (es. "Insegnante", "Libero professionista", "Imprenditore")
@@ -798,22 +900,10 @@ async def generate_hooks(inp: GenerateHooksInput, request: Request):
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     weeks = project.get("duration_weeks", 1)
     num_hooks = weeks * 7
-    proj_inst_h = project.get("custom_instructions", "")
-    tov_desc = ""
-    if tov:
-        tov_inst_h = tov.get('custom_instructions', '')
-        combined_h = " ".join(filter(None, [proj_inst_h, tov_inst_h]))
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10.{' ' + combined_h if combined_h else ''}"
-    elif proj_inst_h:
-        tov_desc = f"Istruzioni: {proj_inst_h}"
+    context_block = build_project_context(project, personas=personas, tov=tov)
     system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
-    prompt = f"""Genera {num_hooks} hook per un progetto nel settore: {project['sector']}.
-Descrizione: {project.get('description','')}
-Area: {project.get('geo','Italia')}
-Obiettivi: Awareness {project['objectives']['awareness']}%, Educazione {project['objectives']['education']}%, Monetizing {project['objectives']['monetizing']}%
-Formati disponibili: {', '.join(project.get('formats',['reel','carousel']))}
-Personas: {json.dumps([p.get('name','') + ' - ' + p.get('role','') for p in personas])}
-{tov_desc}
+    prompt = f"""Genera {num_hooks} hook per questo progetto.
+{context_block}
 
 Per ogni hook restituisci:
 - hook_text: testo dell'hook (frase ad effetto)
@@ -822,7 +912,9 @@ Per ogni hook restituisci:
 - persona_target: nome della persona target
 - day_offset: giorno dalla partenza (0, 1, 2, ...)
 
-Distribuisci i formati in modo equilibrato tra quelli disponibili. Se "prompted_reel" è disponibile usalo per circa il 20% degli hook. Rispondi con un array JSON di {num_hooks} oggetti."""
+Distribuisci i formati in modo equilibrato tra quelli disponibili. Se "prompted_reel" è disponibile usalo per circa il 20% degli hook.
+Se dal brief emergono asset proprietari (es. libro, corso, newsletter), fai in modo che gli hook monetizing e parte degli hook education li preparino in modo naturale.
+Rispondi con un array JSON di {num_hooks} oggetti."""
     try:
         result = await call_ai(system, prompt)
         hooks = extract_json(result)
@@ -881,14 +973,10 @@ async def generate_content(inp: GenerateContentInput, request: Request):
     if tov:
         cl = tov.get("caption_length", "medium")
         caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
-    proj_inst_c = project.get("custom_instructions", "")
-    tov_desc = ""
-    if tov:
-        tov_inst_c = tov.get('custom_instructions','')
-        combined_c = " ".join(filter(None, [proj_inst_c, tov_inst_c]))
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10.{' Istruzioni: ' + combined_c if combined_c else ''}"
-    elif proj_inst_c:
-        tov_desc = f"Istruzioni: {proj_inst_c}"
+    personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+    context_block = build_project_context(project, personas=personas, tov=tov)
+    caption_requirements = build_caption_requirements(caption_len)
+    carousel_requirements = build_carousel_requirements()
     generated = []
     for hook in hooks:
         system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
@@ -897,8 +985,8 @@ async def generate_content(inp: GenerateContentInput, request: Request):
             prompt = f"""Sei un esperto di video marketing con avatar AI. Crea materiale completo per un Prompted Reel da usare con strumenti come HeyGen o D-ID.
 
 Hook: {hook.get('hook_text','')}
-Settore: {project['sector']}
-{tov_desc}
+{context_block}
+{caption_requirements}
 
 Restituisci un oggetto JSON con:
 - opening_hook: testo parlato dei primi 3-5 secondi (cattura immediatamente, max 2 frasi)
@@ -911,15 +999,15 @@ Restituisci un oggetto JSON con:
             prompt = f"""Genera un contenuto social completo per questo hook:
 Hook: {hook.get('hook_text','')}
 Formato: {fmt}
-Settore: {project['sector']}
-{tov_desc}
-Lunghezza caption: {caption_len}
+{context_block}
+{caption_requirements}
+{carousel_requirements}
 
 Restituisci un oggetto JSON con:
 - script: lo script completo del contenuto (per reel: script parlato; per carousel: testo di ogni slide separato da ---)
 - caption: la caption per il post
 - hashtags: stringa di hashtag separati da spazi
-- slides: se carousel, array di 5-8 stringhe, una per slide. FORMATO OBBLIGATORIO di ogni stringa: inizia con "Slide N:" poi a capo TITOLO TUTTO MAIUSCOLO (max 7 parole), poi a capo 3-4 punti numerati. OGNI PUNTO deve essere lungo 2-3 frasi complete (40-60 parole ciascuna), non una semplice etichetta. Includi: dati specifici con fonte, esempi concreti con nomi/numeri, spiegazione del perché questo conta, implicazione pratica. Il lettore deve impiegare almeno 7-10 secondi per leggere ogni slide. Struttura: Slide 1 = hook/problema emotivo (2-3 frasi d'impatto), Slide 2 = promessa/contesto dettagliato, Slide 3-6 = contenuto educativo profondo, Slide 7 = riepilogo pratico, Slide 8 = CTA convincente. Se reel, array vuoto.
+- slides: se carousel, array di 8-10 stringhe, una per slide, rispettando in modo tassativo la struttura definita sopra. Se reel, array vuoto.
 - opening_hook: stringa vuota
 - visual_direction: stringa vuota"""
         try:
@@ -982,12 +1070,31 @@ async def create_post(inp: PostCreate, request: Request):
     }
     if inp.use_ai:
         tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10." if tov else ""
+        personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+        context_block = build_project_context(project, personas=personas, tov=tov)
+        caption_len = "120-180 parole"
+        if tov:
+            cl = tov.get("caption_length", "medium")
+            caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
+        caption_requirements = build_caption_requirements(caption_len)
+        carousel_requirements = build_carousel_requirements()
         system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social in italiano. Rispondi SOLO con JSON."
         if inp.format == 'prompted_reel':
-            prompt = f"Crea un Prompted Reel per avatar AI: {inp.hook_text}. Settore: {project['sector']}. {tov_desc}. JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."
+            prompt = f"""Crea un Prompted Reel per avatar AI.
+Hook: {inp.hook_text}
+{context_block}
+{caption_requirements}
+
+JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."""
         else:
-            prompt = f"Genera script (con paragrafi separati da \\n\\n), caption (con paragrafi separati da \\n\\n) e hashtag per: {inp.hook_text}. Formato: {inp.format}. Settore: {project['sector']}. {tov_desc}. JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."
+            prompt = f"""Genera un contenuto social completo.
+Hook: {inp.hook_text}
+Formato: {inp.format}
+{context_block}
+{caption_requirements}
+{carousel_requirements}
+
+JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_direction ('')."""
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
@@ -1042,24 +1149,30 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
         raise HTTPException(404, "Contenuto non trovato")
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
-    tov_desc = ""
+    personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+    context_block = build_project_context(project, personas=personas, tov=tov)
+    caption_len = "120-180 parole"
     if tov:
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10, empatia {tov.get('empathy',5)}/10, humor {tov.get('humor',3)}/10. {tov.get('custom_instructions','')}"
+        cl = tov.get("caption_length", "medium")
+        caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
+    caption_requirements = build_caption_requirements(caption_len)
+    carousel_requirements = build_carousel_requirements()
     system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Rigenera questo contenuto migliorandolo. Rispondi SOLO con JSON valido. Scrivi in italiano."
     fmt = content.get('format', 'reel')
     if fmt == 'prompted_reel':
         prompt = f"""Rigenera questo Prompted Reel migliorandolo:
 Hook: {content.get('hook_text','')}
-Settore: {project.get('sector','')}
-{tov_desc}
+{context_block}
+{caption_requirements}
 Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: CHI il soggetto con dettagli fisici/abbigliamento, COSA fa con postura/gesti esatti, DOVE ambientazione specifica con luce e sfondo, CHE espressione, INQUADRATURA consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)"""
     else:
         prompt = f"""Rigenera questo contenuto social migliorando hook, script, caption e hashtag:
 Hook originale: {content.get('hook_text','')}
 Formato: {fmt}
-Settore: {project.get('sector','')}
-{tov_desc}
-Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 5-8 stringhe; ogni slide = "Slide N:\nTITOLO MAIUSCOLO\n\n1 — frase completa di 2-3 frasi con dati e esempi concreti\n2 — altra frase completa di 2-3 frasi\n3 — altra ancora"; ogni punto deve essere leggibile in 7-10 secondi; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
+{context_block}
+{caption_requirements}
+{carousel_requirements}
+Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 8-10 stringhe coerente con la struttura tassativa sopra; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
@@ -1086,16 +1199,21 @@ async def convert_content(inp: ContentConvertInput, request: Request):
         raise HTTPException(400, "target_format non valido")
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
-    tov_desc = ""
+    personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+    context_block = build_project_context(project, personas=personas, tov=tov)
+    caption_len = "120-180 parole"
     if tov:
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10. {tov.get('custom_instructions','')}"
+        cl = tov.get("caption_length", "medium")
+        caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
+    caption_requirements = build_caption_requirements(caption_len)
+    carousel_requirements = build_carousel_requirements()
     if inp.target_format == "prompted_reel":
         system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un esperto di video marketing con avatar AI. Converti questo contenuto in un Prompted Reel. Rispondi SOLO con JSON valido. Scrivi in italiano."
         prompt = f"""Converti questo contenuto in un Prompted Reel per avatar AI.
 Hook: {content.get('hook_text','')}
 Script originale: {content.get('script', '') or ' '.join(content.get('slides', []))}
-Settore: {project.get('sector','')}
-{tov_desc}
+{context_block}
+{caption_requirements}
 
 Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per avatar con [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA della scena: CHI è il soggetto con dettagli fisici e abbigliamento precisi, COSA fa esattamente con postura e gesti specifici, DOVE si trova con ambientazione dettagliata e illuminazione, CHE ESPRESSIONE ha — deve funzionare come brief fotografico), caption, hashtags, slides (array vuoto)"""
     elif inp.target_format == "carousel":
@@ -1103,24 +1221,18 @@ Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per a
         prompt = f"""Converti questo Reel in un Carousel strutturato.
 Hook: {content.get('hook_text','')}
 Script Reel: {content.get('script','')}
-Settore: {project.get('sector','')}
-{tov_desc}
+{context_block}
+{caption_requirements}
+{carousel_requirements}
 
-Crea un carousel con 6-8 slide. FORMATO OBBLIGATORIO ogni slide: inizia con "Slide N:" poi TITOLO TUTTO MAIUSCOLO (max 7 parole) poi 4-5 punti "1 — testo\n2 — testo\n..." concreti e dettagliati:
-- Slide 1: hook/problema ad alto impatto emotivo
-- Slide 2: promessa/contesto (cosa impareranno)
-- Slide 3-6: contenuto educativo ricco con dati, percentuali, esempi reali, casi studio
-- Slide 7: riepilogo dei punti chiave
-- Slide 8: CTA diretto con invito all'azione
-
-Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 6-8 stringhe, ogni stringa = "Slide N:\nTITOLO MAIUSCOLO\n\n1 — testo di 2-3 frasi complete con dati specifici ed esempi concreti (40-60 parole)\n2 — testo di 2-3 frasi complete\n3 — testo di 2-3 frasi complete". Ogni slide deve richiedere 7-10 secondi di lettura.)"""
+Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 8-10 stringhe, coerente con la struttura tassativa sopra)"""
     else:
         system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
         prompt = f"""Converti questo Carousel in un Reel script parlato.
 Hook: {content.get('hook_text','')}
 Slides: {json.dumps(content.get('slides',[]))}
-Settore: {project.get('sector','')}
-{tov_desc}
+{context_block}
+{caption_requirements}
 
 Crea un Reel con: HOOK (max 5 parole) → SETUP → VALUE → CTA
 Restituisci JSON con: hook_text, script (script parlato completo), caption, hashtags, slides (array vuoto)"""
@@ -1852,17 +1964,23 @@ async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     if not project:
         raise HTTPException(404, "Progetto non trovato")
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
-    tov_desc = ""
+    personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+    context_block = build_project_context(project, personas=personas, tov=tov)
+    caption_len = "120-180 parole"
     if tov:
-        tov_desc = f"Tono: formalita {tov.get('formality',5)}/10, energia {tov.get('energy',5)}/10."
+        cl = tov.get("caption_length", "medium")
+        caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
+    caption_requirements = build_caption_requirements(caption_len)
+    carousel_requirements = build_carousel_requirements()
     system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
     prompt = f"""Genera un contenuto social ispirato a questo articolo:
 Titolo: {inp.feed_item_title}
 Sommario: {inp.feed_item_summary}
-Settore progetto: {project['sector']}
-{tov_desc}
+{context_block}
+{caption_requirements}
+{carousel_requirements}
 
-Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script (paragrafi separati da \n\n: Problema → Risonanza → Soluzione → CTA), caption (paragrafi separati da \n\n: Hook → Corpo → CTA), hashtags, format ("reel" o "carousel")"""
+Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script (paragrafi separati da \n\n: Problema → Risonanza → Soluzione → CTA), caption (con la struttura obbligatoria sopra), hashtags, format ("reel" o "carousel"), slides (se carousel)"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
