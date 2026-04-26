@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import {
-  Plus, Eye, PencilSimple, Trash, Lightning, ChartLineUp, Target, Clock, Article, MagnifyingGlass, Archive, ImageSquare
+  Plus, Eye, PencilSimple, Trash, Lightning, ChartLineUp, Target, Clock, Article, Archive, ImageSquare, Check, X
 } from '@phosphor-icons/react';
 
 export default function Dashboard({ setActiveView, setSelectedProject, setWizardResumeData }) {
@@ -11,6 +12,9 @@ export default function Dashboard({ setActiveView, setSelectedProject, setWizard
   const { t } = useTranslation();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editingProjectId, setEditingProjectId] = useState(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
+  const [renamingProjectId, setRenamingProjectId] = useState(null);
 
   useEffect(() => {
     api.get('/projects').then(r => setProjects(r.data)).catch(() => {}).finally(() => setLoading(false));
@@ -50,6 +54,40 @@ export default function Dashboard({ setActiveView, setSelectedProject, setWizard
     } catch (e) {
       alert('Errore: ' + (e.response?.data?.detail || e.message));
     }
+  };
+
+  const startRenameProject = (project) => {
+    setEditingProjectId(project.id);
+    setEditingProjectName(project.name || '');
+  };
+
+  const cancelRenameProject = () => {
+    setEditingProjectId(null);
+    setEditingProjectName('');
+  };
+
+  const renameProject = async (project) => {
+    const nextName = editingProjectName.trim();
+    if (!nextName) {
+      toast.error(t('dashboard.renameProjectEmpty'));
+      return;
+    }
+    if (nextName === project.name) {
+      cancelRenameProject();
+      return;
+    }
+
+    setRenamingProjectId(project.id);
+    const tid = toast.loading(t('dashboard.renamingProject'));
+    try {
+      await api.put(`/projects/${project.id}`, { name: nextName });
+      setProjects(prev => prev.map(p => p.id === project.id ? { ...p, name: nextName } : p));
+      toast.success(t('dashboard.renameProjectSuccess'), { id: tid });
+      cancelRenameProject();
+    } catch (e) {
+      toast.error(t('dashboard.renameProjectError') + ': ' + (e.response?.data?.detail || e.message), { id: tid });
+    }
+    setRenamingProjectId(null);
   };
 
   const stats = [
@@ -142,8 +180,46 @@ export default function Dashboard({ setActiveView, setSelectedProject, setWizard
                   </label>
                 )}
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold mb-1">{project.name}</h3>
+                  <div className="flex-1 min-w-0">
+                    {editingProjectId === project.id ? (
+                      <div className="flex items-center gap-2 mb-1">
+                        <input
+                          className="input-dark text-sm py-2 flex-1"
+                          value={editingProjectName}
+                          onChange={e => setEditingProjectName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') renameProject(project);
+                            if (e.key === 'Escape') cancelRenameProject();
+                          }}
+                          autoFocus
+                          style={{ paddingLeft: '0.75rem' }}
+                        />
+                        <button
+                          className="btn-ghost p-2"
+                          onClick={() => renameProject(project)}
+                          disabled={renamingProjectId === project.id}
+                          title={t('common.save')}
+                        >
+                          {renamingProjectId === project.id
+                            ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                            : <Check size={14} />}
+                        </button>
+                        <button className="btn-ghost p-2" onClick={cancelRenameProject} title={t('common.cancel')}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold truncate">{project.name}</h3>
+                        <button
+                          className="btn-ghost p-1.5 flex-shrink-0"
+                          title={t('dashboard.renameProject')}
+                          onClick={() => startRenameProject(project)}
+                        >
+                          <PencilSimple size={13} />
+                        </button>
+                      </div>
+                    )}
                     <p className="text-sm text-[var(--text-secondary)]">{project.sector}</p>
                   </div>
                   <span className={`badge ${project.status === 'active' ? 'green' : project.status === 'completed' ? 'purple' : 'orange'}`}>
