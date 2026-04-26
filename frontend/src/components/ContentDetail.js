@@ -13,18 +13,19 @@ import {
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
-import { richTextToPlainText } from '../lib/utils';
+import { richTextToPlainText, normalizeRichTextForEditor } from '../lib/utils';
 
 function RichCaption({ value, onChange }) {
   const editor = useEditor({
     extensions: [StarterKit, Underline],
-    content: value || '',
+    content: normalizeRichTextForEditor(value || ''),
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
   });
 
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value || '', false);
+    const normalized = normalizeRichTextForEditor(value || '');
+    if (editor && normalized !== editor.getHTML()) {
+      editor.commands.setContent(normalized, false);
     }
   }, [value, editor]); // eslint-disable-line react-hooks/exhaustive-deps
 

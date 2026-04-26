@@ -813,7 +813,55 @@ Struttura OBBLIGATORIA della caption:
 - Blocco 2: 2-3 frasi brevi che approfondiscono il problema o ribaltano una credenza
 - Blocco 3: 3 mini-bullet o 3 righe guida che iniziano con "• " oppure "1)", "2)", "3)" e contengono valore pratico concreto
 - Blocco 4: CTA specifica, personale e coerente con gli asset reali del progetto (es. libro, corso, newsletter), se presenti nel brief
+FORMATO TASSATIVO:
+- ogni blocco deve essere separato da una riga vuota
+- non scrivere muri di testo
+- non restituire un unico paragrafo lungo
+- se usi HTML, wrappa i blocchi in <p> separati e usa <br> solo dentro lo stesso blocco
+- se non usi HTML, mantieni comunque le righe vuote tra i blocchi
 Usa una formattazione visiva forte: righe brevi, contrasti chiari, niente muro di testo, niente paragrafi casuali."""
+
+def caption_has_structure(text: str) -> bool:
+    plain = _strip_html(text or "")
+    if plain.count("\n\n") >= 2:
+        return True
+    paragraphs = [p.strip() for p in re.split(r"</p>|</div>|</section>|</article>", str(text or ""), flags=re.IGNORECASE) if p.strip()]
+    return len(paragraphs) >= 3
+
+async def ensure_caption_structure(content_data: dict, context_block: str) -> dict:
+    caption = coerce_str(content_data.get("caption", ""))
+    if not caption:
+        return content_data
+    if caption_has_structure(caption):
+        return content_data
+
+    repair_system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un editor senior specializzato in caption social. Rispondi SOLO con JSON valido."
+    repair_prompt = f"""Ristruttura questa caption in modo leggibile e respirato.
+
+{context_block}
+
+REGOLE TASSATIVE:
+- niente muro di testo
+- crea 4 blocchi netti
+- separa ogni blocco con una riga vuota
+- blocco 1 = hook autonomo
+- blocco 2 = contesto o risonanza
+- blocco 3 = valore strutturato in 3 righe o 3 mini-bullet
+- blocco 4 = chiusura/CTA coerente con il progetto
+- mantieni il contenuto, ma migliorane la struttura
+- niente hashtag nel corpo della caption
+
+CAPTION DA RISTRUTTURARE:
+{caption}
+
+Restituisci SOLO JSON con:
+- caption: caption finale ben strutturata, con paragrafi separati da righe vuote
+"""
+    repaired = extract_json(await call_ai(repair_system, repair_prompt))
+    repaired_caption = coerce_str(repaired.get("caption", "")).strip()
+    if repaired_caption:
+        content_data["caption"] = repaired_caption
+    return content_data
 
 def build_carousel_requirements() -> str:
     return """Se il formato e carousel, agisci come un esperto di comunicazione e content strategy per creator.
@@ -1117,6 +1165,7 @@ Restituisci un oggetto JSON con:
         try:
             result = await call_ai(system, prompt)
             content_data = extract_json(result)
+            content_data = await ensure_caption_structure(content_data, context_block)
             if fmt == 'carousel':
                 content_data = await ensure_carousel_payload(content_data, hook.get('hook_text', ''), context_block)
             content_doc = {
@@ -1204,6 +1253,7 @@ JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_d
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
+            data = await ensure_caption_structure(data, context_block)
             if inp.format == 'carousel':
                 data = await ensure_carousel_payload(data, inp.hook_text, context_block)
             content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook"]})
@@ -1284,6 +1334,7 @@ Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel:
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
+        data = await ensure_caption_structure(data, context_block)
         if fmt == 'carousel':
             data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block)
         updates = {}
@@ -1349,6 +1400,7 @@ Restituisci JSON con: hook_text, script (script parlato completo), caption, hash
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
+        data = await ensure_caption_structure(data, context_block)
         if inp.target_format == "carousel":
             data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block)
         updates = {"format": inp.target_format}
@@ -1769,10 +1821,14 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
 
 def _strip_html(s: str) -> str:
     import re as _re
-    s = _re.sub(r'<br\s*/?>', '\n', s or '', flags=_re.IGNORECASE)
-    s = _re.sub(r'</p>', '\n', s, flags=_re.IGNORECASE)
+    s = html_lib.unescape(s or '')
+    s = _re.sub(r'<br\s*/?>', '\n', s, flags=_re.IGNORECASE)
+    s = _re.sub(r'</(p|div|section|article|blockquote|h[1-6])>', '\n\n', s, flags=_re.IGNORECASE)
+    s = _re.sub(r'</li>', '\n', s, flags=_re.IGNORECASE)
     s = _re.sub(r'<li[^>]*>', '• ', s, flags=_re.IGNORECASE)
     s = _re.sub(r'<[^>]+>', '', s)
+    s = _re.sub(r'[ \t]+\n', '\n', s)
+    s = _re.sub(r'\n{3,}', '\n\n', s)
     return s.strip()
 
 async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
@@ -2096,6 +2152,7 @@ Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
+        data = await ensure_caption_structure(data, context_block)
         if data.get("format", "reel") == "carousel":
             data = await ensure_carousel_payload(data, data.get("hook_text", inp.feed_item_title), context_block)
         content_doc = {

@@ -5,6 +5,38 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function normalizeRichTextForEditor(value = '') {
+  const source = String(value || '').trim();
+  if (!source) return '';
+
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(source) || /&lt;\/?[a-z][\s\S]*&gt;/i.test(source);
+  if (looksLikeHtml) return source;
+
+  const blocks = source
+    .split(/\n\s*\n/)
+    .map(block => block.trim())
+    .filter(Boolean);
+
+  if (!blocks.length) return '';
+
+  return blocks.map(block => {
+    const lines = block
+      .split('\n')
+      .map(line => escapeHtml(line.trim()))
+      .filter(Boolean);
+    return `<p>${lines.join('<br>')}</p>`;
+  }).join('');
+}
+
 function regexFallbackRichTextToPlainText(value = '') {
   return String(value)
     .replace(/&lt;/gi, '<')
