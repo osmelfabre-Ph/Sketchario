@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -17,6 +17,9 @@ import OnboardingTour from './components/OnboardingTour';
 import HelpCenter from './components/HelpCenter';
 import ProductTour, { shouldShowTour } from './components/ProductTour';
 
+const PROJECT_VIEWS = ['project', 'calendar', 'personas', 'social', 'analytics', 'feeds'];
+const RESTORABLE_VIEWS = ['dashboard', 'wizard', 'project', 'calendar', 'personas', 'social', 'analytics', 'feeds', 'profile', 'admin', 'billing', 'notifications'];
+
 function AppContent() {
   const { user, loading, api } = useAuth();
   const { t } = useTranslation();
@@ -26,6 +29,46 @@ function AppContent() {
   const [wizardResumeData, setWizardResumeData] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const hydratedUserKeyRef = useRef(null);
+  const userStorageKey = user?._id || user?.email || null;
+
+  const getNavStorageKey = (suffix) => {
+    return `sketchario:${userStorageKey}:${suffix}`;
+  };
+
+  useEffect(() => {
+    if (!userStorageKey || hydratedUserKeyRef.current === userStorageKey) return;
+    hydratedUserKeyRef.current = userStorageKey;
+    try {
+      const storedView = localStorage.getItem(getNavStorageKey('activeView'));
+      const storedProject = localStorage.getItem(getNavStorageKey('selectedProject'));
+      if (storedProject) {
+        setSelectedProject(JSON.parse(storedProject));
+      }
+      if (storedView && RESTORABLE_VIEWS.includes(storedView)) {
+        setActiveView(storedView);
+      }
+    } catch {}
+  }, [userStorageKey]);
+
+  useEffect(() => {
+    if (!userStorageKey || hydratedUserKeyRef.current !== userStorageKey) return;
+    try {
+      localStorage.setItem(getNavStorageKey('activeView'), activeView);
+      if (selectedProject) {
+        localStorage.setItem(getNavStorageKey('selectedProject'), JSON.stringify(selectedProject));
+      } else {
+        localStorage.removeItem(getNavStorageKey('selectedProject'));
+      }
+    } catch {}
+  }, [userStorageKey, activeView, selectedProject]);
+
+  useEffect(() => {
+    if (!hydratedUserKeyRef.current) return;
+    if (PROJECT_VIEWS.includes(activeView) && !selectedProject) {
+      setActiveView('dashboard');
+    }
+  }, [activeView, selectedProject]);
 
   useEffect(() => {
     if (user && api) {
@@ -63,10 +106,10 @@ function AppContent() {
 
   if (!user) return <AuthScreen />;
 
-  const isProjectView = ['project', 'calendar', 'personas', 'social', 'analytics', 'feeds'].includes(activeView);
+  const isProjectView = PROJECT_VIEWS.includes(activeView);
 
   const handleSetActiveView = (view) => {
-    if (['calendar', 'personas', 'social', 'analytics', 'feeds'].includes(view) && !selectedProject) {
+    if (PROJECT_VIEWS.filter(v => v !== 'project').includes(view) && !selectedProject) {
       return;
     }
     setActiveView(view);
