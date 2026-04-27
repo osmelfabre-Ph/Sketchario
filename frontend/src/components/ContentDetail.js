@@ -329,6 +329,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [libraryItems, setLibraryItems] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [socialTimes, setSocialTimes] = useState({});
+  const [markingPublished, setMarkingPublished] = useState(false);
 
   useEffect(() => {
     setContent(initialContent);
@@ -730,6 +731,29 @@ export default function ContentDetail({ content: initialContent, project, onClos
     setScheduling(false);
   };
 
+  const markAsPublished = async () => {
+    setMarkingPublished(true);
+    const tid = toast.loading('Aggiornamento stato in corso...');
+    try {
+      if (contentQueueItems.length > 0) {
+        await Promise.all(
+          contentQueueItems.map(item =>
+            api.delete(`/publish/queue/${item.id}`).catch(() => {})
+          )
+        );
+      }
+      await api.post(`/publish/mark-published/${content.id}`);
+      setContentQueueItems([]);
+      const updated = { ...content, status: 'published' };
+      setContent(updated);
+      onUpdate?.(updated);
+      toast.success('Contenuto segnato come pubblicato.', { id: tid });
+    } catch (e) {
+      toast.error('Errore aggiornamento stato: ' + (e.response?.data?.detail || e.message), { id: tid });
+    }
+    setMarkingPublished(false);
+  };
+
   const uploadMedia = async (file) => {
     const fd = new FormData(); fd.append('file', file);
     setUploadingMedia(true);
@@ -1050,6 +1074,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <button className="btn-ghost text-xs py-1.5" onClick={save} disabled={saving} data-testid="save-draft-btn">
             <FloppyDisk size={14} /> {saving ? '...' : t('common.save')}
           </button>
+          {content.status !== 'published' && (
+            <button className="btn-ghost text-xs py-1.5" onClick={markAsPublished} disabled={markingPublished}
+              style={{ color: 'var(--accent-green)' }} title="Segna manualmente il contenuto come pubblicato">
+              {markingPublished
+                ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                : <><CheckCircle size={14} /> Pubblicato</>}
+            </button>
+          )}
           <button className="btn-ghost text-xs py-1.5" onClick={publish} disabled={publishing || selectedSocials.length === 0} data-testid="publish-btn"
             style={selectedSocials.length === 0 ? { opacity: 0.4 } : {}}>
             {publishing ? <><span className="animate-spin inline-block">⏳</span> {t('editor.publishing_')}</> : <><PaperPlaneTilt size={14} /> {t('editor.publish')}</>}
