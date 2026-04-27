@@ -98,6 +98,12 @@
 - Endpoint backend per svuotare tutta la queue di un progetto:
   - `DELETE /publish/queue/project/{project_id}`
 - Quando si svuota la queue, i contenuti `scheduled` tornano in `draft` se non risultano pubblicati
+- Dopo publish/schedule la UI ora sincronizza meglio lo stato del contenuto con la queue/backend
+- Gli hashtag vengono inclusi davvero nel testo pubblicato sui social, non solo salvati nell'editor
+- Aggiunto pulsante manuale `Pubblicato` nella card/editor contenuto:
+  - annulla eventuali item ancora in queue per quella card
+  - forza lo stato del contenuto a `published`
+  - serve come fallback se il post è online ma la UI non si è ancora allineata
 
 ### Instagram publishing
 - Fix token di pubblicazione: il backend risolve il corretto page token associato all'account Instagram Business
@@ -112,6 +118,11 @@
   - `Trial access active`
   - richiesta `Standard` in attesa
 - Ipotesi principale: l'app non ha ancora una vera autorizzazione `pins:write` operativa
+
+### Navigazione / refresh pagina
+- La view corrente viene persistita per utente in `localStorage`
+- Se l'utente fa refresh mentre si trova in `project`, `calendar`, `personas`, `social`, `analytics` o `feeds`, l'app prova a riaprire quella stessa view con lo stesso progetto selezionato
+- Fallback sicuro: se il progetto non è più disponibile, l'app torna alla dashboard
 
 ### Commit principali di questo ciclo
 - `884b912` Fix rich text captions in previews and CSV export
@@ -133,6 +144,9 @@
 - `1dcc960` Retry Instagram media publish while container finalizes
 - `dcce837` Move immediate publishing to background queue
 - `39b1342` Add clear queue action in project panel
+- `306e086` Fix publish status sync and include hashtags
+- `3eff591` Add manual published action for content cards
+- `2624829` Persist current view across page refresh
 
 ---
 
