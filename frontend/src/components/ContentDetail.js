@@ -16,6 +16,7 @@ import Underline from '@tiptap/extension-underline';
 import { richTextToPlainText, normalizeRichTextForEditor } from '../lib/utils';
 
 function RichCaption({ value, onChange }) {
+  const { t } = useTranslation();
   const editor = useEditor({
     extensions: [StarterKit, Underline],
     content: normalizeRichTextForEditor(value || ''),
@@ -40,11 +41,11 @@ function RichCaption({ value, onChange }) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b" style={{ borderColor: 'var(--border-color)', background: 'rgba(255,255,255,0.03)' }}>
-        {btn(editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), TextB, 'Grassetto')}
-        {btn(editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), TextItalic, 'Corsivo')}
-        {btn(editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), TextUnderline, 'Sottolineato')}
+        {btn(editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), TextB, t('editor.richText.bold'))}
+        {btn(editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), TextItalic, t('editor.richText.italic'))}
+        {btn(editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), TextUnderline, t('editor.richText.underline'))}
         <div className="w-px h-4 mx-1" style={{ background: 'var(--border-color)' }} />
-        {btn(editor.isActive('bulletList'), () => editor.chain().focus().toggleBulletList().run(), ListBullets, 'Elenco puntato')}
+        {btn(editor.isActive('bulletList'), () => editor.chain().focus().toggleBulletList().run(), ListBullets, t('editor.richText.bulletList'))}
       </div>
       <EditorContent editor={editor} className="rich-caption-editor" />
     </div>
@@ -63,11 +64,16 @@ const CanvaIcon = ({ size = 16 }) => (
   <img src="https://www.canva.com/favicon.ico" alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
-const MONTH_IT  = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-const MONTH_ABB = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-const DAY_IT    = ['L','M','M','G','V','S','D'];
-const DAY_FULL  = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
-const DOW_IT    = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+const getLocaleTag = (lang) => {
+  const base = String(lang || '').toLowerCase();
+  if (base.startsWith('it')) return 'it-IT';
+  if (base.startsWith('en')) return 'en-US';
+  if (base.startsWith('es')) return 'es-ES';
+  if (base.startsWith('fr')) return 'fr-FR';
+  return lang || 'it-IT';
+};
+
+const capitalize = (value) => value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
 function calDays(monthStart) {
   const y = monthStart.getFullYear(), m = monthStart.getMonth();
@@ -96,10 +102,12 @@ function calDaysExtended(monthStart) {
   return cells;
 }
 
-function formatScheduleHeader(dateStr) {
-  if (!dateStr) return 'Seleziona una data';
+function formatScheduleHeader(dateStr, locale, t) {
+  if (!dateStr) return t('editor.selectDate');
   const d = new Date(dateStr + 'T12:00:00');
-  return `${DOW_IT[d.getDay()]}, ${MONTH_ABB[d.getMonth()]} ${d.getDate()}º`;
+  const weekday = capitalize(new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(d));
+  const month = capitalize(new Intl.DateTimeFormat(locale, { month: 'short' }).format(d));
+  return `${weekday}, ${month} ${d.getDate()}`;
 }
 
 function useIsMobile() {
@@ -112,7 +120,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
+function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t }) {
   const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888', name: prof.platform };
   const firstImg = (media || []).find(m => m.type === 'image');
   const isReel = format === 'reel' || format === 'prompted_reel' || prof.platform === 'tiktok';
@@ -168,7 +176,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
             : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <PinterestLogo size={32} color="#ccc" />
               </div>}
-          <button style={{ position: 'absolute', top: 8, right: 8, background: '#e60023', color: 'white', border: 'none', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'default' }}>Salva</button>
+          <button style={{ position: 'absolute', top: 8, right: 8, background: '#e60023', color: 'white', border: 'none', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'default' }}>{t('editor.socialActionSave')}</button>
         </div>
         <div style={{ padding: '8px 10px 10px' }}>
           <p style={{ fontSize: 12, fontWeight: 700, margin: '0 0 4px', lineHeight: 1.3, whiteSpace: 'pre-line' }}>{short(captionText, 60)}</p>
@@ -193,7 +201,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
           </div>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>{prof.profile_name}</p>
-            <p style={{ fontSize: 10, color: '#666', margin: 0 }}>1 ora fa · 🌐</p>
+            <p style={{ fontSize: 10, color: '#666', margin: 0 }}>{t('editor.oneHourAgoUpper').toLowerCase()} · 🌐</p>
           </div>
           <span style={{ color: '#666', fontSize: 16, cursor: 'default' }}>···</span>
         </div>
@@ -209,7 +217,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
         <div style={{ padding: '6px 12px', borderTop: '1px solid #eee' }}>
           <div style={{ display: 'flex', gap: 2, fontSize: 13, marginBottom: 4 }}>👍💡❤️<span style={{ fontSize: 10, color: '#666', marginLeft: 4, lineHeight: '20px' }}>43</span></div>
           <div style={{ display: 'flex', borderTop: '1px solid #eee', paddingTop: 5 }}>
-            {['👍 Mi piace', '💬 Commenta', '↗ Condividi'].map((a, i) => (
+            {[`👍 ${t('editor.socialActionLike')}`, `💬 ${t('editor.socialActionComment')}`, `↗ ${t('editor.socialActionShare')}`].map((a, i) => (
               <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: '#666', padding: '3px 0' }}>{a}</div>
             ))}
           </div>
@@ -228,7 +236,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
           </div>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>{prof.profile_name}</p>
-            <p style={{ fontSize: 10, color: '#65676b', margin: 0 }}>1 ora fa · 🌐</p>
+            <p style={{ fontSize: 10, color: '#65676b', margin: 0 }}>{t('editor.oneHourAgoUpper').toLowerCase()} · 🌐</p>
           </div>
           <span style={{ color: '#606770', fontSize: 16, cursor: 'default' }}>···</span>
         </div>
@@ -243,7 +251,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
         )}
         <div style={{ padding: '4px 12px', borderTop: '1px solid #ddd' }}>
           <div style={{ display: 'flex', borderTop: '1px solid #ddd', paddingTop: 6, marginTop: 4 }}>
-            {['👍 Mi piace', '💬 Commenta', '↗ Condividi'].map((a, i) => (
+            {[`👍 ${t('editor.socialActionLike')}`, `💬 ${t('editor.socialActionComment')}`, `↗ ${t('editor.socialActionShare')}`].map((a, i) => (
               <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: '#65676b', padding: '3px 0' }}>{a}</div>
             ))}
           </div>
@@ -284,7 +292,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
           {short(captionText, 120)}
         </p>
         {hashtags && <p style={{ fontSize: 10, color: '#00376b', margin: '2px 0 0' }}>{short(hashtags, 80)}</p>}
-        <p style={{ fontSize: 10, color: '#8e8e8e', margin: '4px 0 0' }}>1 ORA FA</p>
+        <p style={{ fontSize: 10, color: '#8e8e8e', margin: '4px 0 0' }}>{t('editor.oneHourAgoUpper')}</p>
       </div>
     </div>
   );
@@ -292,7 +300,11 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl }) {
 
 export default function ContentDetail({ content: initialContent, project, onClose, onUpdate }) {
   const { api } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = getLocaleTag(i18n.language);
+  const dayHeaders = Array.from({ length: 7 }, (_, index) =>
+    capitalize(new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(2024, 0, 1 + index)))
+  );
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaLoading, setCanvaLoading] = useState(false);
   const isMobile = useIsMobile();
@@ -416,7 +428,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const doImport = async () => {
         if (importing) return;
         importing = true;
-        const importTid = toast.loading('Avvio export Canva...');
+          const importTid = toast.loading(t('canva.importing'));
         try {
           // Step 1: create export job (fast, instant response)
           const { data: jobData } = await api.post(`/canva/export-design/${content.id}`, { design_id });
@@ -429,7 +441,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             await new Promise(r => setTimeout(r, 3000));
             const { data: statusData } = await api.get(`/canva/export-status/${job_id}`);
             if (statusData.status === 'success') { urls = statusData.urls || []; break; }
-            if (statusData.status === 'failed') throw new Error('Export Canva fallito');
+            if (statusData.status === 'failed') throw new Error(t('common.error'));
           }
 
           if (urls.length === 0) { toast.info(t('canva.noImages'), { id: importTid }); return; }
@@ -512,14 +524,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
         } else if (e.data?.type === 'canva_error') {
           window.removeEventListener('message', handler);
           popup?.close();
-          toast.error('Errore connessione Canva: ' + e.data.error);
+          toast.error(t('editor.connectCanvaError', { message: e.data.error }));
           setCanvaLoading(false);
         }
       };
       window.addEventListener('message', handler);
     } catch (e) {
       popup?.close();
-      toast.error('Errore Canva: ' + (e.response?.data?.detail || e.message));
+      toast.error(t('canva.errorCreating', { message: e.response?.data?.detail || e.message }));
       setCanvaLoading(false);
     }
   };
@@ -536,7 +548,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     script.id = 'gapi-script';
     script.src = 'https://apis.google.com/js/api.js';
     script.onload = () => window.gapi.load('picker', resolve);
-    script.onerror = () => reject(new Error('Impossibile caricare Google API'));
+    script.onerror = () => reject(new Error(t('editor.driveLoadError')));
     document.head.appendChild(script);
   });
 
@@ -570,7 +582,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           // Only accept images and videos
           const allowed = ['image/', 'video/'];
           if (!allowed.some(t => (doc.mimeType || '').startsWith(t))) {
-            toast.error('Seleziona un\'immagine o un video, non un documento.');
+            toast.error(t('editor.driveSelectMediaOnly'));
             return;
           }
           const importTid = toast.loading(t('drive.downloading', { name: doc.name }));
@@ -582,7 +594,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             );
             if (!dlResp.ok) {
               if (dlResp.status === 403 || dlResp.status === 404) throw new Error(t('drive.errorPermissions'));
-              throw new Error(`Google Drive ha rifiutato il download (${dlResp.status})`);
+              throw new Error(t('editor.downloadRejected', { status: dlResp.status }));
             }
             const blob = await dlResp.blob();
             const file = new File([blob], doc.name, { type: doc.mimeType || blob.type });
@@ -592,7 +604,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             const updated = { ...content, media: [...(content.media || []), media] };
             setContent(updated); onUpdate?.(updated);
             toast.success(t('drive.importSuccess', { name: doc.name }), { id: importTid });
-          } catch (e) { toast.error('Errore importazione: ' + e.message, { id: importTid }); }
+          } catch (e) { toast.error(t('editor.driveImportError', { message: e.message }), { id: importTid }); }
         })
         .build()
         .setVisible(true);
@@ -638,36 +650,36 @@ export default function ContentDetail({ content: initialContent, project, onClos
   };
 
   const regenerate = async () => {
-    if (!window.confirm('Rigenerare questo contenuto?')) return;
+    if (!window.confirm(t('editor.regenerateConfirm'))) return;
     setSaving(true);
-    const tid = toast.loading('Rigenerazione in corso...');
+    const tid = toast.loading(t('editor.regenerateLoading'));
     try {
       const { data } = await api.post('/contents/regenerate', { content_id: content.id, project_id: project.id });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
       setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
-      toast.success('Contenuto rigenerato', { id: tid });
-    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+      toast.success(t('editor.regenerateSuccess'), { id: tid });
+    } catch (e) { toast.error(`${t('common.error')}: ${e.response?.data?.detail || e.message}`, { id: tid }); }
     setSaving(false);
   };
 
   const convert = async (targetOverride) => {
     const target = targetOverride || (content.format === 'reel' ? 'carousel' : 'reel');
-    if (!window.confirm(`Convertire in ${target}?`)) return;
+    if (!window.confirm(t('editor.convertConfirm', { format: t(`format.${target}`) }))) return;
     setSaving(true);
-    const tid = toast.loading(`Conversione in ${target}...`);
+    const tid = toast.loading(t('editor.convertLoading', { format: t(`format.${target}`) }));
     try {
       const { data } = await api.post('/contents/convert', { content_id: content.id, project_id: project.id, target_format: target });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
       setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
-      toast.success(`Convertito in ${target}`, { id: tid });
-    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+      toast.success(t('editor.convertSuccess', { format: t(`format.${target}`) }), { id: tid });
+    } catch (e) { toast.error(`${t('common.error')}: ${e.response?.data?.detail || e.message}`, { id: tid }); }
     setSaving(false);
   };
 
   const publish = async () => {
-    if (selectedSocials.length === 0) { toast.warning('Seleziona almeno un social dalla colonna sinistra.'); return; }
+    if (selectedSocials.length === 0) { toast.warning(t('editor.noSocials')); return; }
     setPublishing(true);
     const tid = toast.loading(t('editor.publishing'));
     try {
@@ -678,8 +690,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setContentQueueItems(queuedItems);
       const updated = { ...content, status: 'scheduled' };
       setContent(updated); onUpdate?.(updated);
-      toast.success('Pubblicazione avviata. Controlla la queue per lo stato finale.', { id: tid });
-    } catch (e) { toast.error('Errore pubblicazione: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+      toast.success(t('editor.publishStarted'), { id: tid });
+    } catch (e) { toast.error(t('editor.publishError', { message: e.response?.data?.detail || e.message }), { id: tid }); }
     setPublishing(false);
   };
 
@@ -693,14 +705,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const updated = { ...content, status: 'draft' };
       setContent(updated); onUpdate?.(updated);
       toast.success(t('editor.cancelScheduleSuccess'), { id: tid });
-    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+    } catch (e) { toast.error(`${t('common.error')}: ${e.response?.data?.detail || e.message}`, { id: tid }); }
     setCancellingSchedule(false);
   };
 
   const schedule = async () => {
-    if (!scheduleDate || selectedSocials.length === 0) { toast.warning('Seleziona data e almeno un social.'); return; }
+    if (!scheduleDate || selectedSocials.length === 0) { toast.warning(t('editor.selectDateAndSocials')); return; }
     setScheduling(true);
-    const tid = toast.loading(contentQueueItems.length > 0 ? 'Riprogrammazione in corso...' : 'Programmazione in corso...');
+    const tid = toast.loading(contentQueueItems.length > 0 ? t('editor.rescheduling') : t('editor.scheduling'));
     try {
       await save();
       if (contentQueueItems.length > 0) {
@@ -727,13 +739,13 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setShowSchedule(false);
       toast.success(t('editor.scheduleSuccess', { date: scheduleDate, time: scheduleTime }), { id: tid });
       onClose?.();
-    } catch (e) { toast.error('Errore programmazione: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+    } catch (e) { toast.error(t('editor.scheduleError', { message: e.response?.data?.detail || e.message }), { id: tid }); }
     setScheduling(false);
   };
 
   const markAsPublished = async () => {
     setMarkingPublished(true);
-    const tid = toast.loading('Aggiornamento stato in corso...');
+    const tid = toast.loading(t('editor.statusUpdating'));
     try {
       if (contentQueueItems.length > 0) {
         await Promise.all(
@@ -747,9 +759,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const updated = { ...content, status: 'published' };
       setContent(updated);
       onUpdate?.(updated);
-      toast.success('Contenuto segnato come pubblicato.', { id: tid });
+      toast.success(t('editor.statusUpdateSuccess'), { id: tid });
     } catch (e) {
-      toast.error('Errore aggiornamento stato: ' + (e.response?.data?.detail || e.message), { id: tid });
+      toast.error(t('editor.statusUpdateError', { message: e.response?.data?.detail || e.message }), { id: tid });
     }
     setMarkingPublished(false);
   };
@@ -765,8 +777,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
         onUpdate?.(updated);
         return updated;
       });
-      toast.success('File caricato', { id: tid });
-    } catch (e) { toast.error('Errore upload: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+      toast.success(t('editor.fileUploaded'), { id: tid });
+    } catch (e) { toast.error(t('editor.uploadError', { message: e.response?.data?.detail || e.message }), { id: tid }); }
     setUploadingMedia(false);
   };
 
@@ -776,8 +788,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
       await api.delete(`/media/${content.id}/${mediaId}`);
       const updated = { ...content, media: (content.media || []).filter(m => m.id !== mediaId) };
       setContent(updated); onUpdate?.(updated);
-      toast.success('File eliminato');
-    } catch (e) { toast.error('Errore eliminazione'); }
+      toast.success(t('editor.fileDeleted'));
+    } catch (e) { toast.error(t('editor.deleteError')); }
     setDeletingMediaId(null);
   };
 
@@ -817,24 +829,24 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}>
             <p className="text-xs font-semibold mb-2" style={{ color: '#a855f7' }}>{`⚡ ${t('editor.openingHook').toUpperCase()}`}</p>
             <textarea className="input-dark w-full text-sm" rows={2} value={editOpeningHook} onChange={e => setEditOpeningHook(e.target.value)}
-              placeholder="Testo di apertura ad impatto..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+              placeholder={t('editor.openingHookPlaceholder')} style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
           </div>
           <div className="mb-4">
             <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">{t('editor.avatarScript')}</p>
             <textarea className="input-dark w-full text-sm" rows={isMobile ? 6 : 8} value={editScript} onChange={e => setEditScript(e.target.value)}
-              placeholder="Script per l'avatar (usa [pausa], [enfasi], [veloce]...)..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+              placeholder={t('editor.avatarScriptPlaceholder')} style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
           </div>
           <div className="mb-4">
             <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">{t('editor.visualDirection')}</p>
             <textarea className="input-dark w-full text-sm" rows={isMobile ? 3 : 4} value={editVisualDirection} onChange={e => setEditVisualDirection(e.target.value)}
-              placeholder="Sfondo, gesti, abbigliamento, stile..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+              placeholder={t('editor.visualDirectionPlaceholder')} style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
           </div>
         </>
       )}
       {content.format !== 'prompted_reel' && (
         <div className="mb-4">
           <textarea className="input-dark w-full text-sm" rows={isMobile ? 4 : 6} value={editScript} onChange={e => setEditScript(e.target.value)}
-            placeholder="Script del contenuto..." style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
+            placeholder={t('editor.scriptPlaceholder')} style={{ paddingLeft: '1rem', lineHeight: 1.7 }} />
         </div>
       )}
       <div className="mb-4">
@@ -849,7 +861,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           ))}
         </div>
         <input className="input-dark w-full text-sm" value={editHashtags} onChange={e => setEditHashtags(e.target.value)}
-          placeholder="#hashtag1 #hashtag2..." style={{ paddingLeft: '1rem' }} />
+          placeholder={t('editor.hashtagsPlaceholder')} style={{ paddingLeft: '1rem' }} />
       </div>
       <div className="mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">{t('editor.media')}</p>
@@ -870,7 +882,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         {generatingImage && (
           <div className="flex items-center gap-3 p-3 rounded-lg mb-3" style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)' }}>
             <div className="w-4 h-4 border-2 border-[var(--accent-purple)] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <p className="text-xs text-[var(--accent-purple)]">Generazione immagine in corso...</p>
+            <p className="text-xs text-[var(--accent-purple)]">{t('editor.imageGenerating')}</p>
           </div>
         )}
         {content.media && content.media.length > 0 && (() => {
@@ -905,27 +917,27 @@ export default function ContentDetail({ content: initialContent, project, onClos
         {content.format === 'prompted_reel' ? (
           <button className="btn-gradient text-xs py-1.5 px-3" onClick={() => {
             const avatarScript = `OPENING:\n${editOpeningHook}\n\nSCRIPT:\n${editScript}\n\nREGIA:\n${editVisualDirection}`;
-            navigator.clipboard.writeText(avatarScript); toast.success('Script avatar copiato!');
+            navigator.clipboard.writeText(avatarScript); toast.success(t('editor.avatarScriptCopied'));
           }}>
             🤖 {t('editor.copyAvatarScript')}
           </button>
         ) : (
-          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${richTextToPlainText(editCaption)}\n\n${editHashtags}`); toast.success('Copiato!'); }}>
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => { navigator.clipboard.writeText(`${editScript}\n\n${richTextToPlainText(editCaption)}\n\n${editHashtags}`); toast.success(t('common.copied')); }}>
             <Copy size={14} /> {t('common.copy')}
           </button>
         )}
         {content.format === 'prompted_reel' ? (
           <>
-            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('reel')}><Video size={14} /> Reel</button>
-            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('carousel')}><Image size={14} /> Carousel</button>
+            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('reel')}><Video size={14} /> {t('format.reel')}</button>
+            <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('carousel')}><Image size={14} /> {t('format.carousel')}</button>
           </>
         ) : (
           <>
             <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert()}>
-              {content.format === 'reel' ? <><Image size={14} /> Carousel</> : <><Video size={14} /> Reel</>}
+              {content.format === 'reel' ? <><Image size={14} /> {t('format.carousel')}</> : <><Video size={14} /> {t('format.reel')}</>}
             </button>
             <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => convert('prompted_reel')}>
-              🤖 Prompted Reel
+              🤖 {t('format.prompted_reel')}
             </button>
           </>
         )}
@@ -934,10 +946,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </button>
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title={t('editor.generateImage')} onClick={() => {
-            setInputModal({ title: 'Genera immagine con FLUX AI', placeholder: "Descrivi il soggetto e l'ambientazione...", value: editVisualDirection || editScript || '', multiline: true, isFlux: true,
+            setInputModal({ title: t('editor.imagePromptTitle'), placeholder: t('editor.imagePromptPlaceholder'), value: editVisualDirection || editScript || '', multiline: true, isFlux: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
-                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success('Immagine generata!'); } catch(e) { toast.error('Errore generazione immagine: ' + (e.response?.data?.detail || e.message)); }
+                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success(t('editor.imageGenerated')); } catch(e) { toast.error(t('editor.imageGenerationError', { message: e.response?.data?.detail || e.message })); }
                 setGeneratingImage(false);
               },
 
@@ -971,7 +983,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     <div className={isMobile ? 'p-4' : 'w-80 border-l border-[var(--border-color)] p-4 overflow-y-auto flex-shrink-0'}>
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase">{t('editor.preview')}</p>
-        {selectedSocials.length > 0 && <span className="badge blue text-[10px]">{selectedSocials.length} social</span>}
+        {selectedSocials.length > 0 && <span className="badge blue text-[10px]">{selectedSocials.length} {t('editor.socials')}</span>}
       </div>
       {selectedProfiles.length > 0 ? selectedProfiles.map(prof => (
         <div key={prof.id} className="mb-5">
@@ -985,6 +997,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             hashtags={editHashtags}
             media={content.media}
             backendUrl={process.env.REACT_APP_BACKEND_URL}
+            t={t}
           />
         </div>
       )) : (
@@ -1012,13 +1025,13 @@ export default function ContentDetail({ content: initialContent, project, onClos
         <div className="flex items-center gap-2 min-w-0">
           <span className={`badge text-[10px] ${content.format === 'reel' ? 'pink' : content.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
             {content.format === 'reel' ? <Video size={10} /> : content.format === 'prompted_reel' ? <span>🤖</span> : <Image size={10} />}
-            <span className="ml-1">{content.format === 'prompted_reel' ? 'prompted reel' : content.format}</span>
+            <span className="ml-1">{content.format === 'prompted_reel' ? t('format.prompted_reel') : t(`format.${content.format}`)}</span>
           </span>
           <h2 className="font-semibold text-xs md:text-sm truncate">{content.hook_text}</h2>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className={`badge text-[10px] ${content.status === 'published' ? 'green' : content.status === 'scheduled' ? 'orange' : 'purple'}`}>
-            {content.status || 'draft'}
+            {content.status ? t(`status.${content.status}`) : t('status.draft')}
           </span>
           <button onClick={onClose} className="btn-ghost p-1.5" data-testid="close-content-detail"><X size={18} /></button>
         </div>
@@ -1028,9 +1041,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
       {isMobile && (
         <div className="flex border-b border-[var(--border-color)] flex-shrink-0">
           {[
-            { id: 'editor', label: 'Editor' },
-            { id: 'social', label: `Social${selectedSocials.length > 0 ? ` (${selectedSocials.length})` : ''}` },
-            { id: 'preview', label: 'Anteprima' },
+            { id: 'editor', label: t('editor.editorTab') },
+            { id: 'social', label: `${t('editor.socialTab')}${selectedSocials.length > 0 ? ` (${selectedSocials.length})` : ''}` },
+            { id: 'preview', label: t('editor.previewTab') },
           ].map(t => (
             <button key={t.id} className={`flex-1 text-xs font-medium py-2.5 transition-colors ${mobileTab === t.id ? 'text-white border-b-2 border-[var(--gradient-start)]' : 'text-[var(--text-muted)]'}`}
               onClick={() => setMobileTab(t.id)}>
@@ -1065,10 +1078,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
           </span>
           {content.status === 'scheduled' && contentQueueItems[0]?.scheduled_at && (
             <span className="text-[10px] font-medium" style={{ color: 'var(--accent-orange)' }}>
-              {new Date(contentQueueItems[0].scheduled_at).toLocaleString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              {new Date(contentQueueItems[0].scheduled_at).toLocaleString(locale, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
-          {selectedSocials.length > 0 && <span className="text-[10px] text-[var(--text-muted)]">{selectedSocials.length} social</span>}
+          {selectedSocials.length > 0 && <span className="text-[10px] text-[var(--text-muted)]">{selectedSocials.length} {t('editor.socials')}</span>}
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           <button className="btn-ghost text-xs py-1.5" onClick={save} disabled={saving} data-testid="save-draft-btn">
@@ -1076,10 +1089,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
           </button>
           {content.status !== 'published' && (
             <button className="btn-ghost text-xs py-1.5" onClick={markAsPublished} disabled={markingPublished}
-              style={{ color: 'var(--accent-green)' }} title="Segna manualmente il contenuto come pubblicato">
+              style={{ color: 'var(--accent-green)' }} title={t('editor.markAsPublishedTitle')}>
               {markingPublished
                 ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                : <><CheckCircle size={14} /> Pubblicato</>}
+                : <><CheckCircle size={14} /> {t('editor.markAsPublished')}</>}
             </button>
           )}
           <button className="btn-ghost text-xs py-1.5" onClick={publish} disabled={publishing || selectedSocials.length === 0} data-testid="publish-btn"
@@ -1088,7 +1101,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           </button>
           {(content.status === 'scheduled' || contentQueueItems.length > 0) && (
             <button className="btn-ghost text-xs py-1.5" onClick={cancelSchedule} disabled={cancellingSchedule}
-              style={{ color: 'var(--accent-pink)' }} title="Annulla programmazione e riporta a bozza">
+              style={{ color: 'var(--accent-pink)' }} title={t('editor.cancelScheduleTitle')}>
               {cancellingSchedule
                 ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
                 : <><XCircle size={14} /> {t('editor.cancelSchedule')}</>}
@@ -1167,11 +1180,11 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     project_id: project.id,
                   });
                   el.value = data.prompt;
-                } catch(e) { toast.error('Errore ottimizzazione: ' + (e.response?.data?.detail || e.message)); }
+                } catch(e) { toast.error(t('editor.optimizeError', { message: e.response?.data?.detail || e.message })); }
                 setOptimizingPrompt(false);
               }}
             >
-              {optimizingPrompt ? '...' : '🤖 Ottimizza per AI'}
+              {optimizingPrompt ? '...' : `🤖 ${t('editor.optimizeForAi')}`}
             </button>
           )}
           {inputModal.multiline
@@ -1186,18 +1199,18 @@ export default function ContentDetail({ content: initialContent, project, onClos
           }
           {inputModal.isFlux && (
             <div className="mb-4">
-              <p className="text-xs text-[var(--text-muted)] mb-2">Motore</p>
+              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
               <div className="flex gap-2 mb-3">
                 <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
                 <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
               </div>
-              <p className="text-xs text-[var(--text-muted)] mb-2">Stile</p>
+              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.style')}</p>
               <div className="flex flex-wrap gap-2 mb-3">
                 {[
-                  { id: 'fotorealistico', label: '📷 Fotorealistico' },
-                  { id: 'pittorico', label: '🎨 Pittorico' },
-                  { id: 'cartoon', label: '🖼️ Cartoon' },
-                  { id: 'ink', label: '✒️ Ink & Pen' },
+                  { id: 'fotorealistico', label: `📷 ${t('editor.imageStylePhotorealistic')}` },
+                  { id: 'pittorico', label: `🎨 ${t('editor.imageStylePainterly')}` },
+                  { id: 'cartoon', label: `🖼️ ${t('editor.imageStyleCartoon')}` },
+                  { id: 'ink', label: `✒️ ${t('editor.imageStyleInk')}` },
                 ].map(s => (
                   <button key={s.id} className={`preset-btn text-xs py-1 px-2 ${fluxStyle === s.id ? 'active' : ''}`}
                     onClick={() => setFluxStyle(s.id)}>{s.label}</button>
@@ -1205,14 +1218,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
               </div>
               {fluxStyle === 'fotorealistico' && (
                 <>
-                  <p className="text-xs text-[var(--text-muted)] mb-2">Inquadratura</p>
+                  <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.composition')}</p>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { id: 'wide', label: '🌄 Wide shot' },
-                      { id: 'full', label: '🧍 Full body' },
-                      { id: 'medium', label: '👤 Medium shot' },
-                      { id: 'closeup', label: '🎭 Close-up' },
-                      { id: 'macro', label: '🔬 Macro' },
+                      { id: 'wide', label: `🌄 ${t('editor.imageCompositionWide')}` },
+                      { id: 'full', label: `🧍 ${t('editor.imageCompositionFull')}` },
+                      { id: 'medium', label: `👤 ${t('editor.imageCompositionMedium')}` },
+                      { id: 'closeup', label: `🎭 ${t('editor.imageCompositionCloseup')}` },
+                      { id: 'macro', label: `🔬 ${t('editor.imageCompositionMacro')}` },
                     ].map(c => (
                       <button key={c.id} className={`preset-btn text-xs py-1 px-2 ${fluxComposition === c.id ? 'active' : ''}`}
                         onClick={() => setFluxComposition(c.id)}>{c.label}</button>
@@ -1237,7 +1250,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               const finalVal = inputModal.isFlux ? stylePrompts[fluxStyle] : soggetto;
               setInputModal(null);
               inputModal.onConfirm(finalVal);
-            }}>Genera</button>
+            }}>{t('editor.generateAction')}</button>
           </div>
         </motion.div>
       </div>
@@ -1281,8 +1294,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <div className="p-5 pb-0">
             {/* Date header */}
             <p className="text-sm text-[var(--text-muted)] mb-0.5">{calViewDate.getFullYear()}</p>
-            <p className={`text-2xl font-bold ${scheduleDate ? 'mb-4' : 'mb-1'}`} style={{ color: scheduleDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>{formatScheduleHeader(scheduleDate)}</p>
-            {!scheduleDate && <p className="text-xs mb-4" style={{ color: '#f59e0b' }}>← Seleziona un giorno nel calendario</p>}
+            <p className={`text-2xl font-bold ${scheduleDate ? 'mb-4' : 'mb-1'}`} style={{ color: scheduleDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>{formatScheduleHeader(scheduleDate, locale, t)}</p>
+            {!scheduleDate && <p className="text-xs mb-4" style={{ color: '#f59e0b' }}>← {t('editor.selectDate')}</p>}
 
             {/* Calendar */}
             <div className="rounded-xl mb-4 p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -1291,7 +1304,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 <button className="btn-ghost p-1" onClick={() => setCalViewDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))}><CaretRight size={16} /></button>
               </div>
               <div className="grid grid-cols-7 mb-2">
-                {DAY_FULL.map(d => <div key={d} className="text-center text-xs font-bold text-[var(--text-muted)] py-1">{d}</div>)}
+                {dayHeaders.map(d => <div key={d} className="text-center text-xs font-bold text-[var(--text-muted)] py-1">{d}</div>)}
               </div>
               <div className="grid grid-cols-7">
                 {calDaysExtended(calViewDate).map((cell, i) => {
@@ -1304,8 +1317,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     <button key={i} onClick={() => !cell.isPrev && setScheduleDate(iso)}
                       className="flex flex-col items-center py-1 transition-all"
                       style={{ cursor: cell.isPrev ? 'default' : 'pointer' }}>
-                      {isToday && <span style={{ fontSize: 8, color: TEAL, fontWeight: 700, lineHeight: 1.2 }}>Oggi</span>}
-                      {cell.isNext && <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, lineHeight: 1.2 }}>{MONTH_ABB[cell.month]}</span>}
+                      {isToday && <span style={{ fontSize: 8, color: TEAL, fontWeight: 700, lineHeight: 1.2 }}>{t('editor.today')}</span>}
+                      {cell.isNext && <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, lineHeight: 1.2 }}>{capitalize(new Intl.DateTimeFormat(locale, { month: 'short' }).format(new Date(cell.year, cell.month, 1)))}</span>}
                       {!isToday && !cell.isNext && <span style={{ fontSize: 8, lineHeight: 1.2 }}>&nbsp;</span>}
                       <div style={{
                         width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1324,18 +1337,18 @@ export default function ContentDetail({ content: initialContent, project, onClos
             {/* Time section */}
             {!customPerSocial ? (
               <>
-                <p className="text-sm text-[var(--text-muted)] mb-2">Time</p>
+                <p className="text-sm text-[var(--text-muted)] mb-2">{t('editor.time')}</p>
                 <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)}
                   className="w-full text-center text-xl font-semibold rounded-xl mb-4"
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '14px', color: 'var(--text-primary)' }} />
                 <button className="w-full text-center text-sm text-[var(--text-muted)] mb-4 hover:text-white transition-colors"
                   onClick={() => setCustomPerSocial(true)}>
-                  Personalizza l'orario per ogni account social <span style={{ opacity: 0.6 }}>ⓘ</span>
+                  {t('editor.customizeTimePerSocial')} <span style={{ opacity: 0.6 }}>ⓘ</span>
                 </button>
               </>
             ) : (
               <>
-                <p className="text-sm text-[var(--text-muted)] mb-3">Seleziona ora o fascia oraria <span style={{ opacity: 0.6 }}>ⓘ</span></p>
+                <p className="text-sm text-[var(--text-muted)] mb-3">{t('editor.selectTimePerSocial')} <span style={{ opacity: 0.6 }}>ⓘ</span></p>
                 {selectedProfiles.map(prof => {
                   const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888' };
                   return (
@@ -1363,7 +1376,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 })}
                 <button className="w-full text-center text-sm text-[var(--text-muted)] mb-4 hover:text-white transition-colors"
                   onClick={() => setCustomPerSocial(false)}>
-                  Passa all'orario unificato
+                  {t('editor.unifiedTime')}
                 </button>
               </>
             )}
@@ -1373,7 +1386,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <div className="px-5 pb-3">
             {selectedProfiles.length === 0 ? (
               <p className="text-xs text-center py-2 rounded-xl" style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                ⚠ Seleziona almeno un social dalla colonna sinistra
+                ⚠ {t('editor.noSocials')}
               </p>
             ) : (
               <div className="flex items-center gap-2 py-2 px-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -1387,7 +1400,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     );
                   })}
                 </div>
-                <span className="text-xs text-[var(--text-muted)]">{selectedProfiles.length} social selezionati</span>
+                <span className="text-xs text-[var(--text-muted)]">{t('editor.selectedSocialsCount', { count: selectedProfiles.length })}</span>
               </div>
             )}
           </div>
@@ -1396,7 +1409,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           <div className="flex gap-3 px-5 pb-5">
             <button className="btn-ghost flex-1" onClick={() => { setShowSchedule(false); setCustomPerSocial(false); }} disabled={scheduling}>{t('common.cancel')}</button>
             <button className="btn-gradient flex-1" onClick={schedule} disabled={scheduling || !scheduleDate || selectedSocials.length === 0}>
-              {scheduling ? '...' : 'Programma'}
+              {scheduling ? '...' : t('editor.scheduleBtn')}
             </button>
           </div>
         </div>

@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { richTextToPlainText } from '../../lib/utils';
-import { MONTH_IT, PLATFORM_ICONS } from './constants';
+import { PLATFORM_ICONS } from './constants';
 
-const WEEKDAY_SHORT = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
-const VIEW_MODES = [
-  { id: 'month', label: 'Mese' },
-  { id: 'week', label: 'Settimana' },
-  { id: 'day', label: 'Giorno' },
-];
+const getLocaleTag = (lang) => {
+  const base = String(lang || '').toLowerCase();
+  if (base.startsWith('it')) return 'it-IT';
+  if (base.startsWith('en')) return 'en-US';
+  if (base.startsWith('es')) return 'es-ES';
+  if (base.startsWith('fr')) return 'fr-FR';
+  return lang || 'it-IT';
+};
 
 function startOfDay(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -43,15 +46,15 @@ function sameDay(a, b) {
     && a.getDate() === b.getDate();
 }
 
-function formatTime(date) {
-  return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+function formatTime(date, locale) {
+  return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 }
 
-function getEventTitle(content) {
-  return content?.hook_text || richTextToPlainText(content?.caption || '').slice(0, 90) || 'Contenuto programmato';
+function getEventTitle(content, fallback) {
+  return content?.hook_text || richTextToPlainText(content?.caption || '').slice(0, 90) || fallback;
 }
 
-function buildCalendarEvents(contents, queueItems) {
+function buildCalendarEvents(contents, queueItems, locale, fallbackTitle) {
   const contentMap = Object.fromEntries((contents || []).map(content => [content.id, content]));
   const grouped = {};
 
@@ -72,8 +75,8 @@ function buildCalendarEvents(contents, queueItems) {
         content,
         scheduledAt,
         dateKey: dateKey(scheduledAt),
-        timeLabel: formatTime(scheduledAt),
-        title: getEventTitle(content),
+        timeLabel: formatTime(scheduledAt, locale),
+        title: getEventTitle(content, fallbackTitle),
         platforms: [],
         statuses: [],
       };
@@ -142,7 +145,7 @@ function CalendarEventRow({ event, compact = false, onOpen }) {
   );
 }
 
-function MonthView({ focusDate, events, onOpen, onPickDate }) {
+function MonthView({ focusDate, events, onOpen, onPickDate, weekdayShort, t }) {
   const monthStart = new Date(focusDate.getFullYear(), focusDate.getMonth(), 1);
   const monthEnd = new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 0);
   const firstGrid = startOfWeek(monthStart);
@@ -163,7 +166,7 @@ function MonthView({ focusDate, events, onOpen, onPickDate }) {
   return (
     <>
       <div className="calendar-grid">
-        {WEEKDAY_SHORT.map(day => <div key={day} className="calendar-header">{day}</div>)}
+        {weekdayShort.map(day => <div key={day} className="calendar-header">{day}</div>)}
         {cells.map(date => {
           const key = dateKey(date);
           const dayEvents = eventsByDay[key] || [];
@@ -190,7 +193,7 @@ function MonthView({ focusDate, events, onOpen, onPickDate }) {
                 ))}
                 {dayEvents.length > 4 && (
                   <p className="text-[10px] px-1" style={{ color: 'var(--text-muted)' }}>
-                    +{dayEvents.length - 4} altri
+                    {t('project.calendar.moreOther', { count: dayEvents.length - 4 })}
                   </p>
                 )}
               </div>
@@ -202,7 +205,7 @@ function MonthView({ focusDate, events, onOpen, onPickDate }) {
   );
 }
 
-function WeekView({ focusDate, events, onOpen, onPickDate }) {
+function WeekView({ focusDate, events, onOpen, onPickDate, locale, t }) {
   const start = startOfWeek(focusDate);
   const days = Array.from({ length: 7 }, (_, index) => addDays(start, index));
   const today = startOfDay(new Date());
@@ -224,15 +227,15 @@ function WeekView({ focusDate, events, onOpen, onPickDate }) {
           >
             <button type="button" className="w-full text-left mb-3" onClick={() => onPickDate(day, 'day')}>
               <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                {day.toLocaleDateString('it-IT', { weekday: 'short' })}
+                {day.toLocaleDateString(locale, { weekday: 'short' })}
               </p>
-              <p className="font-semibold text-sm">{day.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
+              <p className="font-semibold text-sm">{day.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })}</p>
             </button>
             <div className="space-y-2">
               {dayEvents.length ? dayEvents.map(event => (
                 <CalendarEventRow key={event.id} event={event} onOpen={onOpen} />
               )) : (
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Nessun contenuto programmato</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('project.calendar.empty')}</p>
               )}
             </div>
           </div>
@@ -242,14 +245,14 @@ function WeekView({ focusDate, events, onOpen, onPickDate }) {
   );
 }
 
-function DayView({ focusDate, events, onOpen }) {
+function DayView({ focusDate, events, onOpen, locale, t }) {
   const key = dateKey(focusDate);
   const dayEvents = events.filter(event => event.dateKey === key);
 
   if (!dayEvents.length) {
     return (
       <div className="rounded-xl p-6 mt-3 text-sm" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-        Nessun contenuto programmato in questa giornata.
+        {t('project.calendar.emptyDay')}
       </div>
     );
   }
@@ -268,7 +271,7 @@ function DayView({ focusDate, events, onOpen }) {
     <div className="rounded-xl overflow-hidden mt-3" style={{ border: '1px solid var(--border-color)' }}>
       <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)', background: 'rgba(255,255,255,0.03)' }}>
         <p className="text-sm font-semibold">
-          {focusDate.toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+          {focusDate.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
         </p>
       </div>
       <div>
@@ -300,6 +303,16 @@ export default function ContentCalendarView({
   setCalMonth,
   openContentDetail,
 }) {
+  const { t, i18n } = useTranslation();
+  const locale = getLocaleTag(i18n.language);
+  const weekdayShort = Array.from({ length: 7 }, (_, index) =>
+    new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(2024, 0, 1 + index))
+  );
+  const viewModes = [
+    { id: 'month', label: t('project.calendar.month') },
+    { id: 'week', label: t('project.calendar.week') },
+    { id: 'day', label: t('project.calendar.day') },
+  ];
   const [viewMode, setViewMode] = useState('month');
   const [focusDate, setFocusDate] = useState(new Date(calYear, calMonth, 1));
 
@@ -316,7 +329,7 @@ export default function ContentCalendarView({
     setCalMonth(focusDate.getMonth());
   }, [focusDate, setCalMonth, setCalYear]);
 
-  const events = buildCalendarEvents(contents, queueItems);
+  const events = buildCalendarEvents(contents, queueItems, locale, t('project.calendar.defaultTitle'));
 
   const navigate = (direction) => {
     setFocusDate(prev => {
@@ -328,14 +341,14 @@ export default function ContentCalendarView({
 
   const getHeaderLabel = () => {
     if (viewMode === 'day') {
-      return focusDate.toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+      return focusDate.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     }
     if (viewMode === 'week') {
       const start = startOfWeek(focusDate);
       const end = endOfWeek(focusDate);
-      return `${start.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })} → ${end.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+      return `${start.toLocaleDateString(locale, { day: '2-digit', month: 'short' })} → ${end.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })}`;
     }
-    return `${MONTH_IT[focusDate.getMonth()]} ${focusDate.getFullYear()}`;
+    return `${focusDate.toLocaleDateString(locale, { month: 'long' })} ${focusDate.getFullYear()}`;
   };
 
   const handlePickDate = (date, nextView = null) => {
@@ -357,7 +370,7 @@ export default function ContentCalendarView({
         </div>
 
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          {VIEW_MODES.map(mode => (
+          {viewModes.map(mode => (
             <button
               key={mode.id}
               type="button"
@@ -376,6 +389,8 @@ export default function ContentCalendarView({
           events={events}
           onOpen={openContentDetail}
           onPickDate={(date) => handlePickDate(date)}
+          weekdayShort={weekdayShort}
+          t={t}
         />
       )}
 
@@ -385,6 +400,8 @@ export default function ContentCalendarView({
           events={events}
           onOpen={openContentDetail}
           onPickDate={handlePickDate}
+          locale={locale}
+          t={t}
         />
       )}
 
@@ -393,6 +410,8 @@ export default function ContentCalendarView({
           focusDate={focusDate}
           events={events}
           onOpen={openContentDetail}
+          locale={locale}
+          t={t}
         />
       )}
     </div>

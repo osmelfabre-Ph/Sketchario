@@ -164,40 +164,40 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const handleContentUpdate = (updated) => setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
 
   const deleteContent = async (id) => {
-    if (!window.confirm('Eliminare questo contenuto?')) return;
+    if (!window.confirm(t('project.content.deleteConfirm'))) return;
     setDeletingContentId(id);
-    const tid = toast.loading('Eliminazione in corso...');
+    const tid = toast.loading(t('project.content.deleting'));
     try {
       await api.delete(`/contents/${id}`);
       setContents(prev => prev.filter(c => c.id !== id));
-      toast.success('Contenuto eliminato', { id: tid });
-    } catch (e) { toast.error('Errore eliminazione', { id: tid }); }
+      toast.success(t('project.content.deleteSuccess'), { id: tid });
+    } catch (e) { toast.error(t('project.content.deleteError'), { id: tid }); }
     setDeletingContentId(null);
   };
 
   const createNewPost = async () => {
     if (!newPostHook.trim()) return;
     setNewPostLoading(true);
-    const tid = toast.loading('Creazione post in corso...');
+    const tid = toast.loading(t('project.content.createLoading'));
     try {
       const { data } = await api.post('/content/create-post', { project_id: project.id, hook_text: newPostHook, format: newPostFormat, use_ai: newPostUseAi });
       setContents(prev => [...prev, data]);
       setShowNewPost(false); setNewPostHook('');
-      toast.success('Post creato!', { id: tid });
+      toast.success(t('project.content.createSuccess'), { id: tid });
       openContentDetail(data);
-    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+    } catch (e) { toast.error(`${t('common.error')}: ${e.response?.data?.detail || e.message}`, { id: tid }); }
     finally { setNewPostLoading(false); }
   };
 
   const feedToPost = async (item) => {
     setFeedLoading(true);
-    const tid = toast.loading('Generazione contenuto dal feed...');
+    const tid = toast.loading(t('project.content.feedGenerating'));
     try {
       const { data } = await api.post('/feeds/generate-content', { project_id: project.id, feed_item_title: item.title, feed_item_summary: item.summary });
       setContents(prev => [...prev, data]);
-      toast.success('Contenuto generato!', { id: tid });
+      toast.success(t('project.content.feedGenerated'), { id: tid });
       openContentDetail(data);
-    } catch (e) { toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid }); }
+    } catch (e) { toast.error(`${t('common.error')}: ${e.response?.data?.detail || e.message}`, { id: tid }); }
     finally { setFeedLoading(false); }
   };
 
@@ -211,7 +211,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
   const connectSocial = async (platform) => {
     setConnectingPlatformId(platform.id);
-    const tid = toast.loading(`Connessione ${platform.name} in corso...`);
+    const tid = toast.loading(t('project.social.connecting', { platform: platform.name }));
     try {
       const { data } = await api.get(`/social/oauth/start/${platform.id}`);
       const popup = window.open(data.auth_url, 'oauth_popup', 'width=600,height=700,left=200,top=100');
@@ -220,38 +220,38 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           window.removeEventListener('message', handler);
           popup?.close();
           api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {});
-          toast.success(`${e.data.name} collegato con successo!`, { id: tid });
+          toast.success(t('project.social.connectedSuccess', { name: e.data.name }), { id: tid });
           setConnectingPlatformId(null);
         } else if (e.data?.type === 'oauth_error') {
           window.removeEventListener('message', handler);
           popup?.close();
-          toast.error(`Errore connessione: ${e.data.error}`, { id: tid });
+          toast.error(t('project.social.connectionError', { error: e.data.error }), { id: tid });
           setConnectingPlatformId(null);
         }
       };
       window.addEventListener('message', handler);
     } catch (e) {
-      toast.error('Errore: ' + (e.response?.data?.detail || e.message), { id: tid });
+      toast.error(`${t('common.error')}: ${e.response?.data?.detail || e.message}`, { id: tid });
       setConnectingPlatformId(null);
     }
   };
   const addManualProfile = async (platformId) => {
     if (!manualName.trim()) return;
-    const tid = toast.loading('Aggiunta profilo...');
+    const tid = toast.loading(t('project.social.addingProfile'));
     try {
       const { data } = await api.post('/social/profiles', { platform: platformId, profile_name: manualName, connection_mode: 'manual' });
       setSocialProfiles(prev => [...prev, data]); setShowAddManual(null); setManualName('');
-      toast.success('Profilo aggiunto', { id: tid });
-    } catch (e) { toast.error('Errore aggiunta profilo', { id: tid }); }
+      toast.success(t('project.social.profileAdded'), { id: tid });
+    } catch (e) { toast.error(t('project.social.addProfileError'), { id: tid }); }
   };
   const removeSocialProfile = async (id) => {
     setRemovingProfileId(id);
-    const tid = toast.loading('Rimozione profilo...');
+    const tid = toast.loading(t('project.social.removingProfile'));
     try {
       await api.delete(`/social/profiles/${id}`);
       setSocialProfiles(prev => prev.filter(p => p.id !== id));
-      toast.success('Profilo rimosso', { id: tid });
-    } catch (e) { toast.error('Errore rimozione profilo', { id: tid }); }
+      toast.success(t('project.social.profileRemoved'), { id: tid });
+    } catch (e) { toast.error(t('project.social.removeProfileError'), { id: tid }); }
     setRemovingProfileId(null);
   };
   const toggleProjectLink = async (profileId) => {
@@ -261,49 +261,49 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       await api.post('/social/project/link', { project_id: project.id, social_profile_ids: newIds });
       const { data } = await api.get(`/social/project/${project.id}`);
       setProjectSocials(data);
-    } catch (e) { toast.error('Errore aggiornamento link'); }
+    } catch (e) { toast.error(t('project.social.linkError')); }
   };
 
   const saveToTovLibrary = async () => {
     if (!tovSaveName.trim()) return;
     setSavingTovLibrary(true);
-    const tid = toast.loading('Salvataggio template...');
+    const tid = toast.loading(t('project.tov.saving'));
     try {
       const { data } = await api.post('/tov-library', { name: tovSaveName, ...tov });
       setTovLibrary(prev => [...prev, data]); setShowTovSave(false); setTovSaveName('');
-      toast.success('Template salvato nella libreria', { id: tid });
-    } catch (e) { toast.error('Errore salvataggio template', { id: tid }); }
+      toast.success(t('project.tov.saveSuccess'), { id: tid });
+    } catch (e) { toast.error(t('project.tov.saveError'), { id: tid }); }
     setSavingTovLibrary(false);
   };
   const applyTovTemplate = async (itemId) => {
     setApplyingTovId(itemId);
-    const tid = toast.loading('Applicazione template...');
+    const tid = toast.loading(t('project.tov.applying'));
     try {
       await api.post(`/tov-library/${itemId}/apply/${project.id}`);
       const { data } = await api.get(`/tov/${project.id}`);
       setTov(data || {});
-      toast.success('Template applicato', { id: tid });
-    } catch (e) { toast.error('Errore applicazione template', { id: tid }); }
+      toast.success(t('project.tov.applySuccess'), { id: tid });
+    } catch (e) { toast.error(t('project.tov.applyError'), { id: tid }); }
     setApplyingTovId(null);
   };
 
   const cancelQueueItem = async (id) => {
     setCancellingQueueId(id);
-    const tid = toast.loading('Annullamento programmazione...');
+    const tid = toast.loading(t('project.queue.canceling'));
     try {
       await api.delete(`/publish/queue/${id}`);
       setQueueItems(prev => prev.filter(q => q.id !== id));
-      toast.success('Programmazione annullata', { id: tid });
-    } catch (e) { toast.error('Errore annullamento', { id: tid }); }
+      toast.success(t('project.queue.cancelSuccess'), { id: tid });
+    } catch (e) { toast.error(t('project.queue.cancelError'), { id: tid }); }
     setCancellingQueueId(null);
   };
 
   const clearQueue = async () => {
     if (queueItems.length === 0) return;
-    if (!window.confirm('Svuotare tutta la publishing queue di questo progetto?')) return;
+    if (!window.confirm(t('project.queue.clearConfirm'))) return;
 
     setClearingQueue(true);
-    const tid = toast.loading('Svuotamento queue...');
+    const tid = toast.loading(t('project.queue.clearing'));
     try {
       const affectedContentIds = new Set(
         queueItems
@@ -317,9 +317,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           ? { ...content, status: 'draft' }
           : content
       )));
-      toast.success('Queue svuotata', { id: tid });
+      toast.success(t('project.queue.clearSuccess'), { id: tid });
     } catch (e) {
-      toast.error('Errore svuotamento queue', { id: tid });
+      toast.error(t('project.queue.clearError'), { id: tid });
     }
     setClearingQueue(false);
   };
@@ -350,42 +350,40 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       });
       setPinnedItemIds(prev => {
         const next = new Set(prev);
-        if (data.pinned) { next.add(itemId); toast.success('Salvato — sopravvive alla rigenerazione'); }
-        else { next.delete(itemId); toast.success('Pin rimosso'); }
+        if (data.pinned) { next.add(itemId); toast.success(t('project.feeds.pinSaved')); }
+        else { next.delete(itemId); toast.success(t('project.feeds.pinRemoved')); }
         return next;
       });
-    } catch { toast.error('Errore pin'); }
+    } catch { toast.error(t('project.feeds.pinError')); }
     setPinningItemId(null);
   };
 
   const refreshFeeds = async () => {
     setRefreshingFeeds(true);
-    const tid = toast.loading('Aggiornamento feed...');
+    const tid = toast.loading(t('project.feeds.refreshLoading'));
     try {
       await api.post(`/feeds/refresh/${project.id}`);
       const response = await api.get(`/feeds/${project.id}/items`);
       setFeedItems(response.data);
-      toast.success('Feed aggiornati', { id: tid });
+      toast.success(t('project.feeds.refreshSuccess'), { id: tid });
     } catch {
-      toast.error('Errore aggiornamento feed', { id: tid });
+      toast.error(t('project.feeds.refreshError'), { id: tid });
     }
     setRefreshingFeeds(false);
   };
 
   const refreshAiSuggestions = async () => {
     setRefreshingAi(true);
-    const tid = toast.loading('Generazione idee AI...');
+    const tid = toast.loading(t('project.feeds.aiLoading'));
     try {
       const response = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`);
       setAiFeedItems(response.data || []);
-      toast.success('Idee AI aggiornate', { id: tid });
+      toast.success(t('project.feeds.aiSuccess'), { id: tid });
     } catch {
-      toast.error('Errore generazione idee AI', { id: tid });
+      toast.error(t('project.feeds.aiError'), { id: tid });
     }
     setRefreshingAi(false);
   };
-
-  const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
   const listGroups = [
     { key: 'published', label: t('status.published'), items: contents.filter(c => c.status === 'published') },
     { key: 'scheduled', label: t('status.scheduled'), items: contents.filter(c => c.status === 'scheduled') },
@@ -405,7 +403,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button data-testid="new-post-btn" className="btn-gradient text-xs md:text-sm" onClick={() => setShowNewPost(true)}>
-            <Plus weight="bold" size={14} /> <span className="hidden sm:inline">Nuovo</span> Post
+            <Plus weight="bold" size={14} /> <span className="hidden sm:inline">{t('project.content.new')}</span> {t('project.content.newPost')}
           </button>
           <button className="btn-ghost text-xs md:text-sm" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/${project.id}/csv`, '_blank')} data-testid="export-csv-btn">
             <Download size={14} /> <span className="hidden sm:inline">CSV</span>
@@ -444,14 +442,14 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <button
                   className={`p-1.5 rounded transition-colors ${viewMode === 'cards' ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
                   onClick={() => setViewMode('cards')}
-                  title="Vista schede"
+                  title={t('project.content.viewCardsTitle')}
                 >
                   <SquaresFour size={15} />
                 </button>
                 <button
                   className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
                   onClick={() => setViewMode('list')}
-                  title="Vista elenco"
+                  title={t('project.content.viewListTitle')}
                 >
                   <ListBullets size={15} />
                 </button>
@@ -496,7 +494,6 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 calMonth={calMonth}
                 setCalYear={setCalYear}
                 setCalMonth={setCalMonth}
-                days={days}
                 handleDrop={handleDrop}
                 setDragContent={setDragContent}
                 openContentDetail={openContentDetail}
@@ -513,7 +510,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                       <p className="text-sm text-[var(--text-secondary)] mb-3">{p.role}</p>
                       {p.pain_points && (
                         <div className="p-3 rounded-lg text-sm mb-2" style={{ background: 'rgba(236,72,153,0.1)' }}>
-                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">Pain Points</span>
+                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">{t('project.personas.painPoints')}</span>
                           {(Array.isArray(p.pain_points) ? p.pain_points : [p.pain_points]).map((pp, j) => <p key={j} className="text-sm mt-1">- {pp}</p>)}
                         </div>
                       )}
@@ -524,19 +521,19 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div className="border-t border-[var(--border-color)] pt-6">
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <div>
-                      <h3 className="font-semibold flex items-center gap-2 text-sm md:text-base"><BookOpen size={18} /> Libreria Tono di Voce</h3>
-                      <p className="text-xs text-[var(--text-muted)] mt-1">Template riutilizzabili tra progetti</p>
+                      <h3 className="font-semibold flex items-center gap-2 text-sm md:text-base"><BookOpen size={18} /> {t('project.tov.title')}</h3>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">{t('project.tov.subtitle')}</p>
                     </div>
-                    <button className="btn-gradient text-xs" onClick={() => setShowTovSave(true)}><Plus size={14} /> Salva ToV attuale</button>
+                    <button className="btn-gradient text-xs" onClick={() => setShowTovSave(true)}><Plus size={14} /> {t('project.tov.saveCurrent')}</button>
                   </div>
                   {showTovSave && (
                     <div className="card mb-4 p-4">
                       <div className="flex gap-2 items-end">
-                        <input className="input-dark text-sm py-2 flex-1" placeholder="Nome template" value={tovSaveName} onChange={e => setTovSaveName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+                        <input className="input-dark text-sm py-2 flex-1" placeholder={t('project.tov.templateName')} value={tovSaveName} onChange={e => setTovSaveName(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
                         <button className="btn-gradient text-xs py-2" onClick={saveToTovLibrary} disabled={savingTovLibrary}>
-                          {savingTovLibrary ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-1" />Salvataggio...</> : 'Salva'}
+                          {savingTovLibrary ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-1" />{t('project.tov.saving')}</> : t('common.save')}
                         </button>
-                        <button className="btn-ghost text-xs py-2" onClick={() => setShowTovSave(false)}>X</button>
+                        <button className="btn-ghost text-xs py-2" onClick={() => setShowTovSave(false)}>{t('common.close')}</button>
                       </div>
                     </div>
                   )}
@@ -548,7 +545,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                           <p className="text-[10px] text-[var(--text-muted)]">F:{item.formality} E:{item.energy} Em:{item.empathy} H:{item.humor}</p>
                         </div>
                         <button className="btn-gradient text-[10px] py-1 px-2" onClick={() => applyTovTemplate(item.id)} disabled={applyingTovId === item.id}>
-                          {applyingTovId === item.id ? <div className="w-2.5 h-2.5 border border-white border-t-transparent rounded-full animate-spin" /> : 'Applica'}
+                          {applyingTovId === item.id ? <div className="w-2.5 h-2.5 border border-white border-t-transparent rounded-full animate-spin" /> : t('project.tov.apply')}
                         </button>
                         <button className="text-[var(--accent-pink)]" onClick={() => { api.delete(`/tov-library/${item.id}`); setTovLibrary(prev => prev.filter(t => t.id !== item.id)); }}><Trash size={12} /></button>
                       </div>
@@ -592,10 +589,10 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                         </div>
                         {showAddManual === platform.id && (
                           <div className="mt-2 p-2 rounded" style={{ background: 'var(--bg-secondary)' }}>
-                            <input className="input-dark text-xs py-1.5 mb-1" placeholder="@nome" value={manualName} onChange={e => setManualName(e.target.value)} style={{ paddingLeft: '0.5rem' }} />
+                            <input className="input-dark text-xs py-1.5 mb-1" placeholder={t('project.social.manualPlaceholder')} value={manualName} onChange={e => setManualName(e.target.value)} style={{ paddingLeft: '0.5rem' }} />
                             <div className="flex gap-1">
-                              <button className="btn-ghost text-[10px] py-1 flex-1" onClick={() => setShowAddManual(null)}>X</button>
-                              <button className="btn-gradient text-[10px] py-1 flex-1" onClick={() => addManualProfile(platform.id)}>Ok</button>
+                              <button className="btn-ghost text-[10px] py-1 flex-1" onClick={() => setShowAddManual(null)}>{t('common.close')}</button>
+                              <button className="btn-gradient text-[10px] py-1 flex-1" onClick={() => addManualProfile(platform.id)}>{t('common.ok')}</button>
                             </div>
                           </div>
                         )}
@@ -657,7 +654,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 {/* News & Reddit */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold flex items-center gap-2"><RssSimple size={16} /> News & Reddit — {project.sector}</p>
+                    <p className="text-sm font-semibold flex items-center gap-2"><RssSimple size={16} /> {t('project.feeds.newsReddit')} — {project.sector}</p>
                     <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingFeeds} onClick={refreshFeeds}>
                       <ArrowClockwise size={12} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : t('project.feeds.refresh')}
                     </button>
@@ -676,7 +673,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 {/* AI Suggestions */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold flex items-center gap-2"><Sparkle size={16} weight="fill" /> Idee AI — {project.sector}</p>
+                    <p className="text-sm font-semibold flex items-center gap-2"><Sparkle size={16} weight="fill" /> {t('project.feeds.aiSuggestions')} — {project.sector}</p>
                     <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingAi} onClick={refreshAiSuggestions}>
                       <ArrowClockwise size={12} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : t('editor.regenerate')}
                     </button>
@@ -689,14 +686,14 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                         {pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className={`w-2 h-2 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
-                          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase">{item.format || 'reel'}</span>
+                          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase">{item.format ? t(`format.${item.format}`) : t('format.reel')}</span>
                           {item.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
                         </div>
                         <p className="text-sm font-medium mb-1 pr-5">{item.title}</p>
                         <p className="text-xs text-[var(--text-muted)]">{item.summary}</p>
                       </div>
                     ))}
-                    {aiFeedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">Generazione idee AI...</p>}
+                    {aiFeedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">{t('project.feeds.aiEmpty')}</p>}
                   </div>
                 </div>
               </div>
@@ -761,7 +758,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
           {/* Panel content */}
           <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-color)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold">Queue & Analytics</h3>
+              <h3 className="text-sm font-semibold">{t('project.queue.queueAnalytics')}</h3>
               <button className="btn-ghost p-1.5" onClick={() => setShowRightPanel(false)}><X size={16} /></button>
             </div>
             <RightPanelContent
@@ -785,15 +782,15 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="card w-full max-w-lg" onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-4">{t('project.content.generate')}</h3>
               <div className="space-y-4">
-                <textarea data-testid="new-post-hook" className="input-dark" rows={3} placeholder="Hook/idea del post..." value={newPostHook} onChange={e => setNewPostHook(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <textarea data-testid="new-post-hook" className="input-dark" rows={3} placeholder={t('project.content.hookPlaceholder')} value={newPostHook} onChange={e => setNewPostHook(e.target.value)} style={{ paddingLeft: '1rem' }} />
                 <div className="flex gap-2">
-                  <button className={`preset-btn flex-1 ${newPostFormat === 'reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('reel')}><Video size={14} /> Reel</button>
-                  <button className={`preset-btn flex-1 ${newPostFormat === 'carousel' ? 'active' : ''}`} onClick={() => setNewPostFormat('carousel')}><Image size={14} /> Carousel</button>
-                  <button className={`preset-btn flex-1 ${newPostFormat === 'prompted_reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('prompted_reel')}>🤖 Prompted Reel</button>
+                  <button className={`preset-btn flex-1 ${newPostFormat === 'reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('reel')}><Video size={14} /> {t('format.reel')}</button>
+                  <button className={`preset-btn flex-1 ${newPostFormat === 'carousel' ? 'active' : ''}`} onClick={() => setNewPostFormat('carousel')}><Image size={14} /> {t('format.carousel')}</button>
+                  <button className={`preset-btn flex-1 ${newPostFormat === 'prompted_reel' ? 'active' : ''}`} onClick={() => setNewPostFormat('prompted_reel')}>🤖 {t('format.prompted_reel')}</button>
                 </div>
                 <div className="flex gap-2">
-                  <button className={`preset-btn flex-1 ${!newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(false)}>Da zero</button>
-                  <button className={`preset-btn flex-1 ${newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(true)}><Sparkle size={14} /> Con AI</button>
+                  <button className={`preset-btn flex-1 ${!newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(false)}>{t('project.content.fromScratch')}</button>
+                  <button className={`preset-btn flex-1 ${newPostUseAi ? 'active' : ''}`} onClick={() => setNewPostUseAi(true)}><Sparkle size={14} /> {t('project.content.withAi')}</button>
                 </div>
                 <div className="flex gap-3">
                   <button className="btn-ghost flex-1" onClick={() => setShowNewPost(false)}>{t('common.cancel')}</button>
@@ -828,8 +825,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 <div className="flex-1 min-w-0 pr-3">
                   {selectedFeedItem._type === 'ai' && (
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="badge purple text-[10px]">✨ Idea AI</span>
-                      {selectedFeedItem.format && <span className="badge text-[10px]" style={{ background: 'var(--bg-card)' }}>{selectedFeedItem.format}</span>}
+                      <span className="badge purple text-[10px]">✨ {t('project.feeds.aiSuggestions')}</span>
+                      {selectedFeedItem.format && <span className="badge text-[10px]" style={{ background: 'var(--bg-card)' }}>{t(`format.${selectedFeedItem.format}`)}</span>}
                       {selectedFeedItem.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{selectedFeedItem.trend_tag}</span>}
                     </div>
                   )}
@@ -849,11 +846,11 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 {selectedFeedItem.link && (
                   <a href={selectedFeedItem.link} target="_blank" rel="noopener noreferrer"
                     className="text-xs text-[var(--accent-purple)] hover:underline flex items-center gap-1 mb-4">
-                    <Globe size={12} /> Leggi articolo originale →
+                    <Globe size={12} /> {t('project.feeds.originalArticle')} →
                   </a>
                 )}
                 {selectedFeedItem.published && (
-                  <p className="text-[10px] text-[var(--text-muted)]">Pubblicato: {selectedFeedItem.published}</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">{t('project.feeds.publishedAt')}: {selectedFeedItem.published}</p>
                 )}
               </div>
 
@@ -863,19 +860,19 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                   className={`btn-ghost text-xs py-2 px-3 flex items-center gap-1.5 ${pinnedItemIds.has(selectedFeedItem.id) ? 'text-[var(--accent-purple)]' : ''}`}
                   disabled={pinningItemId === selectedFeedItem.id}
                   onClick={() => pinFeedItem(selectedFeedItem, selectedFeedItem._type)}
-                  title={pinnedItemIds.has(selectedFeedItem.id) ? 'Rimuovi pin' : 'Salva (sopravvive alla rigenerazione)'}
+                  title={pinnedItemIds.has(selectedFeedItem.id) ? t('project.feeds.unsave') : t('project.feeds.pinSaved')}
                 >
                   {pinningItemId === selectedFeedItem.id
                     ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     : <span>{pinnedItemIds.has(selectedFeedItem.id) ? '📌' : '📍'}</span>}
-                  {pinnedItemIds.has(selectedFeedItem.id) ? 'Salvato' : 'Salva'}
+                  {pinnedItemIds.has(selectedFeedItem.id) ? t('project.feeds.saved') : t('project.feeds.save')}
                 </button>
                 <button
                   className="btn-gradient flex-1 text-sm py-2"
                   disabled={feedLoading}
                   onClick={() => { setSelectedFeedItem(null); feedToPost(selectedFeedItem); }}
                 >
-                  {feedLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" />Generazione...</> : '✦ Crea Post →'}
+                  {feedLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" />{t('project.content.generating')}</> : `✦ ${t('project.feeds.createPost')} →`}
                 </button>
               </div>
             </motion.div>

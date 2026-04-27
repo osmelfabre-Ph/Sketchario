@@ -1,4 +1,5 @@
 import { CaretDown, CaretUp, Video, Image, Flag, Trash } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 export default function ContentListView({
   groups,
@@ -10,10 +11,11 @@ export default function ContentListView({
   deletingContentId,
   deleteContent,
 }) {
+  const { t, i18n } = useTranslation();
   if (groups.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-[var(--text-muted)] mb-4">Nessun contenuto disponibile</p>
+        <p className="text-[var(--text-muted)] mb-4">{t('project.content.noContent')}</p>
       </div>
     );
   }
@@ -40,8 +42,8 @@ export default function ContentListView({
                 const queueItem = queueItems.find(q => q.content_id === c.id);
                 let dateLabel;
                 if (c.status === 'published') dateLabel = group.label;
-                else if (queueItem?.scheduled_at) dateLabel = new Date(queueItem.scheduled_at).toLocaleDateString('it', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-                else dateLabel = `G${(c.day_offset || 0) + 1}`;
+                else if (queueItem?.scheduled_at) dateLabel = new Date(queueItem.scheduled_at).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                else dateLabel = `${t('project.content.dayShort')}${(c.day_offset || 0) + 1}`;
                 return (
                   <div
                     key={c.id}
@@ -54,17 +56,17 @@ export default function ContentListView({
                       {c.format === 'reel' ? <Video size={13} /> : c.format === 'prompted_reel' ? <span style={{ fontSize: 12 }}>🤖</span> : <Image size={13} />}
                     </div>
                     <p className="flex-1 text-sm truncate min-w-0">
-                      {c.hook_text || <span className="text-[var(--text-muted)] italic text-xs">Senza titolo</span>}
+                      {c.hook_text || <span className="text-[var(--text-muted)] italic text-xs">{t('project.content.untitled')}</span>}
                     </p>
                     <span className={`badge text-[9px] flex-shrink-0 hidden sm:inline-flex ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
-                      {c.format === 'prompted_reel' ? 'prompted' : c.format}
+                      {c.format === 'prompted_reel' ? t('project.content.promptedShort') : t(`format.${c.format}`)}
                     </span>
                     <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 w-20 text-right">{dateLabel}</span>
                     <button
                       className="flex-shrink-0 transition-opacity opacity-40 group-hover:opacity-100"
                       style={{ color: c.urgent ? '#ef4444' : 'var(--text-muted)' }}
                       onClick={e => { e.stopPropagation(); toggleUrgent(c); }}
-                      title={c.urgent ? 'Urgente — clicca per rimuovere' : 'Segna urgente'}
+                      title={c.urgent ? t('project.content.unmarkUrgent') : t('project.content.markUrgent')}
                     >
                       <Flag size={14} weight={c.urgent ? 'fill' : 'regular'} />
                     </button>

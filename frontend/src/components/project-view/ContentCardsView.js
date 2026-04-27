@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash, Video, Image } from '@phosphor-icons/react';
 import { richTextToPlainText } from '../../lib/utils';
 
@@ -9,6 +10,7 @@ export default function ContentCardsView({
   deleteContent,
   setShowNewPost,
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 pt-2">
       {contents.map((c, i) => (
@@ -38,13 +40,13 @@ export default function ContentCardsView({
             </div>
           )}
           <div className="flex items-start gap-2 mb-2">
-            <span className={`badge text-[9px] ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>{c.format === 'prompted_reel' ? '🤖 prompted reel' : c.format}</span>
-            <span className={`badge text-[9px] ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status || 'draft'}</span>
+            <span className={`badge text-[9px] ${c.format === 'reel' ? 'pink' : c.format === 'prompted_reel' ? 'purple' : 'blue'}`}>{c.format === 'prompted_reel' ? `🤖 ${t('format.prompted_reel')}` : t(`format.${c.format}`)}</span>
+            <span className={`badge text-[9px] ${c.status === 'published' ? 'green' : c.status === 'scheduled' ? 'orange' : 'purple'}`}>{c.status ? t(`status.${c.status}`) : t('status.draft')}</span>
           </div>
           <h4 className="text-sm font-semibold mb-1 line-clamp-2">{c.hook_text}</h4>
           <p className="text-xs text-[var(--text-muted)] line-clamp-2">{richTextToPlainText(c.caption || '').slice(0, 100)}</p>
           <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
-            <span className="text-[10px] text-[var(--text-muted)]">G{(c.day_offset || 0) + 1}</span>
+            <span className="text-[10px] text-[var(--text-muted)]">{t('project.content.dayShort')}{(c.day_offset || 0) + 1}</span>
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button className="p-1 rounded hover:bg-[var(--bg-secondary)]" disabled={deletingContentId === c.id} onClick={e => { e.stopPropagation(); deleteContent(c.id); }}>
                 {deletingContentId === c.id ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> : <Trash size={12} />}
@@ -55,8 +57,8 @@ export default function ContentCardsView({
       ))}
       {contents.length === 0 && (
         <div className="col-span-full text-center py-12">
-          <p className="text-[var(--text-muted)] mb-4">Nessun contenuto disponibile</p>
-          <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> Crea il primo post</button>
+          <p className="text-[var(--text-muted)] mb-4">{t('project.content.noContent')}</p>
+          <button className="btn-gradient text-sm" onClick={() => setShowNewPost(true)}><Plus size={16} /> {t('project.content.firstPost')}</button>
         </div>
       )}
     </div>
