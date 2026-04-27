@@ -3,14 +3,34 @@ import { ChartBar, Globe, Queue, X } from '@phosphor-icons/react';
 import Analytics from '../Analytics';
 import { PLATFORM_ICONS } from './constants';
 
-export default function RightPanelContent({ queueItems, contents, cancelQueueItem, cancellingQueueId, project }) {
+export default function RightPanelContent({
+  queueItems,
+  contents,
+  cancelQueueItem,
+  cancellingQueueId,
+  clearQueue,
+  clearingQueue,
+  project
+}) {
   const { t } = useTranslation();
+  const sortedQueueItems = [...queueItems].sort((a, b) => {
+    const aTime = new Date(a.created_at || a.published_at || a.scheduled_at || 0).getTime();
+    const bTime = new Date(b.created_at || b.published_at || b.scheduled_at || 0).getTime();
+    return bTime - aTime;
+  });
 
   return (
     <>
       <div className="mb-6">
-        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><Queue size={12} /> Publishing Queue <span className="badge blue text-[8px] ml-1">{queueItems.length}</span></p>
-        {queueItems.slice(0, 8).map(item => {
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1"><Queue size={12} /> Publishing Queue <span className="badge blue text-[8px] ml-1">{queueItems.length}</span></p>
+          {queueItems.length > 0 && (
+            <button className="btn-ghost text-[10px] py-1 px-2" onClick={clearQueue} disabled={clearingQueue}>
+              {clearingQueue ? 'Svuotamento...' : 'Svuota queue'}
+            </button>
+          )}
+        </div>
+        {sortedQueueItems.slice(0, 12).map(item => {
           const platformInfo = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
           const isFailed = item.status === 'failed';
           return (

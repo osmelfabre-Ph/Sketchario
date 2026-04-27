@@ -66,6 +66,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   // Action loading states
   const [deletingContentId, setDeletingContentId] = useState(null);
   const [cancellingQueueId, setCancellingQueueId] = useState(null);
+  const [clearingQueue, setClearingQueue] = useState(false);
   const [connectingPlatformId, setConnectingPlatformId] = useState(null);
   const [removingProfileId, setRemovingProfileId] = useState(null);
   const [savingTovLibrary, setSavingTovLibrary] = useState(false);
@@ -286,6 +287,32 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       toast.success('Programmazione annullata', { id: tid });
     } catch (e) { toast.error('Errore annullamento', { id: tid }); }
     setCancellingQueueId(null);
+  };
+
+  const clearQueue = async () => {
+    if (queueItems.length === 0) return;
+    if (!window.confirm('Svuotare tutta la publishing queue di questo progetto?')) return;
+
+    setClearingQueue(true);
+    const tid = toast.loading('Svuotamento queue...');
+    try {
+      const affectedContentIds = new Set(
+        queueItems
+          .filter(item => item.status === 'queued' || item.status === 'processing' || item.status === 'failed')
+          .map(item => item.content_id)
+      );
+      await api.delete(`/publish/queue/project/${project.id}`);
+      setQueueItems([]);
+      setContents(prev => prev.map(content => (
+        affectedContentIds.has(content.id) && content.status === 'scheduled'
+          ? { ...content, status: 'draft' }
+          : content
+      )));
+      toast.success('Queue svuotata', { id: tid });
+    } catch (e) {
+      toast.error('Errore svuotamento queue', { id: tid });
+    }
+    setClearingQueue(false);
   };
 
   const toggleUrgent = async (c) => {
@@ -728,7 +755,15 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               <h3 className="text-sm font-semibold">Queue & Analytics</h3>
               <button className="btn-ghost p-1.5" onClick={() => setShowRightPanel(false)}><X size={16} /></button>
             </div>
-            <RightPanelContent queueItems={queueItems} contents={contents} cancelQueueItem={cancelQueueItem} cancellingQueueId={cancellingQueueId} project={project} />
+            <RightPanelContent
+              queueItems={queueItems}
+              contents={contents}
+              cancelQueueItem={cancelQueueItem}
+              cancellingQueueId={cancellingQueueId}
+              clearQueue={clearQueue}
+              clearingQueue={clearingQueue}
+              project={project}
+            />
           </div>
         </motion.div>
       </div>
