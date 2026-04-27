@@ -2046,12 +2046,50 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
 
             if last_status in {"FINISHED", "PUBLISHED"}:
                 return
+            if not last_status:
+                return
             if last_status in {"ERROR", "EXPIRED", "FAILED"}:
                 raise ValueError(f"Instagram media non pronto: {last_message or last_status}")
 
             await asyncio.sleep(3)
 
-    raise ValueError(f"Instagram media ancora in elaborazione ({last_status or 'UNKNOWN'}). Riprova tra poco.{f' Dettaglio: {last_message}' if last_message else ''}")
+    if last_status:
+        raise ValueError(f"Instagram media ancora in elaborazione ({last_status}). Riprova tra poco.{f' Dettaglio: {last_message}' if last_message else ''}")
+
+
+async def _publish_instagram_container_with_retry(
+    client: httpx.AsyncClient,
+    ig_id: str,
+    publish_token: str,
+    container_id: str,
+    timeout_seconds: int = 90
+) -> str:
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+    last_message = ""
+
+    while datetime.now(timezone.utc) < deadline:
+        pub_r = await client.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
+            data={"creation_id": container_id, "access_token": publish_token}
+        )
+        if pub_r.status_code == 200:
+            return pub_r.json().get("id", "")
+
+        fb_err = {}
+        try:
+            fb_err = pub_r.json().get("error", {})
+        except Exception:
+            fb_err = {}
+
+        last_message = fb_err.get("message", pub_r.text[:200])
+        error_code = str(fb_err.get("code", ""))
+        if "Media ID is not available" in last_message or error_code == "9007":
+            await asyncio.sleep(4)
+            continue
+
+        raise ValueError(f"IG publish error: {last_message}")
+
+    raise ValueError(f"IG publish error: Media ID is not available. Meta non ha ancora completato l'elaborazione del media.")
 
 async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -2242,15 +2280,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
             if not container_id:
                 raise ValueError("IG carousel container returned no ID")
             await _wait_for_instagram_container_ready(publish_token, container_id)
-        # Publish container
-        pub_r = await c.post(
-            f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
-            data={"creation_id": container_id, "access_token": publish_token}
-        )
-        if pub_r.status_code != 200:
-            fb_err = pub_r.json().get("error", {})
-            raise ValueError(f"IG publish error: {fb_err.get('message', pub_r.text[:200])}")
-        return pub_r.json().get("id", "")
+        return await _publish_instagram_container_with_retry(c, ig_id, publish_token, container_id)
 
 def _strip_html(s: str) -> str:
     import re as _re
