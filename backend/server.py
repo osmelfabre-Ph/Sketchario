@@ -2775,6 +2775,7 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
         schedule_map = {sid: inp.scheduled_at for sid in inp.social_profile_ids}
 
     items = []
+    should_trigger_now = False
     for sp_id in profile_ids:
         profile = await db.social_accounts.find_one({"id": sp_id, "user_id": user["_id"]}, {"_id": 0})
         if not profile:
@@ -2785,6 +2786,8 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
         except Exception:
             scheduled_dt = datetime.now(timezone.utc)
         publish_now = scheduled_dt <= datetime.now(timezone.utc)
+        if publish_now:
+            should_trigger_now = True
         item_id = str(uuid.uuid4())
         doc = {
             "id": item_id, "content_id": inp.content_id, "project_id": inp.project_id,
@@ -2793,26 +2796,19 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
             "status": "queued", "scheduled_at": item_scheduled_at, "first_comment": inp.first_comment,
             "error_message": "", "published_at": "", "created_at": now_iso,
         }
-        if publish_now:
-            try:
-                pub_token = profile.get("access_token", "")
-                if profile["platform"] == "pinterest":
-                    pub_token = await _get_pinterest_access_token(user["_id"], profile.get("id"))
-                post_id = await _do_publish(profile["platform"], pub_token, profile.get("profile_id", ""), content)
-                doc["status"] = "published"
-                doc["published_at"] = now_iso
-                doc["post_id"] = post_id
-            except Exception as e:
-                doc["status"] = "failed"
-                doc["error_message"] = str(e)
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
         items.append(doc)
-    new_status = "published" if all(i["status"] == "published" for i in items) else "scheduled"
+
+    if not items:
+        raise HTTPException(400, "Nessun profilo social valido selezionato")
+
+    new_status = "scheduled"
     await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": new_status}})
-    failed = [i for i in items if i.get("status") == "failed"]
-    if failed:
-        raise HTTPException(500, f"Errore pubblicazione: {failed[0]['error_message']}")
+
+    if should_trigger_now:
+        asyncio.create_task(_run_publish_queue_once())
+
     return {"ok": True, "items": items}
 
 @api.post("/publish/process-queue")

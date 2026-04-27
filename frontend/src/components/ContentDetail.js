@@ -638,11 +638,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
     try {
       await save();
       const now = new Date().toISOString();
-      await api.post('/publish/schedule', { content_id: content.id, project_id: project.id, social_profile_ids: selectedSocials, scheduled_at: now });
-      await api.post(`/publish/mark-published/${content.id}`);
-      const updated = { ...content, status: 'published' };
+      const { data } = await api.post('/publish/schedule', { content_id: content.id, project_id: project.id, social_profile_ids: selectedSocials, scheduled_at: now });
+      const queuedItems = data?.items || [];
+      setContentQueueItems(queuedItems);
+      const updated = { ...content, status: 'scheduled' };
       setContent(updated); onUpdate?.(updated);
-      toast.success(t('editor.publishSuccess'), { id: tid });
+      toast.success('Pubblicazione avviata. Controlla la queue per lo stato finale.', { id: tid });
     } catch (e) { toast.error('Errore pubblicazione: ' + (e.response?.data?.detail || e.message), { id: tid }); }
     setPublishing(false);
   };
