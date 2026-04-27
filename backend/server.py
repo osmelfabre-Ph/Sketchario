@@ -1965,8 +1965,11 @@ async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
             result["refresh_token"] = token_data["refresh_token"]
         return result
 
-async def _get_pinterest_access_token(user_id) -> str:
-    account = await db.social_accounts.find_one({"user_id": user_id, "platform": "pinterest"})
+async def _get_pinterest_access_token(user_id, social_profile_id: Optional[str] = None) -> str:
+    query = {"user_id": user_id, "platform": "pinterest"}
+    if social_profile_id:
+        query["id"] = social_profile_id
+    account = await db.social_accounts.find_one(query)
     if not account:
         raise HTTPException(400, "Pinterest non connesso.")
     token = account["access_token"]
@@ -1990,8 +1993,36 @@ async def _get_pinterest_access_token(user_id) -> str:
         update = {"access_token": new_token}
         if rr.json().get("refresh_token"):
             update["refresh_token"] = rr.json()["refresh_token"]
-        await db.social_accounts.update_one({"user_id": user_id, "platform": "pinterest"}, {"$set": update})
+        await db.social_accounts.update_one(query, {"$set": update})
         return new_token
+
+
+async def _get_instagram_publish_token(user_token: str, ig_id: str) -> str:
+    if not ig_id:
+        raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
+
+    async with httpx.AsyncClient(timeout=30) as c:
+        pages_r = await c.get(
+            "https://graph.facebook.com/v19.0/me/accounts",
+            params={"access_token": user_token}
+        )
+        pages_r.raise_for_status()
+        pages = pages_r.json().get("data", [])
+        for page in pages:
+            page_token = page.get("access_token", "")
+            if not page_token:
+                continue
+            ig_r = await c.get(
+                f"https://graph.facebook.com/v19.0/{page['id']}",
+                params={"fields": "instagram_business_account", "access_token": page_token}
+            )
+            if ig_r.status_code != 200:
+                continue
+            ig_data = ig_r.json().get("instagram_business_account", {})
+            if ig_data and ig_data.get("id") == ig_id:
+                return page_token
+
+    raise ValueError("Instagram Business non collegato correttamente a una Pagina Facebook o permessi insufficienti. Ricollega l'account Instagram.")
 
 async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -2119,6 +2150,8 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
         else:
             pin["media_source"] = {"source_type": "image_url", "url": "https://via.placeholder.com/800x800?text=Sketchario"}
         r = await c.post("https://api.pinterest.com/v5/pins", json=pin, headers={"Authorization": f"Bearer {token}"})
+        if r.status_code == 401:
+            raise ValueError("Pinterest ha rifiutato il token di pubblicazione. Ricollega l'account Pinterest e autorizza di nuovo i permessi di scrittura.")
         r.raise_for_status()
         return r.json().get("id", "")
 
@@ -2127,12 +2160,13 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
         raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
     if not image_urls:
         raise ValueError("Instagram richiede almeno un'immagine. Carica prima un media sul contenuto.")
+    publish_token = await _get_instagram_publish_token(token, ig_id)
     async with httpx.AsyncClient(timeout=60) as c:
         if len(image_urls) == 1:
             # Single image post
             container_r = await c.post(
                 f"https://graph.facebook.com/v19.0/{ig_id}/media",
-                data={"image_url": image_urls[0], "caption": text, "access_token": token}
+                data={"image_url": image_urls[0], "caption": text, "access_token": publish_token}
             )
             if container_r.status_code != 200:
                 fb_err = container_r.json().get("error", {})
@@ -2146,7 +2180,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
             for url in image_urls[:10]:
                 item_r = await c.post(
                     f"https://graph.facebook.com/v19.0/{ig_id}/media",
-                    data={"image_url": url, "is_carousel_item": "true", "access_token": token}
+                    data={"image_url": url, "is_carousel_item": "true", "access_token": publish_token}
                 )
                 if item_r.status_code == 200:
                     item_id = item_r.json().get("id")
@@ -2157,7 +2191,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
             carousel_r = await c.post(
                 f"https://graph.facebook.com/v19.0/{ig_id}/media",
                 data={"media_type": "CAROUSEL", "children": ",".join(child_ids),
-                      "caption": text, "access_token": token}
+                      "caption": text, "access_token": publish_token}
             )
             if carousel_r.status_code != 200:
                 fb_err = carousel_r.json().get("error", {})
@@ -2168,7 +2202,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
         # Publish container
         pub_r = await c.post(
             f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
-            data={"creation_id": container_id, "access_token": token}
+            data={"creation_id": container_id, "access_token": publish_token}
         )
         if pub_r.status_code != 200:
             fb_err = pub_r.json().get("error", {})
@@ -2690,7 +2724,7 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
             try:
                 pub_token = profile.get("access_token", "")
                 if profile["platform"] == "pinterest":
-                    pub_token = await _get_pinterest_access_token(user["_id"])
+                    pub_token = await _get_pinterest_access_token(user["_id"], profile.get("id"))
                 post_id = await _do_publish(profile["platform"], pub_token, profile.get("profile_id", ""), content)
                 doc["status"] = "published"
                 doc["published_at"] = now_iso
@@ -2737,7 +2771,7 @@ async def _run_publish_queue_once():
                 raise ValueError("Account social non trovato")
             token = account["access_token"]
             if item["platform"] == "pinterest":
-                token = await _get_pinterest_access_token(item["user_id"])
+                token = await _get_pinterest_access_token(item["user_id"], item.get("social_profile_id"))
             post_id = await _do_publish(
                 item["platform"], token, account.get("profile_id", ""), content)
             now_iso = datetime.now(timezone.utc).isoformat()
