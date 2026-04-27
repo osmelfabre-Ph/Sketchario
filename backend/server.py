@@ -2024,6 +2024,35 @@ async def _get_instagram_publish_token(user_token: str, ig_id: str) -> str:
 
     raise ValueError("Instagram Business non collegato correttamente a una Pagina Facebook o permessi insufficienti. Ricollega l'account Instagram.")
 
+
+async def _wait_for_instagram_container_ready(token: str, container_id: str, timeout_seconds: int = 90) -> None:
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+    last_status = ""
+    last_message = ""
+
+    async with httpx.AsyncClient(timeout=20) as c:
+        while datetime.now(timezone.utc) < deadline:
+            status_r = await c.get(
+                f"https://graph.facebook.com/v19.0/{container_id}",
+                params={"fields": "status_code,status,error_message,status_message", "access_token": token},
+            )
+            if status_r.status_code != 200:
+                await asyncio.sleep(3)
+                continue
+
+            data = status_r.json()
+            last_status = (data.get("status_code") or data.get("status") or "").upper()
+            last_message = data.get("status_message") or data.get("error_message") or ""
+
+            if last_status in {"FINISHED", "PUBLISHED"}:
+                return
+            if last_status in {"ERROR", "EXPIRED", "FAILED"}:
+                raise ValueError(f"Instagram media non pronto: {last_message or last_status}")
+
+            await asyncio.sleep(3)
+
+    raise ValueError(f"Instagram media ancora in elaborazione ({last_status or 'UNKNOWN'}). Riprova tra poco.{f' Dettaglio: {last_message}' if last_message else ''}")
+
 async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
     client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -2174,6 +2203,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
             container_id = container_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG container creation returned no ID")
+            await _wait_for_instagram_container_ready(publish_token, container_id)
         else:
             # Carousel post (max 10 slides)
             child_ids = []
@@ -2185,6 +2215,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
                 if item_r.status_code == 200:
                     item_id = item_r.json().get("id")
                     if item_id:
+                        await _wait_for_instagram_container_ready(publish_token, item_id)
                         child_ids.append(item_id)
             if not child_ids:
                 raise ValueError("Nessun media carousel creato su Instagram")
@@ -2199,6 +2230,7 @@ async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list
             container_id = carousel_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG carousel container returned no ID")
+            await _wait_for_instagram_container_ready(publish_token, container_id)
         # Publish container
         pub_r = await c.post(
             f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
