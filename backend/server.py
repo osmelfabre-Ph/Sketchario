@@ -2294,8 +2294,22 @@ def _strip_html(s: str) -> str:
     s = _re.sub(r'\n{3,}', '\n\n', s)
     return s.strip()
 
+
+def _normalize_hashtags(hashtags_value: str) -> str:
+    tags = []
+    for tag in re.split(r"[\s,]+", str(hashtags_value or "").strip()):
+        clean = tag.strip()
+        if not clean:
+            continue
+        tags.append(clean if clean.startswith("#") else f"#{clean}")
+    return " ".join(tags)
+
 async def _do_publish(platform: str, token: str, profile_id: str, content: dict) -> str:
-    text = _strip_html(content.get("caption") or content.get("hook_text") or content.get("title") or "")
+    caption_text = _strip_html(content.get("caption") or content.get("hook_text") or content.get("title") or "")
+    hashtags_text = _normalize_hashtags(content.get("hashtags", ""))
+    text = caption_text
+    if hashtags_text:
+        text = f"{caption_text}\n\n{hashtags_text}" if caption_text else hashtags_text
     title = content.get("title") or content.get("hook_text") or "Post"
     app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
     media = content.get("media", [])

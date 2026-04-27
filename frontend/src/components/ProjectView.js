@@ -139,6 +139,15 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
   useEffect(() => {
     if (!project?.id || loading) return;
+    const interval = setInterval(() => {
+      api.get(`/contents/${project.id}`).then(r => setContents(r.data)).catch(() => {});
+      api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {});
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [api, project?.id, loading]);
+
+  useEffect(() => {
+    if (!project?.id || loading) return;
     api.post(`/feeds/bootstrap/${project.id}`)
       .then(({ data }) => {
         if (Array.isArray(data)) {

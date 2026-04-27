@@ -331,6 +331,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [socialTimes, setSocialTimes] = useState({});
 
   useEffect(() => {
+    setContent(initialContent);
+  }, [initialContent]);
+
+  useEffect(() => {
     api.get('/social/profiles').then(r => setSocialProfiles((r.data || []).filter(p => p.platform !== 'google_slides'))).catch(() => {});
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
     api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
@@ -353,6 +357,36 @@ export default function ContentDetail({ content: initialContent, project, onClos
       }
     }).catch(() => {});
   }, [api, project.id, initialContent.id]);
+
+  useEffect(() => {
+    if (content.status !== 'scheduled') return;
+
+    const refreshStatus = async () => {
+      try {
+        const [{ data: queueData }, { data: contentsData }] = await Promise.all([
+          api.get(`/publish/queue/${project.id}`),
+          api.get(`/contents/${project.id}`),
+        ]);
+
+        const queueItems = (queueData || []).filter(q => q.content_id === content.id);
+        const queuedItems = queueItems.filter(q => q.status === 'queued' || q.status === 'processing');
+        setContentQueueItems(queuedItems);
+
+        const latestContent = (contentsData || []).find(c => c.id === content.id);
+        if (latestContent && latestContent.status && latestContent.status !== content.status) {
+          setContent(prev => {
+            const updated = { ...prev, status: latestContent.status };
+            onUpdate?.(updated);
+            return updated;
+          });
+        }
+      } catch {}
+    };
+
+    refreshStatus();
+    const interval = setInterval(refreshStatus, 5000);
+    return () => clearInterval(interval);
+  }, [api, project.id, content.id, content.status, onUpdate]);
 
   useEffect(() => {
     if (showSchedule) {
