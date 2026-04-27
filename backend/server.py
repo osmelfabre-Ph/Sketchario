@@ -2180,7 +2180,18 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
             pin["media_source"] = {"source_type": "image_url", "url": "https://via.placeholder.com/800x800?text=Sketchario"}
         r = await c.post("https://api.pinterest.com/v5/pins", json=pin, headers={"Authorization": f"Bearer {token}"})
         if r.status_code == 401:
-            raise ValueError("Pinterest ha rifiutato il token di pubblicazione. Ricollega l'account Pinterest e autorizza di nuovo i permessi di scrittura.")
+            detail = ""
+            try:
+                payload = r.json()
+                if isinstance(payload, dict):
+                    detail = payload.get("message") or payload.get("error") or payload.get("code") or ""
+            except Exception:
+                detail = r.text[:300]
+            raise ValueError(
+                "Pinterest ha rifiutato il token di pubblicazione. "
+                "L'app probabilmente non sta ricevendo un'autorizzazione reale di scrittura "
+                f"(pins:write).{f' Dettaglio Pinterest: {detail}' if detail else ''}"
+            )
         r.raise_for_status()
         return r.json().get("id", "")
 
