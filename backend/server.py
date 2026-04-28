@@ -373,6 +373,9 @@ async def refresh_token(request: Request, response: Response):
 def _backend_url() -> str:
     return os.environ.get("BACKEND_URL", os.environ.get("APP_URL", "http://localhost:8000")).rstrip("/")
 
+def _media_public_url() -> str:
+    return os.environ.get("MEDIA_PUBLIC_BASE_URL", _backend_url()).rstrip("/")
+
 def _frontend_base() -> str:
     return os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
 
@@ -2358,7 +2361,15 @@ async def _publish_instagram(
             )
             if container_r.status_code != 200:
                 fb_err = container_r.json().get("error", {})
-                raise ValueError(f"IG reel error: {fb_err.get('message', container_r.text[:200])}")
+                detail = fb_err.get("error_user_msg") or fb_err.get("error_user_title") or ""
+                code = fb_err.get("code", "")
+                subcode = fb_err.get("error_subcode", "")
+                trace = fb_err.get("fbtrace_id", "")
+                raise ValueError(
+                    f"IG reel error [{code}/{subcode}]: {fb_err.get('message', container_r.text[:200])}"
+                    f"{f' Dettaglio Meta: {detail}' if detail else ''}"
+                    f"{f' fbtrace: {trace}' if trace else ''}"
+                )
             container_id = container_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG reel container returned no ID")
@@ -2377,7 +2388,16 @@ async def _publish_instagram(
             )
             if container_r.status_code != 200:
                 fb_err = container_r.json().get("error", {})
-                raise ValueError(f"IG container error [{fb_err.get('code')}/{fb_err.get('error_subcode')}]: {fb_err.get('message', container_r.text[:200])}. Media URL: {image_urls[0]}")
+                detail = fb_err.get("error_user_msg") or fb_err.get("error_user_title") or ""
+                code = fb_err.get("code", "")
+                subcode = fb_err.get("error_subcode", "")
+                trace = fb_err.get("fbtrace_id", "")
+                raise ValueError(
+                    f"IG container error [{code}/{subcode}]: {fb_err.get('message', container_r.text[:200])}."
+                    f"{f' Dettaglio Meta: {detail}' if detail else ''}"
+                    f" Media URL: {image_urls[0]}"
+                    f"{f' fbtrace: {trace}' if trace else ''}"
+                )
             container_id = container_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG container creation returned no ID")
@@ -2408,7 +2428,15 @@ async def _publish_instagram(
             )
             if carousel_r.status_code != 200:
                 fb_err = carousel_r.json().get("error", {})
-                raise ValueError(f"IG carousel error: {fb_err.get('message', carousel_r.text[:200])}")
+                detail = fb_err.get("error_user_msg") or fb_err.get("error_user_title") or ""
+                code = fb_err.get("code", "")
+                subcode = fb_err.get("error_subcode", "")
+                trace = fb_err.get("fbtrace_id", "")
+                raise ValueError(
+                    f"IG carousel error [{code}/{subcode}]: {fb_err.get('message', carousel_r.text[:200])}"
+                    f"{f' Dettaglio Meta: {detail}' if detail else ''}"
+                    f"{f' fbtrace: {trace}' if trace else ''}"
+                )
             container_id = carousel_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG carousel container returned no ID")
@@ -2444,7 +2472,7 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     if hashtags_text:
         text = f"{caption_text}\n\n{hashtags_text}" if caption_text else hashtags_text
     title = content.get("title") or content.get("hook_text") or "Post"
-    media_base_url = _backend_url()
+    media_base_url = _media_public_url()
     media = content.get("media", [])
     def full_url(u):
         return f"{media_base_url}{u}" if u and u.startswith("/") else u
