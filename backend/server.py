@@ -2454,50 +2454,10 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     if platform == "facebook":
         return await _publish_facebook(token, text, image_urls)
     elif platform == "instagram":
-        ig_image_urls = []
-        ig_video_urls = []
-        rejected_media = []
-
-        for media_doc in media:
-            media_url = full_url(media_doc.get("url"))
-            if not media_url:
-                continue
-
-            media_kind = None
-            prepared_image_url = None
-
-            if media_doc.get("type") == "image":
-                try:
-                    prepared_image_url = await _prepare_instagram_image_url(media_doc, media_base_url)
-                except Exception as e:
-                    rejected_media.append({
-                        "name": media_doc.get("original_name") or media_doc.get("filename") or media_url,
-                        "ext": _media_extension(media_doc) or "?",
-                        "detail": str(e)[:160],
-                    })
-                    continue
-
-            media_kind = await _probe_instagram_media_kind(prepared_image_url or media_url)
-            if media_kind == "image" and prepared_image_url:
-                ig_image_urls.append(prepared_image_url)
-            elif media_kind == "video":
-                ig_video_urls.append(media_url)
-            else:
-                rejected_media.append({
-                    "name": media_doc.get("original_name") or media_doc.get("filename") or media_url,
-                    "ext": _media_extension(media_doc) or "?",
-                    "detail": "MIME non compatibile con Instagram",
-                })
-
+        ig_image_urls = [full_url(m.get("url")) for m in media if m.get("type") == "image" and m.get("url") and _media_extension(m) in {"jpg", "jpeg", "png"}]
+        ig_video_urls = [full_url(m.get("url")) for m in media if m.get("type") == "video" and m.get("url") and _media_extension(m) in {"mp4", "mov"}]
         if not ig_image_urls and not ig_video_urls:
-            rejected_list = ", ".join(
-                f"{item['name']} ({item['ext']}){': ' + item['detail'] if item.get('detail') else ''}" for item in rejected_media[:3]
-            )
-            raise ValueError(
-                "Instagram accetta solo JPG, JPEG, PNG o video MP4/MOV realmente serviti con MIME compatibile."
-                + (f" Media rifiutati: {rejected_list}" if rejected_list else "")
-            )
-
+            raise ValueError("Instagram accetta solo JPG, JPEG, PNG o video MP4/MOV. Carica prima un media compatibile.")
         return await _publish_instagram(
             token,
             profile_id,
