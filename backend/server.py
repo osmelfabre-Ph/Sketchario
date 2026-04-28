@@ -2404,10 +2404,10 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     if hashtags_text:
         text = f"{caption_text}\n\n{hashtags_text}" if caption_text else hashtags_text
     title = content.get("title") or content.get("hook_text") or "Post"
-    app_url = os.environ.get("APP_URL", "https://app.sketchario.it")
+    media_base_url = _backend_url()
     media = content.get("media", [])
     def full_url(u):
-        return f"{app_url}{u}" if u and u.startswith("/") else u
+        return f"{media_base_url}{u}" if u and u.startswith("/") else u
     image_urls = [full_url(m.get("url")) for m in media if m.get("type") == "image" and m.get("url")]
     image_url = image_urls[0] if image_urls else None
     if platform == "facebook":
@@ -2427,7 +2427,7 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
 
             if media_doc.get("type") == "image":
                 try:
-                    prepared_image_url = await _prepare_instagram_image_url(media_doc, app_url)
+                    prepared_image_url = await _prepare_instagram_image_url(media_doc, media_base_url)
                 except Exception as e:
                     rejected_media.append({
                         "name": media_doc.get("original_name") or media_doc.get("filename") or media_url,
