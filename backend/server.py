@@ -2378,7 +2378,14 @@ async def _publish_instagram(
         elif not image_urls:
             raise ValueError("Instagram accetta solo JPG, JPEG, PNG o video MP4/MOV. Il media collegato a questo contenuto non e supportato da Instagram.")
         elif len(image_urls) == 1:
-            # Single image post
+            # Single image post — probe URL accessibility before sending to Meta
+            probe_url = image_urls[0]
+            try:
+                probe_r = await c.head(probe_url, follow_redirects=True)
+                probe_ct = probe_r.headers.get("content-type", "?")
+                logger.info(f"IG probe {probe_url} → {probe_r.status_code} {probe_ct}")
+            except Exception as probe_err:
+                logger.warning(f"IG probe failed {probe_url}: {probe_err}")
             container_r = await c.post(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={
