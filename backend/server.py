@@ -2357,7 +2357,12 @@ async def _publish_instagram(
             # Single image post
             container_r = await c.post(
                 f"https://graph.facebook.com/v19.0/{ig_id}/media",
-                data={"image_url": image_urls[0], "caption": text, "access_token": publish_token}
+                data={
+                    "media_type": "IMAGE",
+                    "image_url": image_urls[0],
+                    "caption": text,
+                    "access_token": publish_token
+                }
             )
             if container_r.status_code != 200:
                 fb_err = container_r.json().get("error", {})
@@ -2372,7 +2377,12 @@ async def _publish_instagram(
             for url in image_urls[:10]:
                 item_r = await c.post(
                     f"https://graph.facebook.com/v19.0/{ig_id}/media",
-                    data={"image_url": url, "is_carousel_item": "true", "access_token": publish_token}
+                    data={
+                        "media_type": "IMAGE",
+                        "image_url": url,
+                        "is_carousel_item": "true",
+                        "access_token": publish_token
+                    }
                 )
                 if item_r.status_code == 200:
                     item_id = item_r.json().get("id")
