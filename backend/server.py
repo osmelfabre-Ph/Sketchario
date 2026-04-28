@@ -2292,6 +2292,26 @@ async def _prepare_instagram_image_url(media_doc: dict, app_url: str) -> str:
             elif image.mode != "RGB":
                 image = image.convert("RGB")
 
+            width, height = image.size
+            min_ratio = 4 / 5
+            max_ratio = 1.91
+            ratio = (width / height) if height else 1
+
+            if ratio < min_ratio:
+                target_width = max(width, int(round(height * min_ratio)))
+                canvas = Image.new("RGB", (target_width, height), (255, 255, 255))
+                canvas.paste(image, ((target_width - width) // 2, 0))
+                image = canvas
+            elif ratio > max_ratio:
+                target_height = max(height, int(round(width / max_ratio)))
+                canvas = Image.new("RGB", (width, target_height), (255, 255, 255))
+                canvas.paste(image, (0, (target_height - height) // 2))
+                image = canvas
+
+            max_edge = 1440
+            if max(image.size) > max_edge:
+                image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+
             safe_name = f"igsafe_{uuid.uuid4().hex}.jpg"
             safe_path = UPLOAD_DIR / safe_name
             image.save(safe_path, format="JPEG", quality=92, optimize=True)
