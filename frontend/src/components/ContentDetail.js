@@ -352,8 +352,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
     api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
     api.get(`/publish/queue/${project.id}`).then(r => {
-      const items = r.data.filter(q => q.content_id === initialContent.id && q.status === 'queued');
-      setContentQueueItems(items);
+      const items = r.data.filter(q =>
+        q.content_id === initialContent.id
+        && ['queued', 'processing', 'failed', 'published'].includes(String(q.status || ''))
+      );
+      const activeItems = items.filter(q => q.status === 'queued' || q.status === 'processing');
+      setContentQueueItems(activeItems);
       if (items.length > 0) {
         // Use local time methods so the popup shows the user's intended local time
         const dt = new Date(items[0].scheduled_at);

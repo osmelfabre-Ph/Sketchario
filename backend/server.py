@@ -2835,11 +2835,32 @@ async def trigger_queue_processing(request: Request):
 async def _run_publish_queue_once():
     """Single pass of the queue worker (used by manual trigger)."""
     now = datetime.now(timezone.utc)
+    stale_processing = await db.publish_queue.find({"status": "processing"}, {"_id": 0}).to_list(200)
+    for item in stale_processing:
+        processing_started = _parse_dt(
+            item.get("processing_started_at")
+            or item.get("scheduled_at", "")
+            or item.get("created_at", "")
+        )
+        if processing_started <= now - timedelta(minutes=10):
+            await db.publish_queue.update_one(
+                {"id": item["id"], "status": "processing"},
+                {
+                    "$set": {
+                        "status": "queued",
+                        "error_message": "Job ripristinato automaticamente dopo un processing rimasto bloccato."
+                    },
+                    "$unset": {"processing_started_at": ""}
+                }
+            )
+
     queued = await db.publish_queue.find({"status": "queued"}, {"_id": 0}).to_list(200)
     due = [q for q in queued if _parse_dt(q.get("scheduled_at", "")) <= now]
     for item in due:
         result = await db.publish_queue.find_one_and_update(
-            {"id": item["id"], "status": "queued"}, {"$set": {"status": "processing"}})
+            {"id": item["id"], "status": "queued"},
+            {"$set": {"status": "processing", "processing_started_at": now.isoformat()}}
+        )
         if not result:
             continue
         try:
@@ -2860,7 +2881,11 @@ async def _run_publish_queue_once():
             now_iso = datetime.now(timezone.utc).isoformat()
             await db.publish_queue.update_one(
                 {"id": item["id"]},
-                {"$set": {"status": "published", "published_at": now_iso, "post_id": post_id}})
+                {
+                    "$set": {"status": "published", "published_at": now_iso, "post_id": post_id},
+                    "$unset": {"processing_started_at": ""}
+                }
+            )
             remaining = await db.publish_queue.count_documents(
                 {"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
             if remaining == 0:
@@ -2870,7 +2895,20 @@ async def _run_publish_queue_once():
             logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
             await db.publish_queue.update_one(
                 {"id": item["id"]},
-                {"$set": {"status": "failed", "error_message": str(e)[:300]}})
+                {
+                    "$set": {"status": "failed", "error_message": str(e)[:300]},
+                    "$unset": {"processing_started_at": ""}
+                }
+            )
+            remaining = await db.publish_queue.count_documents(
+                {"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
+            if remaining == 0:
+                published_count = await db.publish_queue.count_documents(
+                    {"content_id": item["content_id"], "status": "published"})
+                await db.contents.update_one(
+                    {"id": item["content_id"]},
+                    {"$set": {"status": "published" if published_count > 0 else "draft"}}
+                )
 
 @api.get("/publish/queue/{project_id}")
 async def get_publish_queue(project_id: str, request: Request):
