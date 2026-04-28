@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -54,6 +55,16 @@ async def lifespan(app_instance):
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
+
+@app.get("/api/media/ig/{filename}")
+async def serve_ig_media(filename: str):
+    fpath = Path("/app/uploads") / filename
+    if not fpath.exists() or not fpath.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    ext = fpath.suffix.lower()
+    mime = "image/jpeg" if ext in {".jpg", ".jpeg"} else "image/png" if ext == ".png" else "video/mp4" if ext == ".mp4" else "application/octet-stream"
+    return FileResponse(path=str(fpath), media_type=mime, headers={"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"})
+
 api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
@@ -2320,7 +2331,7 @@ async def _prepare_instagram_image_url(media_doc: dict, app_url: str) -> str:
             f"Immagine non convertibile per Instagram: {media_doc.get('original_name') or media_doc.get('filename') or media_url}. {str(e)[:120]}"
         ) from e
 
-    return f"{app_url}/api/media/file/{safe_name}"
+    return f"{app_url}/api/media/ig/{safe_name}"
 
 async def _publish_instagram(
     token: str,
