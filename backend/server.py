@@ -3215,55 +3215,180 @@ class DalleGenerateInput(BaseModel):
     project_id: str
     model: str = "flux"
 
+class CarouselSlidesGenerateInput(BaseModel):
+    content_id: str
+    project_id: str
+    model: str = "openai"
+    style: str = "elegant"
+    slides_count: int = 6
+
+CAROUSEL_VISUAL_STYLES = {
+    "elegant": {
+        "label": "Elegant",
+        "prompt": "Luxury editorial design, refined typography, high-end magazine aesthetic, soft contrast, balanced spacing, tasteful color palette, premium visual hierarchy.",
+    },
+    "minimal": {
+        "label": "Minimal",
+        "prompt": "Minimal Swiss-inspired layout, clean grid, lots of breathing room, restrained palette, precise alignment, subtle accents, understated sophistication.",
+    },
+    "bold": {
+        "label": "Bold",
+        "prompt": "Bold poster-like design, strong contrast, large typography, assertive hierarchy, graphic impact, energetic composition, contemporary visual punch.",
+    },
+    "lowtone": {
+        "label": "Lowtone",
+        "prompt": "Muted low-tone palette, cinematic calm mood, soft neutrals, elegant shadows, subtle texture, intimate and understated visual language.",
+    },
+    "editorial": {
+        "label": "Editorial",
+        "prompt": "Modern editorial carousel, art direction forward, premium publication vibe, balanced text blocks, sophisticated composition, polished typography.",
+    },
+    "luxury": {
+        "label": "Luxury",
+        "prompt": "Luxury brand campaign aesthetic, polished, spacious, expensive-looking design, elegant typography, controlled contrast, prestige visual identity.",
+    },
+}
+
+async def _generate_image_bytes(prompt: str, model: str, size: str = "1024x1536") -> tuple[bytes, str, str]:
+    if model == "openai":
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        resp = await client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            size=size,
+            quality="medium",
+        )
+        image_b64 = resp.data[0].b64_json
+        return base64.b64decode(image_b64), "png", "OpenAI GPT Image"
+    if model == "gemini":
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        if not gemini_key:
+            raise HTTPException(400, "GEMINI_API_KEY non configurata")
+        from google import genai as ggenai
+        from google.genai import types as gtypes
+        gclient = ggenai.Client(api_key=gemini_key)
+        resp = gclient.models.generate_images(
+            model="imagen-3.0-generate-002",
+            prompt=prompt,
+            config=gtypes.GenerateImagesConfig(number_of_images=1, aspect_ratio="3:4")
+        )
+        image_bytes = resp.generated_images[0].image.image_bytes
+        return image_bytes, "png", "Nano Banana"
+
+    fal_key = os.environ.get("FAL_API_KEY", "")
+    if not fal_key:
+        raise HTTPException(400, "FAL_API_KEY non configurata")
+    async with httpx.AsyncClient(timeout=120) as hc:
+        r = await hc.post(
+            "https://fal.run/fal-ai/flux/dev",
+            headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
+            json={"prompt": prompt, "image_size": "portrait_4_3", "num_images": 1, "output_format": "jpeg"}
+        )
+        r.raise_for_status()
+        image_url = r.json()["images"][0]["url"]
+    async with httpx.AsyncClient(timeout=60) as hc:
+        img_r = await hc.get(image_url)
+        img_r.raise_for_status()
+        image_bytes = img_r.content
+    return image_bytes, "jpg", "FLUX"
+
+async def _save_generated_media(content_id: str, image_bytes: bytes, ext: str, source_label: str, original_name: str, extra: Optional[dict] = None) -> dict:
+    fname = f"{source_label.lower().replace(' ', '_').replace('/', '_')}_{uuid.uuid4().hex}.{ext}"
+    fpath = UPLOAD_DIR / fname
+    with open(fpath, "wb") as f:
+        f.write(image_bytes)
+    media_doc = {
+        "id": str(uuid.uuid4()),
+        "filename": fname,
+        "original_name": original_name,
+        "url": f"/api/media/file/{fname}",
+        "type": "image",
+        "source": source_label,
+        "size": len(image_bytes),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if extra:
+        media_doc.update(extra)
+    await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
+    return media_doc
+
 @api.post("/media/generate-dalle")
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
     await get_current_user(request)
     try:
-        if inp.model == "gemini":
-            gemini_key = os.environ.get("GEMINI_API_KEY", "")
-            if not gemini_key:
-                raise HTTPException(400, "GEMINI_API_KEY non configurata")
-            from google import genai as ggenai
-            from google.genai import types as gtypes
-            gclient = ggenai.Client(api_key=gemini_key)
-            resp = gclient.models.generate_images(
-                model="imagen-3.0-generate-002",
-                prompt=inp.prompt,
-                config=gtypes.GenerateImagesConfig(number_of_images=1, aspect_ratio="4:3")
-            )
-            image_bytes = resp.generated_images[0].image.image_bytes
-            fname = f"gemini_{uuid.uuid4().hex}.png"
-            source_label = "Nano Banana"
-        else:
-            fal_key = os.environ.get("FAL_API_KEY", "")
-            if not fal_key:
-                raise HTTPException(400, "FAL_API_KEY non configurata")
-            async with httpx.AsyncClient(timeout=120) as hc:
-                r = await hc.post(
-                    "https://fal.run/fal-ai/flux/dev",
-                    headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
-                    json={"prompt": inp.prompt, "image_size": "landscape_4_3", "num_images": 1, "output_format": "jpeg"}
-                )
-                r.raise_for_status()
-                image_url = r.json()["images"][0]["url"]
-            async with httpx.AsyncClient(timeout=60) as hc:
-                img_r = await hc.get(image_url)
-                img_r.raise_for_status()
-                image_bytes = img_r.content
-            fname = f"flux_{uuid.uuid4().hex}.jpg"
-            source_label = "FLUX"
-        fpath = UPLOAD_DIR / fname
-        with open(fpath, "wb") as f:
-            f.write(image_bytes)
-        media_url = f"/api/media/file/{fname}"
-        media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"{source_label}: {inp.prompt[:50]}", "url": media_url, "type": "image", "source": inp.model, "size": len(image_bytes), "created_at": datetime.now(timezone.utc).isoformat()}
-        await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
+        image_bytes, ext, source_label = await _generate_image_bytes(inp.prompt, inp.model, size="1024x1536" if inp.model == "openai" else "1024x1536")
+        media_doc = await _save_generated_media(
+            inp.content_id,
+            image_bytes,
+            ext,
+            source_label,
+            f"{source_label}: {inp.prompt[:50]}",
+            {"source_model": inp.model}
+        )
         return media_doc
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Image generation error ({inp.model}): {e}")
         raise HTTPException(500, f"Errore generazione immagine: {str(e)}")
+
+@api.post("/media/generate-carousel-slides")
+async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Request):
+    user = await get_current_user(request)
+    content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
+    if not content:
+        raise HTTPException(404, "Contenuto non trovato")
+    project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]}, {"_id": 0})
+    if not project:
+        raise HTTPException(404, "Progetto non trovato")
+    slides = [coerce_str(s).strip() for s in (content.get("slides") or []) if coerce_str(s).strip()]
+    if not slides:
+        raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
+
+    style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
+    style_block = CAROUSEL_VISUAL_STYLES[style_id]["prompt"]
+    total_slides = max(4, min(int(inp.slides_count or 6), min(len(slides), 7)))
+    selected_slides = slides[:total_slides]
+    project_hint = " | ".join(filter(None, [
+        coerce_str(project.get("sector", "")),
+        coerce_str(project.get("description", ""))[:180],
+        coerce_str(project.get("brief_notes", ""))[:180],
+    ]))
+
+    created_media = []
+    for index, slide_text in enumerate(selected_slides, start=1):
+        prompt = (
+            f"Create a premium Instagram carousel slide in vertical 4:5 format.\n"
+            f"Style preset: {CAROUSEL_VISUAL_STYLES[style_id]['label']}. {style_block}\n"
+            f"Context: {project_hint or 'generic creator brand'}.\n"
+            f"This is slide {index} of {total_slides}.\n"
+            f"Text to render on the slide:\n{slide_text}\n\n"
+            f"Requirements:\n"
+            f"- one single slide, not a collage\n"
+            f"- precise text rendering, keep the wording faithful\n"
+            f"- strong editorial hierarchy with readable title and body\n"
+            f"- mobile-friendly spacing and margins\n"
+            f"- no watermarks, no UI chrome, no device mockups\n"
+            f"- polished social design suitable for a professional carousel"
+        )
+        image_bytes, ext, source_label = await _generate_image_bytes(prompt, inp.model, size="1024x1536")
+        media_doc = await _save_generated_media(
+            inp.content_id,
+            image_bytes,
+            ext,
+            source_label,
+            f"Carousel slide {index} - {CAROUSEL_VISUAL_STYLES[style_id]['label']}",
+            {
+                "source_model": inp.model,
+                "carousel_slide_index": index,
+                "carousel_style": style_id,
+                "generated_for_content": "carousel",
+            }
+        )
+        created_media.append(media_doc)
+
+    return {"items": created_media, "count": len(created_media), "style": style_id, "model": inp.model}
 
 # ── ADMIN CONSOLE ─────────────────────────────────────
 class PowerUserInput(BaseModel):

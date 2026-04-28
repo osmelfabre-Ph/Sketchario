@@ -15,6 +15,15 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { richTextToPlainText, normalizeRichTextForEditor } from '../lib/utils';
 
+const CAROUSEL_STYLE_PRESETS = [
+  { id: 'elegant', tone: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', accent: '#334155' },
+  { id: 'minimal', tone: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)', accent: '#0f172a' },
+  { id: 'bold', tone: 'linear-gradient(135deg, #0f172a 0%, #7c3aed 100%)', accent: '#ffffff' },
+  { id: 'lowtone', tone: 'linear-gradient(135deg, #1f2937 0%, #4b5563 100%)', accent: '#f9fafb' },
+  { id: 'editorial', tone: 'linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%)', accent: '#4c1d95' },
+  { id: 'luxury', tone: 'linear-gradient(135deg, #111827 0%, #bfa46f 100%)', accent: '#fef3c7' },
+];
+
 function RichCaption({ value, onChange }) {
   const { t } = useTranslation();
   const editor = useEditor({
@@ -338,6 +347,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
   const [fluxComposition, setFluxComposition] = useState('wide');
   const [imageModel, setImageModel] = useState('flux');
+  const [showCarouselStudio, setShowCarouselStudio] = useState(false);
+  const [carouselStylePreset, setCarouselStylePreset] = useState('elegant');
+  const [carouselSlidesCount, setCarouselSlidesCount] = useState(Math.min(6, Math.max(4, (initialContent.slides || []).length || 6)));
   const [showLibrary, setShowLibrary] = useState(false);
   const [libraryItems, setLibraryItems] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -818,6 +830,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   };
 
   const hashtagList = String(editHashtags || '').split(/[\s,]+/).filter(h => h.length > 1).map(h => h.startsWith('#') ? h : `#${h}`);
+  const carouselSlides = Array.isArray(content.slides) ? content.slides.filter(Boolean) : [];
 
   /* Shared components */
   const SocialColumn = () => (
@@ -987,6 +1000,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
         <button className="btn-ghost text-xs py-1.5 px-3" onClick={regenerate} disabled={saving}>
           <ArrowClockwise size={14} /> {t('editor.regenerate')}
         </button>
+        {content.format === 'carousel' && carouselSlides.length > 0 && (
+          <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => {
+            setCarouselSlidesCount(Math.min(6, Math.max(4, carouselSlides.length || 6)));
+            setShowCarouselStudio(true);
+          }}>
+            <Images size={14} /> {t('editor.generateCarouselSlides')}
+          </button>
+        )}
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title={t('editor.generateImage')} onClick={() => {
             setInputModal({ title: t('editor.imagePromptTitle'), placeholder: t('editor.imagePromptPlaceholder'), value: editVisualDirection || editScript || '', multiline: true, isFlux: true,
@@ -1246,6 +1267,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <div className="flex gap-2 mb-3">
                 <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
                 <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
+                <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'openai' ? 'active' : ''}`} onClick={() => setImageModel('openai')}>◎ OpenAI</button>
               </div>
               <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.style')}</p>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -1294,6 +1316,104 @@ export default function ContentDetail({ content: initialContent, project, onClos
               setInputModal(null);
               inputModal.onConfirm(finalVal);
             }}>{t('editor.generateAction')}</button>
+          </div>
+        </motion.div>
+      </div>
+    )}
+    {showCarouselStudio && (
+      <div className="fixed inset-0 z-[240] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }} onClick={() => setShowCarouselStudio(false)}>
+        <motion.div initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-3xl rounded-2xl overflow-hidden" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)]">
+            <div>
+              <h3 className="font-semibold text-sm">{t('editor.carouselStudioTitle')}</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-1">{t('editor.carouselStudioSubtitle', { count: carouselSlides.length })}</p>
+            </div>
+            <button className="btn-ghost p-1.5" onClick={() => setShowCarouselStudio(false)}><X size={16} /></button>
+          </div>
+          <div className="p-5 space-y-5">
+            <div>
+              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
+              <div className="flex gap-2 flex-wrap">
+                <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'openai' ? 'active' : ''}`} onClick={() => setImageModel('openai')}>◎ OpenAI</button>
+                <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
+                <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2 gap-3">
+                <p className="text-xs text-[var(--text-muted)]">{t('editor.carouselStylePreset')}</p>
+                <p className="text-[10px] text-[var(--text-muted)]">{t('editor.carouselSlidesToGenerate', { count: carouselSlidesCount })}</p>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {CAROUSEL_STYLE_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setCarouselStylePreset(preset.id)}
+                    className={`rounded-xl p-3 text-left transition-all ${carouselStylePreset === preset.id ? 'ring-2 ring-[var(--gradient-start)]' : ''}`}
+                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+                  >
+                    <div className="h-24 rounded-lg mb-3 p-3 flex flex-col justify-between" style={{ background: preset.tone, color: preset.accent }}>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide">Slide 1</span>
+                      <div>
+                        <p className="text-sm font-bold leading-tight">{t(`editor.carouselStyle.${preset.id}.title`)}</p>
+                        <p className="text-[10px] opacity-80 mt-1">{t(`editor.carouselStyle.${preset.id}.hint`)}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs font-semibold">{t(`editor.carouselStyle.${preset.id}.label`)}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-[var(--text-muted)] block mb-2">{t('editor.carouselSlidesLabel')}</label>
+              <input
+                type="range"
+                min={4}
+                max={Math.min(7, Math.max(4, carouselSlides.length))}
+                value={carouselSlidesCount}
+                onChange={e => setCarouselSlidesCount(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+            <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.carouselPreviewSlides')}</p>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {carouselSlides.slice(0, carouselSlidesCount).map((slide, idx) => (
+                  <div key={idx} className="text-xs rounded-lg px-3 py-2" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <span className="font-semibold text-[var(--text-primary)]">{t('editor.slideN', { count: idx + 1 })}</span>
+                    <p className="text-[var(--text-muted)] mt-1 whitespace-pre-wrap">{slide.slice(0, 220)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3 px-5 pb-5">
+            <button className="btn-ghost flex-1" onClick={() => setShowCarouselStudio(false)} disabled={generatingImage}>{t('common.cancel')}</button>
+            <button className="btn-gradient flex-1" disabled={generatingImage} onClick={async () => {
+              setGeneratingImage(true);
+              const tid = toast.loading(t('editor.carouselGenerating'));
+              try {
+                const { data } = await api.post('/media/generate-carousel-slides', {
+                  content_id: content.id,
+                  project_id: project.id,
+                  model: imageModel,
+                  style: carouselStylePreset,
+                  slides_count: carouselSlidesCount,
+                });
+                const newItems = data?.items || [];
+                const updated = { ...content, media: [...(content.media || []), ...newItems] };
+                setContent(updated);
+                onUpdate?.(updated);
+                setShowCarouselStudio(false);
+                toast.success(t('editor.carouselGenerated', { count: newItems.length }), { id: tid });
+              } catch (e) {
+                toast.error(t('editor.carouselGenerationError', { message: e.response?.data?.detail || e.message }), { id: tid });
+              }
+              setGeneratingImage(false);
+            }}>
+              {generatingImage ? '...' : t('editor.generateCarouselAction')}
+            </button>
           </div>
         </motion.div>
       </div>
