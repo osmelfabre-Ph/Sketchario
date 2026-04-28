@@ -308,6 +308,7 @@
     "socialTab": "Social",
     "previewTab": "Anteprima",
     "socialSelectionLocked": "Social confermati per questa pubblicazione. Per modificarli, riprogramma il contenuto.",
+    "socialAlreadyPublished": "Questi social hanno gia pubblicato questo contenuto. Puoi attivare solo quelli rimanenti per evitare duplicati.",
     "openingHookPlaceholder": "Testo di apertura ad impatto...",
     "avatarScriptPlaceholder": "Script per l'avatar (usa [pausa], [enfasi], [veloce]...)...",
     "visualDirectionPlaceholder": "Sfondo, gesti, abbigliamento, stile...",

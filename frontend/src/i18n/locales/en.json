@@ -308,6 +308,7 @@
     "socialTab": "Social",
     "previewTab": "Preview",
     "socialSelectionLocked": "These socials are locked for this publication. Reschedule the content to change them.",
+    "socialAlreadyPublished": "These socials have already published this content. You can only activate the remaining ones to avoid duplicates.",
     "openingHookPlaceholder": "Impactful opening text...",
     "avatarScriptPlaceholder": "Avatar script (use [pause], [emphasis], [fast]...)...",
     "visualDirectionPlaceholder": "Background, gestures, clothing, style...",

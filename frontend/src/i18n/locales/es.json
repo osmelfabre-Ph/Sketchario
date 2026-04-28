@@ -308,6 +308,7 @@
     "socialTab": "Social",
     "previewTab": "Vista previa",
     "socialSelectionLocked": "Estas redes están bloqueadas para esta publicación. Reprograma el contenido para cambiarlas.",
+    "socialAlreadyPublished": "Estas redes ya publicaron este contenido. Solo puedes activar las restantes para evitar duplicados.",
     "openingHookPlaceholder": "Texto de apertura impactante...",
     "avatarScriptPlaceholder": "Guion para el avatar (usa [pausa], [énfasis], [rápido]...)...",
     "visualDirectionPlaceholder": "Fondo, gestos, ropa, estilo...",

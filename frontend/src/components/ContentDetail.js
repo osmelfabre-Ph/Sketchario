@@ -317,6 +317,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [socialProfiles, setSocialProfiles] = useState([]);
   const [projectSocials, setProjectSocials] = useState([]);
   const [selectedSocials, setSelectedSocials] = useState([]);
+  const [publishedSocials, setPublishedSocials] = useState([]);
   const [saving, setSaving] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');
@@ -350,13 +351,19 @@ export default function ContentDetail({ content: initialContent, project, onClos
     );
     const activeItems = items.filter(q => q.status === 'queued' || q.status === 'processing');
     const publishedItems = items.filter(q => q.status === 'published');
-    const socialSourceItems = effectiveStatus === 'published' && publishedItems.length > 0
-      ? publishedItems
-      : items;
-    const uniqueSocialIds = [...new Set(socialSourceItems.map(q => q.social_profile_id).filter(Boolean))];
+    const retryableItems = items.filter(q => q.status !== 'published');
+    const publishedSocialIds = [...new Set(publishedItems.map(q => q.social_profile_id).filter(Boolean))];
+    const retryableSocialIds = [...new Set(retryableItems.map(q => q.social_profile_id).filter(Boolean))];
+    const socialSourceItems = activeItems.length > 0
+      ? activeItems
+      : (retryableItems.length > 0 ? retryableItems : publishedItems);
 
     setContentQueueItems(activeItems);
-    setSelectedSocials(uniqueSocialIds);
+    setPublishedSocials(publishedSocialIds);
+    setSelectedSocials(prev => {
+      if (retryableSocialIds.length > 0) return retryableSocialIds;
+      return prev.filter(id => !publishedSocialIds.includes(id));
+    });
 
     if (socialSourceItems.length > 0) {
       const dt = new Date(socialSourceItems[0].scheduled_at);
@@ -369,6 +376,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
         times[q.social_profile_id] = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
       });
       setSocialTimes(times);
+    } else {
+      setSocialTimes({});
     }
   }, [content.status, initialContent.id]);
 
@@ -645,11 +654,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
   };
 
   const toggleSocial = (profId) => {
+    if (publishedSocials.includes(profId)) return;
     setSelectedSocials(prev => prev.includes(profId) ? prev.filter(id => id !== profId) : [...prev, profId]);
   };
 
-  const selectedProfiles = socialProfiles.filter(p => selectedSocials.includes(p.id));
-  const socialsLocked = content.status === 'published' || ((content.status === 'scheduled' || contentQueueItems.length > 0) && !showSchedule);
+  const displayedSocialIds = [...new Set([...publishedSocials, ...selectedSocials])];
+  const selectedProfiles = socialProfiles.filter(p => displayedSocialIds.includes(p.id));
+  const actionableSelectedProfiles = socialProfiles.filter(p => selectedSocials.includes(p.id));
+  const socialsLocked = (content.status === 'scheduled' || contentQueueItems.length > 0) && !showSchedule;
 
   const save = async () => {
     setSaving(true);
@@ -813,18 +825,21 @@ export default function ContentDetail({ content: initialContent, project, onClos
       <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3">{t('project.social.publishOn')}</p>
       {socialProfiles.map(prof => {
         const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#fff', name: prof.platform };
+        const isPublished = publishedSocials.includes(prof.id);
         const isSelected = selectedSocials.includes(prof.id);
+        const isVisible = isPublished || isSelected;
+        const isDisabled = isPublished || socialsLocked;
         return (
           <div key={prof.id} data-testid={`social-toggle-${prof.platform}`}
             className="flex items-center gap-2 p-2 rounded-lg mb-2 transition-all"
             style={{
-              background: isSelected ? (socialsLocked ? 'rgba(255,255,255,0.06)' : `${pi.color}15`) : 'transparent',
-              border: isSelected ? `1.5px solid ${socialsLocked ? 'rgba(255,255,255,0.12)' : pi.color}` : '1.5px solid transparent',
-              opacity: socialsLocked ? (isSelected ? 0.7 : 0.35) : (isSelected ? 1 : 0.5),
-              cursor: socialsLocked ? 'default' : 'pointer'
+              background: isVisible ? (isPublished ? 'rgba(255,255,255,0.06)' : socialsLocked ? 'rgba(255,255,255,0.06)' : `${pi.color}15`) : 'transparent',
+              border: isVisible ? `1.5px solid ${isPublished ? 'rgba(156,163,175,0.45)' : socialsLocked ? 'rgba(255,255,255,0.12)' : pi.color}` : '1.5px solid transparent',
+              opacity: isPublished ? 0.65 : socialsLocked ? (isSelected ? 0.7 : 0.35) : (isSelected ? 1 : 0.5),
+              cursor: isDisabled ? 'default' : 'pointer'
             }}
-            title={socialsLocked ? t('editor.socialSelectionLocked') : pi.name}
-            onClick={() => { if (!socialsLocked) toggleSocial(prof.id); }}>
+            title={isPublished ? t('editor.socialAlreadyPublished') : socialsLocked ? t('editor.socialSelectionLocked') : pi.name}
+            onClick={() => { if (!isDisabled) toggleSocial(prof.id); }}>
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${pi.color}20` }}>
               <pi.Icon weight="fill" size={16} color={pi.color} />
             </div>
@@ -832,11 +847,16 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <p className="text-xs font-medium truncate">{prof.profile_name}</p>
               <p className="text-[10px] text-[var(--text-muted)]">{pi.name}</p>
             </div>
-            {isSelected && <Check size={14} weight="bold" color={socialsLocked ? '#9ca3af' : pi.color} />}
+            {isVisible && <Check size={14} weight="bold" color={isPublished || socialsLocked ? '#9ca3af' : pi.color} />}
           </div>
         );
       })}
       {socialProfiles.length === 0 && <p className="text-xs text-[var(--text-muted)]">{t('project.social.noSocialConnected')}</p>}
+      {publishedSocials.length > 0 && (
+        <p className="text-[10px] text-[var(--text-muted)] mt-2">
+          {t('editor.socialAlreadyPublished')}
+        </p>
+      )}
       {socialsLocked && selectedSocials.length > 0 && (
         <p className="text-[10px] text-[var(--text-muted)] mt-2">
           {t('editor.socialSelectionLocked')}
@@ -1006,7 +1026,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     <div className={isMobile ? 'p-4' : 'w-80 border-l border-[var(--border-color)] p-4 overflow-y-auto flex-shrink-0'}>
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase">{t('editor.preview')}</p>
-        {selectedSocials.length > 0 && <span className="badge blue text-[10px]">{selectedSocials.length} {t('editor.socials')}</span>}
+        {displayedSocialIds.length > 0 && <span className="badge blue text-[10px]">{displayedSocialIds.length} {t('editor.socials')}</span>}
       </div>
       {selectedProfiles.length > 0 ? selectedProfiles.map(prof => (
         <div key={prof.id} className="mb-5">
@@ -1065,7 +1085,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         <div className="flex border-b border-[var(--border-color)] flex-shrink-0">
           {[
             { id: 'editor', label: t('editor.editorTab') },
-            { id: 'social', label: `${t('editor.socialTab')}${selectedSocials.length > 0 ? ` (${selectedSocials.length})` : ''}` },
+            { id: 'social', label: `${t('editor.socialTab')}${displayedSocialIds.length > 0 ? ` (${displayedSocialIds.length})` : ''}` },
             { id: 'preview', label: t('editor.previewTab') },
           ].map(t => (
             <button key={t.id} className={`flex-1 text-xs font-medium py-2.5 transition-colors ${mobileTab === t.id ? 'text-white border-b-2 border-[var(--gradient-start)]' : 'text-[var(--text-muted)]'}`}
@@ -1104,7 +1124,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               {new Date(contentQueueItems[0].scheduled_at).toLocaleString(locale, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
-          {selectedSocials.length > 0 && <span className="text-[10px] text-[var(--text-muted)]">{selectedSocials.length} {t('editor.socials')}</span>}
+          {displayedSocialIds.length > 0 && <span className="text-[10px] text-[var(--text-muted)]">{displayedSocialIds.length} {t('editor.socials')}</span>}
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           <button className="btn-ghost text-xs py-1.5" onClick={save} disabled={saving} data-testid="save-draft-btn">
@@ -1407,14 +1427,14 @@ export default function ContentDetail({ content: initialContent, project, onClos
 
           {/* Selected socials indicator */}
           <div className="px-5 pb-3">
-            {selectedProfiles.length === 0 ? (
+            {actionableSelectedProfiles.length === 0 ? (
               <p className="text-xs text-center py-2 rounded-xl" style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
                 ⚠ {t('editor.noSocials')}
               </p>
             ) : (
               <div className="flex items-center gap-2 py-2 px-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
                 <div className="flex -space-x-1.5">
-                  {selectedProfiles.map(prof => {
+                  {actionableSelectedProfiles.map(prof => {
                     const pi = PLATFORM_ICONS[prof.platform] || { Icon: Globe, color: '#888' };
                     return (
                       <div key={prof.id} className="w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-[var(--bg-card)]" style={{ background: pi.color }}>
@@ -1423,7 +1443,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     );
                   })}
                 </div>
-                <span className="text-xs text-[var(--text-muted)]">{t('editor.selectedSocialsCount', { count: selectedProfiles.length })}</span>
+                <span className="text-xs text-[var(--text-muted)]">{t('editor.selectedSocialsCount', { count: actionableSelectedProfiles.length })}</span>
               </div>
             )}
           </div>

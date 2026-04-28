@@ -308,6 +308,7 @@
     "socialTab": "Social",
     "previewTab": "Aperçu",
     "socialSelectionLocked": "Ces réseaux sont verrouillés pour cette publication. Replanifiez le contenu pour les modifier.",
+    "socialAlreadyPublished": "Ces réseaux ont deja publie ce contenu. Vous pouvez activer uniquement ceux qui restent pour eviter les doublons.",
     "openingHookPlaceholder": "Texte d'ouverture percutant...",
     "avatarScriptPlaceholder": "Script pour l'avatar (utilisez [pause], [emphase], [rapide]...)...",
     "visualDirectionPlaceholder": "Fond, gestes, vêtements, style...",
