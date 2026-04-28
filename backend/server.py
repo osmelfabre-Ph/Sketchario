@@ -58,6 +58,7 @@ api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
+GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v24.0")
 
 # ── SMTP EMAIL ───────────────────────────────────────
 async def send_email_smtp(to: str, subject: str, html_body: str):
@@ -2005,7 +2006,7 @@ async def _get_instagram_publish_token(user_token: str, ig_id: str) -> str:
 
     async with httpx.AsyncClient(timeout=30) as c:
         pages_r = await c.get(
-            "https://graph.facebook.com/v19.0/me/accounts",
+            f"https://graph.facebook.com/{GRAPH_API_VERSION}/me/accounts",
             params={"access_token": user_token}
         )
         pages_r.raise_for_status()
@@ -2015,7 +2016,7 @@ async def _get_instagram_publish_token(user_token: str, ig_id: str) -> str:
             if not page_token:
                 continue
             ig_r = await c.get(
-                f"https://graph.facebook.com/v19.0/{page['id']}",
+                f"https://graph.facebook.com/{GRAPH_API_VERSION}/{page['id']}",
                 params={"fields": "instagram_business_account", "access_token": page_token}
             )
             if ig_r.status_code != 200:
@@ -2035,7 +2036,7 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
     async with httpx.AsyncClient(timeout=20) as c:
         while datetime.now(timezone.utc) < deadline:
             status_r = await c.get(
-                f"https://graph.facebook.com/v19.0/{container_id}",
+                f"https://graph.facebook.com/{GRAPH_API_VERSION}/{container_id}",
                 params={"fields": "status_code,status,error_message,status_message", "access_token": token},
             )
             if status_r.status_code != 200:
@@ -2071,7 +2072,7 @@ async def _publish_instagram_container_with_retry(
 
     while datetime.now(timezone.utc) < deadline:
         pub_r = await client.post(
-            f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
+            f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media_publish",
             data={"creation_id": container_id, "access_token": publish_token}
         )
         if pub_r.status_code == 200:
@@ -2336,7 +2337,7 @@ async def _publish_instagram(
     async with httpx.AsyncClient(timeout=60) as c:
         if format_name in {"reel", "prompted_reel"} and video_url:
             container_r = await c.post(
-                f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={
                     "media_type": "REELS",
                     "video_url": video_url,
@@ -2356,9 +2357,8 @@ async def _publish_instagram(
         elif len(image_urls) == 1:
             # Single image post
             container_r = await c.post(
-                f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={
-                    "media_type": "IMAGE",
                     "image_url": image_urls[0],
                     "caption": text,
                     "access_token": publish_token
@@ -2376,9 +2376,8 @@ async def _publish_instagram(
             child_ids = []
             for url in image_urls[:10]:
                 item_r = await c.post(
-                    f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                    f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                     data={
-                        "media_type": "IMAGE",
                         "image_url": url,
                         "is_carousel_item": "true",
                         "access_token": publish_token
@@ -2392,7 +2391,7 @@ async def _publish_instagram(
             if not child_ids:
                 raise ValueError("Nessun media carousel creato su Instagram")
             carousel_r = await c.post(
-                f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={"media_type": "CAROUSEL", "children": ",".join(child_ids),
                       "caption": text, "access_token": publish_token}
             )
