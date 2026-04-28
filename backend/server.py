@@ -2233,14 +2233,49 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
         r.raise_for_status()
         return r.json().get("id", "")
 
-async def _publish_instagram(token: str, ig_id: str, text: str, image_urls: list) -> str:
+def _media_extension(media_doc: dict) -> str:
+    raw = str(
+        media_doc.get("filename")
+        or media_doc.get("original_name")
+        or media_doc.get("url")
+        or ""
+    ).split("?")[0]
+    if "." not in raw:
+        return ""
+    return raw.rsplit(".", 1)[-1].lower()
+
+async def _publish_instagram(
+    token: str,
+    ig_id: str,
+    text: str,
+    image_urls: list,
+    format_name: str = "reel",
+    video_url: Optional[str] = None
+) -> str:
     if not ig_id:
         raise ValueError("Account Instagram Business non trovato. Collega prima una Pagina Facebook con Instagram Business.")
-    if not image_urls:
-        raise ValueError("Instagram richiede almeno un'immagine. Carica prima un media sul contenuto.")
     publish_token = await _get_instagram_publish_token(token, ig_id)
     async with httpx.AsyncClient(timeout=60) as c:
-        if len(image_urls) == 1:
+        if format_name in {"reel", "prompted_reel"} and video_url:
+            container_r = await c.post(
+                f"https://graph.facebook.com/v19.0/{ig_id}/media",
+                data={
+                    "media_type": "REELS",
+                    "video_url": video_url,
+                    "caption": text,
+                    "access_token": publish_token
+                }
+            )
+            if container_r.status_code != 200:
+                fb_err = container_r.json().get("error", {})
+                raise ValueError(f"IG reel error: {fb_err.get('message', container_r.text[:200])}")
+            container_id = container_r.json().get("id", "")
+            if not container_id:
+                raise ValueError("IG reel container returned no ID")
+            await _wait_for_instagram_container_ready(publish_token, container_id)
+        elif not image_urls:
+            raise ValueError("Instagram accetta solo JPG, JPEG, PNG o video MP4/MOV. Il media collegato a questo contenuto non e supportato da Instagram.")
+        elif len(image_urls) == 1:
             # Single image post
             container_r = await c.post(
                 f"https://graph.facebook.com/v19.0/{ig_id}/media",
@@ -2317,10 +2352,33 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
         return f"{app_url}{u}" if u and u.startswith("/") else u
     image_urls = [full_url(m.get("url")) for m in media if m.get("type") == "image" and m.get("url")]
     image_url = image_urls[0] if image_urls else None
+    ig_supported_image_exts = {"jpg", "jpeg", "png"}
+    ig_supported_video_exts = {"mp4", "mov"}
+    ig_image_urls = [
+        full_url(m.get("url"))
+        for m in media
+        if m.get("type") == "image"
+        and m.get("url")
+        and _media_extension(m) in ig_supported_image_exts
+    ]
+    ig_video_urls = [
+        full_url(m.get("url"))
+        for m in media
+        if m.get("type") == "video"
+        and m.get("url")
+        and _media_extension(m) in ig_supported_video_exts
+    ]
     if platform == "facebook":
         return await _publish_facebook(token, text, image_urls)
     elif platform == "instagram":
-        return await _publish_instagram(token, profile_id, text, image_urls)
+        return await _publish_instagram(
+            token,
+            profile_id,
+            text,
+            ig_image_urls,
+            content.get("format", "reel"),
+            ig_video_urls[0] if ig_video_urls else None,
+        )
     elif platform == "linkedin":
         return await _publish_linkedin(token, text, profile_id, image_urls=image_urls)
     elif platform == "pinterest":
