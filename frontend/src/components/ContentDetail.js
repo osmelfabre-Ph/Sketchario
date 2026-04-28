@@ -343,6 +343,35 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [socialTimes, setSocialTimes] = useState({});
   const [markingPublished, setMarkingPublished] = useState(false);
 
+  const syncQueueState = useCallback((queueData, effectiveStatus = content.status) => {
+    const items = (queueData || []).filter(q =>
+      q.content_id === initialContent.id
+      && ['queued', 'processing', 'failed', 'published'].includes(String(q.status || ''))
+    );
+    const activeItems = items.filter(q => q.status === 'queued' || q.status === 'processing');
+    const publishedItems = items.filter(q => q.status === 'published');
+    const socialSourceItems = effectiveStatus === 'published' && publishedItems.length > 0
+      ? publishedItems
+      : items;
+    const uniqueSocialIds = [...new Set(socialSourceItems.map(q => q.social_profile_id).filter(Boolean))];
+
+    setContentQueueItems(activeItems);
+    setSelectedSocials(uniqueSocialIds);
+
+    if (socialSourceItems.length > 0) {
+      const dt = new Date(socialSourceItems[0].scheduled_at);
+      const pad = n => String(n).padStart(2, '0');
+      setScheduleDate(`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`);
+      setScheduleTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
+      const times = {};
+      socialSourceItems.forEach(q => {
+        const d = new Date(q.scheduled_at);
+        times[q.social_profile_id] = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      });
+      setSocialTimes(times);
+    }
+  }, [content.status, initialContent.id]);
+
   useEffect(() => {
     setContent(initialContent);
   }, [initialContent]);
@@ -351,29 +380,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
     api.get('/social/profiles').then(r => setSocialProfiles((r.data || []).filter(p => p.platform !== 'google_slides'))).catch(() => {});
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
     api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
-    api.get(`/publish/queue/${project.id}`).then(r => {
-      const items = r.data.filter(q =>
-        q.content_id === initialContent.id
-        && ['queued', 'processing', 'failed', 'published'].includes(String(q.status || ''))
-      );
-      const activeItems = items.filter(q => q.status === 'queued' || q.status === 'processing');
-      setContentQueueItems(activeItems);
-      if (items.length > 0) {
-        // Use local time methods so the popup shows the user's intended local time
-        const dt = new Date(items[0].scheduled_at);
-        const pad = n => String(n).padStart(2, '0');
-        setScheduleDate(`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`);
-        setScheduleTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
-        setSelectedSocials(items.map(q => q.social_profile_id).filter(Boolean));
-        const times = {};
-        items.forEach(q => {
-          const d = new Date(q.scheduled_at);
-          times[q.social_profile_id] = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        });
-        setSocialTimes(times);
-      }
-    }).catch(() => {});
-  }, [api, project.id, initialContent.id]);
+    api.get(`/publish/queue/${project.id}`).then(r => syncQueueState(r.data, initialContent.status)).catch(() => {});
+  }, [api, project.id, initialContent.id, initialContent.status, syncQueueState]);
 
   useEffect(() => {
     if (content.status !== 'scheduled') return;
@@ -386,10 +394,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
         ]);
 
         const queueItems = (queueData || []).filter(q => q.content_id === content.id);
-        const queuedItems = queueItems.filter(q => q.status === 'queued' || q.status === 'processing');
-        setContentQueueItems(queuedItems);
 
         const latestContent = (contentsData || []).find(c => c.id === content.id);
+        syncQueueState(queueItems, latestContent?.status || content.status);
         if (latestContent && latestContent.status && latestContent.status !== content.status) {
           setContent(prev => {
             const updated = { ...prev, status: latestContent.status };
@@ -403,7 +410,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     refreshStatus();
     const interval = setInterval(refreshStatus, 5000);
     return () => clearInterval(interval);
-  }, [api, project.id, content.id, content.status, onUpdate]);
+  }, [api, project.id, content.id, content.status, onUpdate, syncQueueState]);
 
   useEffect(() => {
     if (showSchedule) {
@@ -642,6 +649,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   };
 
   const selectedProfiles = socialProfiles.filter(p => selectedSocials.includes(p.id));
+  const socialsLocked = content.status === 'published' || ((content.status === 'scheduled' || contentQueueItems.length > 0) && !showSchedule);
 
   const save = async () => {
     setSaving(true);
@@ -808,9 +816,15 @@ export default function ContentDetail({ content: initialContent, project, onClos
         const isSelected = selectedSocials.includes(prof.id);
         return (
           <div key={prof.id} data-testid={`social-toggle-${prof.platform}`}
-            className="flex items-center gap-2 p-2 rounded-lg mb-2 cursor-pointer transition-all"
-            style={{ background: isSelected ? `${pi.color}15` : 'transparent', border: isSelected ? `1.5px solid ${pi.color}` : '1.5px solid transparent', opacity: isSelected ? 1 : 0.5 }}
-            onClick={() => toggleSocial(prof.id)}>
+            className="flex items-center gap-2 p-2 rounded-lg mb-2 transition-all"
+            style={{
+              background: isSelected ? (socialsLocked ? 'rgba(255,255,255,0.06)' : `${pi.color}15`) : 'transparent',
+              border: isSelected ? `1.5px solid ${socialsLocked ? 'rgba(255,255,255,0.12)' : pi.color}` : '1.5px solid transparent',
+              opacity: socialsLocked ? (isSelected ? 0.7 : 0.35) : (isSelected ? 1 : 0.5),
+              cursor: socialsLocked ? 'default' : 'pointer'
+            }}
+            title={socialsLocked ? t('editor.socialSelectionLocked') : pi.name}
+            onClick={() => { if (!socialsLocked) toggleSocial(prof.id); }}>
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${pi.color}20` }}>
               <pi.Icon weight="fill" size={16} color={pi.color} />
             </div>
@@ -818,11 +832,16 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <p className="text-xs font-medium truncate">{prof.profile_name}</p>
               <p className="text-[10px] text-[var(--text-muted)]">{pi.name}</p>
             </div>
-            {isSelected && <Check size={14} weight="bold" color={pi.color} />}
+            {isSelected && <Check size={14} weight="bold" color={socialsLocked ? '#9ca3af' : pi.color} />}
           </div>
         );
       })}
       {socialProfiles.length === 0 && <p className="text-xs text-[var(--text-muted)]">{t('project.social.noSocialConnected')}</p>}
+      {socialsLocked && selectedSocials.length > 0 && (
+        <p className="text-[10px] text-[var(--text-muted)] mt-2">
+          {t('editor.socialSelectionLocked')}
+        </p>
+      )}
     </div>
   );
 

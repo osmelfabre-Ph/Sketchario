@@ -307,6 +307,7 @@
     "editorTab": "Editor",
     "socialTab": "Social",
     "previewTab": "Preview",
+    "socialSelectionLocked": "These socials are locked for this publication. Reschedule the content to change them.",
     "openingHookPlaceholder": "Impactful opening text...",
     "avatarScriptPlaceholder": "Avatar script (use [pause], [emphasis], [fast]...)...",
     "visualDirectionPlaceholder": "Background, gestures, clothing, style...",

@@ -307,6 +307,7 @@
     "editorTab": "Editor",
     "socialTab": "Social",
     "previewTab": "Vista previa",
+    "socialSelectionLocked": "Estas redes están bloqueadas para esta publicación. Reprograma el contenido para cambiarlas.",
     "openingHookPlaceholder": "Texto de apertura impactante...",
     "avatarScriptPlaceholder": "Guion para el avatar (usa [pausa], [énfasis], [rápido]...)...",
     "visualDirectionPlaceholder": "Fondo, gestos, ropa, estilo...",
