@@ -38,7 +38,7 @@
 
 ---
 
-## Aggiornamenti recenti (2026-04-26 / 2026-04-27)
+## Aggiornamenti recenti (2026-04-26 / 2026-04-28)
 
 ### Editor, preview e contenuti
 - Fix preview caption: i tag HTML (`<p>`, `<br>`, ecc.) non devono più comparire come testo visibile nelle preview
@@ -97,19 +97,44 @@
 - La queue ora viene mostrata ordinata dalla più recente alla più vecchia
 - Endpoint backend per svuotare tutta la queue di un progetto:
   - `DELETE /publish/queue/project/{project_id}`
-- Quando si svuota la queue, i contenuti `scheduled` tornano in `draft` se non risultano pubblicati
+- La logica di `Svuota queue` e stata corretta:
+  - ora rimuove solo item terminali (`published` / `failed`)
+  - non deve piu cancellare i job `queued` / `processing`
+  - non deve piu riportare in `draft` i contenuti ancora programmati
+  - il calendario deve continuare a mostrare i programmati attivi
 - Dopo publish/schedule la UI ora sincronizza meglio lo stato del contenuto con la queue/backend
 - Gli hashtag vengono inclusi davvero nel testo pubblicato sui social, non solo salvati nell'editor
 - Aggiunto pulsante manuale `Pubblicato` nella card/editor contenuto:
   - annulla eventuali item ancora in queue per quella card
   - forza lo stato del contenuto a `published`
   - serve come fallback se il post è online ma la UI non si è ancora allineata
+- Migliorato il comportamento di riapertura di un contenuto gia pubblicato:
+  - i social gia pubblicati restano visibili e grigi
+  - non devono essere ripubblicabili per evitare doppioni
+  - gli altri social restano attivabili per repost o nuova schedulazione
+- Recupero automatico dei job rimasti bloccati in `processing` da oltre 10 minuti
+- Se un job fallisce e non restano altri item attivi:
+  - `published` se almeno un social ha pubblicato
+  - `draft` se nessun social ha pubblicato davvero
 
 ### Instagram publishing
 - Fix token di pubblicazione: il backend risolve il corretto page token associato all'account Instagram Business
 - Aggiunto retry robusto per `media_publish` quando Meta risponde `Media ID is not available`
 - La publish immediata non blocca più l'editor: passa dalla queue in background
-- Stato attuale: **Instagram pubblica correttamente**
+- Aggiunto filtraggio media compatibili per Instagram
+- Aggiunta normalizzazione immagine IG-safe prima della publish:
+  - riapertura file con Pillow
+  - correzione orientamento EXIF
+  - conversione in JPEG standard
+  - padding bianco per rientrare nel rapporto supportato da Instagram
+  - resize prudente del lato massimo
+- I media social ora vengono costruiti con `_backend_url()` invece di `APP_URL`
+- Per il create container Instagram viene passato esplicitamente `media_type=IMAGE` sui post immagine
+- Stato attuale: **Instagram e ancora in diagnosi** sul caso `IG container error: Only photo or video can be accepted as media type`
+- Log utili osservati:
+  - i file `igsafe_*.jpg` rispondono `200`
+  - `content-type: image/jpeg`
+  - il problema sembra piu legato a come Meta interpreta il container che non al semplice nome file `.jpg`
 
 ### Pinterest publishing
 - Migliorata la diagnostica degli errori di pubblicazione Pinterest
@@ -150,7 +175,7 @@
 
 ---
 
-## Sistema i18n (IT/EN/ES/FR) — COMPLETATO PARZIALMENTE
+## Sistema i18n (IT/EN/ES/FR) — ESTESO
 
 ### Stato attuale
 Il sistema i18n è operativo. Packages installati: `i18next`, `react-i18next`, `i18next-browser-languagedetector`.
@@ -171,192 +196,26 @@ Il sistema i18n è operativo. Packages installati: `i18next`, `react-i18next`, `
 - `AuthScreen.js` — completo
 - `Dashboard.js` — completo
 - `Profile.js` — completo
-- `Wizard.js` — parziale (solo import + hook + pulsante principale)
+- `Wizard.js` — parziale ma gia molto piu coperto
+- `ContentDetail.js` — copertura i18n estesa
+- `ProjectView.js` — copertura i18n estesa
+- componenti estratti della project view (`ContentCardsView`, `ContentListView`, `ContentCalendarView`, `FeedStrips`, `RightPanelContent`) — copertura i18n estesa
 
-### Task da completare: aggiornare ContentDetail.js e ProjectView.js
+### Nota pratica
+- Se aggiungi nuove stringhe in editor/project view, aggiorna sempre:
+  - `frontend/src/i18n/locales/it.json`
+  - `frontend/src/i18n/locales/en.json`
+  - `frontend/src/i18n/locales/es.json`
+  - `frontend/src/i18n/locales/fr.json`
+- Controlli minimi consigliati:
+  1. `python3 -m json.tool` sui file locale
+  2. `git diff --check`
+  3. `npx yarn build` in `frontend/`
 
-Questi due file hanno ancora tutte le stringhe hardcoded in italiano. Vanno aggiornati con `useTranslation`.
-
-#### ContentDetail.js (`frontend/src/components/ContentDetail.js`)
-
-Aggiungere in cima:
-```js
-import { useTranslation } from 'react-i18next';
-```
-
-Nel body del componente `ContentDetail` aggiungere:
-```js
-const { t } = useTranslation();
-```
-
-**Stringhe da sostituire** (mappatura chiave → stringa attuale):
-
-Toast messages:
-- `'Creazione design Canva...'` → `t('canva.creating')`
-- `'Design aperto in Canva — premi "Torna a Sketchario" per importare'` → `t('canva.opened')`
-- `'Esportazione in corso...'` → `t('canva.exporting')`
-- `'Download immagini...'` → `t('canva.downloading')`
-- `'Nessuna immagine esportata da Canva'` → `t('canva.noImages')`
-- ``'${imp.count} immagin${...} da Canva!'`` → `t('canva.importSuccess_other', { count: imp.count })`
-- `'Sessione Canva scaduta — clicca di nuovo...'` → `t('canva.expired')`
-- `` `Errore importazione Canva${status}: ${detail}` `` → `t('canva.errorImporting', { status, message: detail })`
-- `'Errore Canva: ' + ...` → `t('canva.errorCreating', { message: ... })`
-- `'Apertura Google Drive...'` → `t('drive.opening')`
-- `'Le autorizzazioni Google Drive sono scadute...'` → `t('drive.scopeExpired')`
-- `'Collega il tuo account Google...'` → `t('drive.notConnected')`
-- `` `Download di "${doc.name}" in corso...` `` → `t('drive.downloading', { name: doc.name })`
-- `` `"${doc.name}" importato da Drive` `` → `t('drive.importSuccess', { name: doc.name })`
-- `'Autorizzazioni insufficienti...'` → `t('drive.errorPermissions')`
-- `'Errore Google Drive: ' + ...` → `t('drive.error', { message: ... })`
-- `'Upload in corso...'` → `t('editor.uploading')`
-- `'Pubblicazione in corso...'` → `t('editor.publishing')`
-- `'Contenuto pubblicato con successo!'` → `t('editor.publishSuccess')`
-- `` `Programmato per il ${scheduleDate} alle ${scheduleTime}` `` → `t('editor.scheduleSuccess', { date: scheduleDate, time: scheduleTime })`
-- `'Annullamento programmazione...'` → `t('editor.cancellingSchedule')`
-- `'Programmazione annullata'` → `t('editor.cancelScheduleSuccess')`
-- `'Errore caricamento libreria'` → `t('library.errorLoading')`
-- `'Media aggiunto al contenuto'` → `t('library.addToContent')`
-- `'Errore aggiunta media'` → `t('library.errorAdding')`
-
-UI labels in SocialColumn:
-- `'Pubblica su'` → `t('project.social.publishOn')`
-- `'Nessun social connesso. Vai su Social per collegare i tuoi account.'` → `t('project.social.noSocialConnected')`
-
-UI labels in EditorColumn:
-- `'⚡ OPENING HOOK (primi 3-5 secondi)'` → `` `⚡ ${t('editor.openingHook').toUpperCase()}` ``
-- `'Script Avatar'` → `t('editor.avatarScript')`
-- `'Regia Visiva'` → `t('editor.visualDirection')`
-- `'Caption'` → `t('editor.caption')`
-- `'Hashtag'` → `t('editor.hashtags')`
-- `'Media'` → `t('editor.media')`
-- `'Allega un media'` → `t('editor.uploadMedia')`
-- `'Max 400 MB'` → `t('editor.uploadMax')`
-- `'Upload in corso...'` → `t('editor.uploading')`
-- `'Copia Script Avatar'` → `t('editor.copyAvatarScript')`
-- `'Copia'` → `t('common.copy')`
-- `'Rigenera'` → `t('editor.regenerate')`
-- title `'FLUX AI'` → `t('editor.generateImage')`
-- title `'Apri in Canva'` → `t('editor.openCanva')`
-- title `'Importa da Google Drive'` → `t('editor.importDrive')`
-- title `'Libreria media del progetto'` → `t('editor.mediaLibrary')`
-- `'Rendering...'` → `t('editor.renderingVideo')`
-- `'Genera Video'` → `t('editor.generateVideo')`
-
-In PreviewColumn:
-- `'Anteprima Post'` → `t('editor.preview')`
-- `` `Seleziona i social${...}` `` → `t('editor.selectSocials')`
-
-Bottom bar:
-- `'Pubblicato'` → `t('editor.published')`
-- `'Programmato'` → `t('editor.scheduled')`
-- `'Bozza'` → `t('editor.draft')`
-- `saving ? '...' : 'Salva'` → `saving ? '...' : t('common.save')`
-- `'Invio...'` → `t('editor.publishing_')`
-- `'Pubblica'` → `t('editor.publish')`
-- `'Annulla prog.'` → `t('editor.cancelSchedule')`
-- `'Modifica'` → `t('editor.modifySchedule')`
-- `'Programma'` → `t('editor.scheduleBtn')`
-
-Schedule popup:
-- `'Modifica Programmazione'` → `t('editor.scheduleModifyTitle')`
-- `'Programma Pubblicazione'` → `t('editor.scheduleTitle')`
-- `` `Su ${selectedSocials.length} social selezionati` `` → `t('editor.scheduleOnSocials', { count: selectedSocials.length })`
-- `'Annulla'` → `t('common.cancel')`
-- `'Conferma'` (nel schedule) → `t('common.confirm')`
-- `'Invio...'` → `t('editor.publishing_')`
-
-Media library modal:
-- `'Libreria Media'` → `t('library.title')`
-- `'Nessun media caricato nel progetto'` → `t('library.empty')`
-
-Input modal:
-- `'Annulla'` → `t('common.cancel')`
-- `'Genera'` → pulsante genera, lasciare così (è specifico dell'AI)
-
-confirm dialogs:
-- `'Rigenerare questo contenuto?'` → `t('editor.regenerateConfirm')`
-- `` `Convertire in ${target}?` `` → `t('editor.convertConfirm', { format: target })`
-
-**NOTA**: le stringhe italiane nei `window.confirm()` possono rimanere temporaneamente in italiano, non è prioritario.
-
----
-
-#### ProjectView.js (`frontend/src/components/ProjectView.js`)
-
-Aggiungere in cima:
-```js
-import { useTranslation } from 'react-i18next';
-```
-
-Nel body di `ProjectView` aggiungere:
-```js
-const { t } = useTranslation();
-```
-
-**Stringhe da sostituire**:
-
-Loading:
-- `'Caricamento progetto...'` → `t('common.loading')`
-
-Header:
-- `` `${contents.length} contenuti` `` → `` `${contents.length} ${t('dashboard.contents')}` ``
-
-Tab buttons (array di oggetti):
-```js
-{ id: 'list', label: t('project.tabs.list') },
-{ id: 'calendar', label: t('project.tabs.calendar') },
-{ id: 'personas', label: t('project.tabs.personas') },
-{ id: 'social', label: t('project.tabs.social') },
-```
-- Il tab `'Analytics'` hardcoded → `t('nav.analytics')`
-
-Content list (cards + list view):
-- `'Nessun contenuto generato.'` → `t('project.content.noContent')` (appare in due posti)
-- `'Crea il primo post'` → lasciar stare (è CTA specifica)
-- `'Senza titolo'` → lasciare in italiano
-- Gruppi nella list view:
-  - `'Pubblicati'` → `t('status.published')`  (ma attenzione: già plurale, usare come label di gruppo va bene)
-  - `'Programmati'` → `t('status.scheduled')`
-  - `'Bozze'` → `t('status.draft')`
-- `'Pubblicato'` nel dateLabel → `t('status.published')`
-
-Calendar:
-- `const days = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']` — lasciare localizzati (i18n già fornisce le date tramite il sistema locale di JS)
-
-Social tab:
-- `'{connected.length} collegati'` → `` `${connected.length} ${t('project.social.connected')}` ``
-- `'Attivo'` → `t('common.active')`
-- `'OAuth'` → `t('common.oauth')`
-- `'Manuale'` → `t('common.manuale')`
-- `'Integrazioni'` → `t('project.social.integrations')`
-- `'Connesso'` → `t('common.connected')`
-- `'Non connesso'` → `t('common.notConnected')`
-- `'Riconnetti'` → `t('common.reconnect')`
-- `'Disconnetti'` → `t('common.disconnect')`
-- `'Connetti Google Drive'` → `t('common.connect') + ' ' + platform.name`
-
-Feeds tab e strip:
-- `'Feed in caricamento...'` → `t('project.feeds.noFeeds')`
-- `'Generazione idee AI...'` → `t('project.feeds.noFeeds')` (o lasciare)
-- `'Refresh'` → `t('project.feeds.refresh')`
-- `'Rigenera'` → `t('editor.regenerate')`
-
-Right panel:
-- `'Queue & Analytics'` → lasciare (è titolo tecnico)
-- `'Coda vuota'` → `t('project.queue.empty')`
-
-New Post modal:
-- `'Nuovo Post'` → `t('project.content.generate')` (oppure aggiungere chiave `project.content.newPost`)
-- `'Annulla'` → `t('common.cancel')`
-- `'Crea'` → `t('common.save')` o aggiungere chiave dedicata
-
-**Per il componente `RightPanelContent`** (in fondo al file, funzione separata):
-- Aggiungere `const { t } = useTranslation();` all'interno della funzione
-- `'Coda vuota'` → `t('project.queue.empty')`
-
----
-
-### Dopo aver completato le modifiche
-1. Verificare che `yarn build` giri senza errori dalla cartella `frontend/` quando disponibile
-2. Committare su `main`
-3. Verificare che Railway frontend e backend stiano leggendo davvero `main`
+### Workflow consigliato
+1. Aggiornare le chiavi locale in tutte e quattro le lingue
+2. Verificare `python3 -m json.tool` sui JSON toccati
+3. Verificare `git diff --check`
+4. Eseguire `npx yarn build` da `frontend/` quando il runtime e disponibile
+5. Committare su `main`
+6. Verificare che Railway frontend e backend stiano leggendo davvero `main`
