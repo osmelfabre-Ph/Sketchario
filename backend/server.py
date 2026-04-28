@@ -374,7 +374,8 @@ def _backend_url() -> str:
     return os.environ.get("BACKEND_URL", os.environ.get("APP_URL", "http://localhost:8000")).rstrip("/")
 
 def _media_public_url() -> str:
-    return os.environ.get("MEDIA_PUBLIC_BASE_URL", _backend_url()).rstrip("/")
+    # Prefer MEDIA_PUBLIC_BASE_URL, then APP_URL (public-facing), then BACKEND_URL (may be internal)
+    return os.environ.get("MEDIA_PUBLIC_BASE_URL", os.environ.get("APP_URL", _backend_url())).rstrip("/")
 
 def _frontend_base() -> str:
     return os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
@@ -2381,6 +2382,7 @@ async def _publish_instagram(
             container_r = await c.post(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={
+                    "media_type": "IMAGE",
                     "image_url": image_urls[0],
                     "caption": text,
                     "access_token": publish_token
@@ -2409,6 +2411,7 @@ async def _publish_instagram(
                 item_r = await c.post(
                     f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                     data={
+                        "media_type": "IMAGE",
                         "image_url": url,
                         "is_carousel_item": "true",
                         "access_token": publish_token
@@ -2481,10 +2484,12 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     if platform == "facebook":
         return await _publish_facebook(token, text, image_urls)
     elif platform == "instagram":
-        ig_image_urls = [full_url(m.get("url")) for m in media if m.get("type") == "image" and m.get("url") and _media_extension(m) in {"jpg", "jpeg", "png"}]
+        app_url = _app_url()
+        ig_media_docs = [m for m in media if m.get("type") == "image" and m.get("url") and _media_extension(m) in {"jpg", "jpeg", "png", "webp"}]
         ig_video_urls = [full_url(m.get("url")) for m in media if m.get("type") == "video" and m.get("url") and _media_extension(m) in {"mp4", "mov"}]
+        ig_image_urls = [await _prepare_instagram_image_url(m, app_url) for m in ig_media_docs]
         if not ig_image_urls and not ig_video_urls:
-            raise ValueError("Instagram accetta solo JPG, JPEG, PNG o video MP4/MOV. Carica prima un media compatibile.")
+            raise ValueError("Instagram accetta solo immagini (JPG, PNG, WebP) o video MP4/MOV. Carica prima un media compatibile.")
         return await _publish_instagram(
             token,
             profile_id,
