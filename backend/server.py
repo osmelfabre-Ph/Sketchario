@@ -2366,7 +2366,7 @@ async def _publish_instagram(
             )
             if container_r.status_code != 200:
                 fb_err = container_r.json().get("error", {})
-                raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}. Media URL: {image_urls[0]}")
+                raise ValueError(f"IG container error [{fb_err.get('code')}/{fb_err.get('error_subcode')}]: {fb_err.get('message', container_r.text[:200])}. Media URL: {image_urls[0]}")
             container_id = container_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG container creation returned no ID")
