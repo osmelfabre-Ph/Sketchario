@@ -21,8 +21,10 @@ import jwt as pyjwt
 import feedparser
 import httpx
 import smtplib
+from io import BytesIO
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from PIL import Image, ImageOps
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -2260,6 +2262,46 @@ async def _probe_instagram_media_kind(url: str) -> Optional[str]:
         return "video"
     return None
 
+async def _prepare_instagram_image_url(media_doc: dict, app_url: str) -> str:
+    media_path = media_doc.get("url") or ""
+    media_url = f"{app_url}{media_path}" if media_path.startswith("/") else media_path
+    if not media_url:
+        raise ValueError("Media Instagram senza URL")
+
+    raw_bytes = None
+    local_name = media_doc.get("filename")
+    if media_path.startswith("/api/media/file/") and local_name:
+        local_path = UPLOAD_DIR / local_name
+        if local_path.exists():
+            raw_bytes = local_path.read_bytes()
+
+    if raw_bytes is None:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as c:
+            resp = await c.get(media_url)
+            resp.raise_for_status()
+            raw_bytes = resp.content
+
+    try:
+        with Image.open(BytesIO(raw_bytes)) as source_image:
+            image = ImageOps.exif_transpose(source_image)
+            if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+                rgba = image.convert("RGBA")
+                canvas = Image.new("RGB", rgba.size, (255, 255, 255))
+                canvas.paste(rgba, mask=rgba.getchannel("A"))
+                image = canvas
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
+
+            safe_name = f"igsafe_{uuid.uuid4().hex}.jpg"
+            safe_path = UPLOAD_DIR / safe_name
+            image.save(safe_path, format="JPEG", quality=92, optimize=True)
+    except Exception as e:
+        raise ValueError(
+            f"Immagine non convertibile per Instagram: {media_doc.get('original_name') or media_doc.get('filename') or media_url}. {str(e)[:120]}"
+        ) from e
+
+    return f"{app_url}/api/media/file/{safe_name}"
+
 async def _publish_instagram(
     token: str,
     ig_id: str,
@@ -2299,7 +2341,7 @@ async def _publish_instagram(
             )
             if container_r.status_code != 200:
                 fb_err = container_r.json().get("error", {})
-                raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}")
+                raise ValueError(f"IG container error: {fb_err.get('message', container_r.text[:200])}. Media URL: {image_urls[0]}")
             container_id = container_r.json().get("id", "")
             if not container_id:
                 raise ValueError("IG container creation returned no ID")
@@ -2380,20 +2422,35 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
             if not media_url:
                 continue
 
-            media_kind = await _probe_instagram_media_kind(media_url)
-            if media_kind == "image":
-                ig_image_urls.append(media_url)
+            media_kind = None
+            prepared_image_url = None
+
+            if media_doc.get("type") == "image":
+                try:
+                    prepared_image_url = await _prepare_instagram_image_url(media_doc, app_url)
+                except Exception as e:
+                    rejected_media.append({
+                        "name": media_doc.get("original_name") or media_doc.get("filename") or media_url,
+                        "ext": _media_extension(media_doc) or "?",
+                        "detail": str(e)[:160],
+                    })
+                    continue
+
+            media_kind = await _probe_instagram_media_kind(prepared_image_url or media_url)
+            if media_kind == "image" and prepared_image_url:
+                ig_image_urls.append(prepared_image_url)
             elif media_kind == "video":
                 ig_video_urls.append(media_url)
             else:
                 rejected_media.append({
                     "name": media_doc.get("original_name") or media_doc.get("filename") or media_url,
                     "ext": _media_extension(media_doc) or "?",
+                    "detail": "MIME non compatibile con Instagram",
                 })
 
         if not ig_image_urls and not ig_video_urls:
             rejected_list = ", ".join(
-                f"{item['name']} ({item['ext']})" for item in rejected_media[:3]
+                f"{item['name']} ({item['ext']}){': ' + item['detail'] if item.get('detail') else ''}" for item in rejected_media[:3]
             )
             raise ValueError(
                 "Instagram accetta solo JPG, JPEG, PNG o video MP4/MOV realmente serviti con MIME compatibile."
