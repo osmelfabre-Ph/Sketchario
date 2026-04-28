@@ -305,18 +305,9 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setClearingQueue(true);
     const tid = toast.loading(t('project.queue.clearing'));
     try {
-      const affectedContentIds = new Set(
-        queueItems
-          .filter(item => item.status === 'queued' || item.status === 'processing' || item.status === 'failed')
-          .map(item => item.content_id)
-      );
+      const activeStatuses = new Set(['queued', 'processing']);
       await api.delete(`/publish/queue/project/${project.id}`);
-      setQueueItems([]);
-      setContents(prev => prev.map(content => (
-        affectedContentIds.has(content.id) && content.status === 'scheduled'
-          ? { ...content, status: 'draft' }
-          : content
-      )));
+      setQueueItems(prev => prev.filter(item => activeStatuses.has(item.status)));
       toast.success(t('project.queue.clearSuccess'), { id: tid });
     } catch (e) {
       toast.error(t('project.queue.clearError'), { id: tid });

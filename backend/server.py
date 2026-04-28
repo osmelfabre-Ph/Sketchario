@@ -3034,17 +3034,17 @@ async def cancel_publish(item_id: str, request: Request):
 @api.delete("/publish/queue/project/{project_id}")
 async def clear_project_publish_queue(project_id: str, request: Request):
     user = await get_current_user(request)
-    items = await db.publish_queue.find({"project_id": project_id, "user_id": user["_id"]}, {"_id": 0, "content_id": 1}).to_list(500)
+    terminal_statuses = ["published", "failed"]
+    items = await db.publish_queue.find(
+        {"project_id": project_id, "user_id": user["_id"], "status": {"$in": terminal_statuses}},
+        {"_id": 0, "content_id": 1}
+    ).to_list(500)
     if not items:
         return {"ok": True, "deleted": 0}
 
-    content_ids = {item["content_id"] for item in items if item.get("content_id")}
-    result = await db.publish_queue.delete_many({"project_id": project_id, "user_id": user["_id"]})
-
-    for content_id in content_ids:
-        content = await db.contents.find_one({"id": content_id}, {"_id": 0, "status": 1})
-        if content and content.get("status") == "scheduled":
-            await db.contents.update_one({"id": content_id}, {"$set": {"status": "draft"}})
+    result = await db.publish_queue.delete_many(
+        {"project_id": project_id, "user_id": user["_id"], "status": {"$in": terminal_statuses}}
+    )
 
     return {"ok": True, "deleted": result.deleted_count}
 
