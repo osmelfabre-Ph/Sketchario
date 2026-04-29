@@ -355,6 +355,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [socialTimes, setSocialTimes] = useState({});
   const [markingPublished, setMarkingPublished] = useState(false);
+  const carouselSlides = Array.isArray(content.slides) ? content.slides.filter(Boolean) : [];
   const isAdminCarouselTemplateActive = content.format === 'carousel' && (
     user?.role === 'admin' || ['osmel@osmelfabre.it', 'osmel.fabre@gmail.com'].includes((user?.email || '').toLowerCase())
   );
@@ -834,7 +835,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
   };
 
   const hashtagList = String(editHashtags || '').split(/[\s,]+/).filter(h => h.length > 1).map(h => h.startsWith('#') ? h : `#${h}`);
-  const carouselSlides = Array.isArray(content.slides) ? content.slides.filter(Boolean) : [];
 
   /* Shared components */
   const SocialColumn = () => (
