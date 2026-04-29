@@ -2389,6 +2389,7 @@ async def _publish_instagram(
             container_r = await c.post(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={
+                    "media_type": "IMAGE",
                     "image_url": image_urls[0],
                     "caption": text,
                     "access_token": publish_token
@@ -2417,6 +2418,7 @@ async def _publish_instagram(
                 item_r = await c.post(
                     f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                     data={
+                        "media_type": "IMAGE",
                         "image_url": url,
                         "is_carousel_item": "true",
                         "access_token": publish_token
