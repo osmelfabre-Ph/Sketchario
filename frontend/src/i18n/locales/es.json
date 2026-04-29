@@ -353,6 +353,8 @@
     "carouselGenerated": "{{count}} slides visuales generadas",
     "carouselGenerationError": "Error al generar carousel: {{message}}",
     "generateCarouselAction": "Generar carousel",
+    "adminCarouselTemplateActive": "Template admin activo",
+    "adminCarouselTemplateHint": "Este carousel usara el template luxury personalizado del perfil admin durante la generacion.",
     "slideN": "Slide {{count}}",
     "carouselStyle": {
       "elegant": { "label": "Elegante", "title": "Limpio y premium", "hint": "Editorial refinado" },

@@ -308,7 +308,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t })
 }
 
 export default function ContentDetail({ content: initialContent, project, onClose, onUpdate }) {
-  const { api } = useAuth();
+  const { api, user } = useAuth();
   const { t, i18n } = useTranslation();
   const locale = getLocaleTag(i18n.language);
   const dayHeaders = Array.from({ length: 7 }, (_, index) =>
@@ -355,6 +355,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [socialTimes, setSocialTimes] = useState({});
   const [markingPublished, setMarkingPublished] = useState(false);
+  const isAdminCarouselTemplateActive = content.format === 'carousel' && (
+    user?.role === 'admin' || ['osmel@osmelfabre.it', 'osmel.fabre@gmail.com'].includes((user?.email || '').toLowerCase())
+  );
 
   const syncQueueState = useCallback((queueData, effectiveStatus = content.status) => {
     const items = (queueData || []).filter(q =>
@@ -1091,6 +1094,16 @@ export default function ContentDetail({ content: initialContent, project, onClos
             {content.format === 'reel' ? <Video size={10} /> : content.format === 'prompted_reel' ? <span>🤖</span> : <Image size={10} />}
             <span className="ml-1">{content.format === 'prompted_reel' ? t('format.prompted_reel') : t(`format.${content.format}`)}</span>
           </span>
+          {isAdminCarouselTemplateActive && (
+            <span
+              className="badge text-[10px]"
+              title={t('editor.adminCarouselTemplateHint')}
+              style={{ background: 'rgba(199,154,62,0.16)', color: '#f4d28b', border: '1px solid rgba(199,154,62,0.35)' }}
+            >
+              <Sparkle size={10} />
+              <span className="ml-1">{t('editor.adminCarouselTemplateActive')}</span>
+            </span>
+          )}
           <h2 className="font-semibold text-xs md:text-sm truncate">{content.hook_text}</h2>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
