@@ -358,6 +358,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const isAdminCarouselTemplateActive = content.format === 'carousel' && (
     user?.role === 'admin' || ['osmel@osmelfabre.it', 'osmel.fabre@gmail.com'].includes((user?.email || '').toLowerCase())
   );
+  const adminCarouselSlidesCount = Math.min(8, Math.max(4, carouselSlides.length || 8));
 
   const syncQueueState = useCallback((queueData, effectiveStatus = content.status) => {
     const items = (queueData || []).filter(q =>
@@ -1344,55 +1345,69 @@ export default function ContentDetail({ content: initialContent, project, onClos
             <button className="btn-ghost p-1.5" onClick={() => setShowCarouselStudio(false)}><X size={16} /></button>
           </div>
           <div className="p-5 space-y-5">
-            <div>
-              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
-              <div className="flex gap-2 flex-wrap">
-                <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'openai' ? 'active' : ''}`} onClick={() => setImageModel('openai')}>◎ OpenAI</button>
-                <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
-                <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
+            {isAdminCarouselTemplateActive ? (
+              <div className="rounded-xl p-4" style={{ background: 'rgba(199,154,62,0.08)', border: '1px solid rgba(199,154,62,0.24)' }}>
+                <p className="text-xs font-semibold" style={{ color: '#f4d28b' }}>{t('editor.adminCarouselTemplateActive')}</p>
+                <p className="text-xs mt-2 text-[var(--text-muted)]">{t('editor.adminCarouselTemplateLocked')}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="badge text-[10px]" style={{ background: 'rgba(255,255,255,0.06)' }}>◎ OpenAI</span>
+                  <span className="badge text-[10px]" style={{ background: 'rgba(255,255,255,0.06)' }}>8 slide</span>
+                  <span className="badge text-[10px]" style={{ background: 'rgba(255,255,255,0.06)' }}>{t('editor.adminCarouselTemplateName')}</span>
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2 gap-3">
-                <p className="text-xs text-[var(--text-muted)]">{t('editor.carouselStylePreset')}</p>
-                <p className="text-[10px] text-[var(--text-muted)]">{t('editor.carouselSlidesToGenerate', { count: carouselSlidesCount })}</p>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {CAROUSEL_STYLE_PRESETS.map(preset => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => setCarouselStylePreset(preset.id)}
-                    className={`rounded-xl p-3 text-left transition-all ${carouselStylePreset === preset.id ? 'ring-2 ring-[var(--gradient-start)]' : ''}`}
-                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-                  >
-                    <div className="h-24 rounded-lg mb-3 p-3 flex flex-col justify-between" style={{ background: preset.tone, color: preset.accent }}>
-                      <span className="text-[10px] font-semibold uppercase tracking-wide">Slide 1</span>
-                      <div>
-                        <p className="text-sm font-bold leading-tight">{t(`editor.carouselStyle.${preset.id}.title`)}</p>
-                        <p className="text-[10px] opacity-80 mt-1">{t(`editor.carouselStyle.${preset.id}.hint`)}</p>
-                      </div>
-                    </div>
-                    <p className="text-xs font-semibold">{t(`editor.carouselStyle.${preset.id}.label`)}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-[var(--text-muted)] block mb-2">{t('editor.carouselSlidesLabel')}</label>
-              <input
-                type="range"
-                min={4}
-                max={Math.min(8, Math.max(4, carouselSlides.length))}
-                value={carouselSlidesCount}
-                onChange={e => setCarouselSlidesCount(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
+            ) : (
+              <>
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'openai' ? 'active' : ''}`} onClick={() => setImageModel('openai')}>◎ OpenAI</button>
+                    <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
+                    <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2 gap-3">
+                    <p className="text-xs text-[var(--text-muted)]">{t('editor.carouselStylePreset')}</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">{t('editor.carouselSlidesToGenerate', { count: carouselSlidesCount })}</p>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {CAROUSEL_STYLE_PRESETS.map(preset => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setCarouselStylePreset(preset.id)}
+                        className={`rounded-xl p-3 text-left transition-all ${carouselStylePreset === preset.id ? 'ring-2 ring-[var(--gradient-start)]' : ''}`}
+                        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+                      >
+                        <div className="h-24 rounded-lg mb-3 p-3 flex flex-col justify-between" style={{ background: preset.tone, color: preset.accent }}>
+                          <span className="text-[10px] font-semibold uppercase tracking-wide">Slide 1</span>
+                          <div>
+                            <p className="text-sm font-bold leading-tight">{t(`editor.carouselStyle.${preset.id}.title`)}</p>
+                            <p className="text-[10px] opacity-80 mt-1">{t(`editor.carouselStyle.${preset.id}.hint`)}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs font-semibold">{t(`editor.carouselStyle.${preset.id}.label`)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] block mb-2">{t('editor.carouselSlidesLabel')}</label>
+                  <input
+                    type="range"
+                    min={4}
+                    max={Math.min(8, Math.max(4, carouselSlides.length))}
+                    value={carouselSlidesCount}
+                    onChange={e => setCarouselSlidesCount(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+              </>
+            )}
             <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
               <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.carouselPreviewSlides')}</p>
               <div className="space-y-2 max-h-40 overflow-y-auto">
-                {carouselSlides.slice(0, carouselSlidesCount).map((slide, idx) => (
+                {carouselSlides.slice(0, isAdminCarouselTemplateActive ? adminCarouselSlidesCount : carouselSlidesCount).map((slide, idx) => (
                   <div key={idx} className="text-xs rounded-lg px-3 py-2" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                     <span className="font-semibold text-[var(--text-primary)]">{t('editor.slideN', { count: idx + 1 })}</span>
                     <p className="text-[var(--text-muted)] mt-1 whitespace-pre-wrap">{slide.slice(0, 220)}</p>
@@ -1410,9 +1425,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 const { data } = await api.post('/media/generate-carousel-slides', {
                   content_id: content.id,
                   project_id: project.id,
-                  model: imageModel,
-                  style: carouselStylePreset,
-                  slides_count: carouselSlidesCount,
+                  model: isAdminCarouselTemplateActive ? 'openai' : imageModel,
+                  style: isAdminCarouselTemplateActive ? 'osmel_luxury' : carouselStylePreset,
+                  slides_count: isAdminCarouselTemplateActive ? adminCarouselSlidesCount : carouselSlidesCount,
                 });
                 const newItems = data?.items || [];
                 const updated = { ...content, media: [...(content.media || []), ...newItems] };

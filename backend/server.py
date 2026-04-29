@@ -3333,6 +3333,46 @@ class CarouselSlidesGenerateInput(BaseModel):
     slides_count: int = 8
 
 CAROUSEL_VISUAL_STYLES = {
+    "osmel_luxury": {
+        "label": "Osmel Luxury",
+        "prompt": """Create a high-end Instagram carousel composed of 8 separate slides (NOT a collage).
+
+Each slide must be generated as an individual image in 4:5 format (1080x1350), vertical.
+
+STYLE:
+Luxury editorial design, minimal, cinematic, black and gold aesthetic.
+Inspired by high-end fashion magazines and fine art photography.
+
+COLOR PALETTE:
+- Deep black background (#0C0B0A)
+- Warm cream text (#F2ECE0)
+- Gold accents (#C79A3E)
+
+TYPOGRAPHY:
+- Elegant serif font (Didot / Cormorant Garamond style)
+- Thin, refined, high fashion editorial look
+- Strong hierarchy (large titles, small body text)
+- Keywords highlighted in gold
+
+GENERAL DESIGN RULES:
+- Minimal layout with strong negative space
+- Clean composition, no clutter
+- Subtle gold lines and small decorative elements (thin lines, small star icons)
+- Consistent layout across all slides
+- High contrast, very refined
+
+PHOTOGRAPHY STYLE:
+- Black and white portraits
+- Cinematic lighting
+- Medium contrast (not too dark, not too flat)
+- Subjects elegant, introspective, natural poses
+- Fine art portrait photography style
+
+IMPORTANT:
+- Generate each slide as a separate image file
+- Maintain strong visual consistency across all slides
+- No collage, no grid, no multiple panels in one image""",
+    },
     "elegant": {
         "label": "Elegant",
         "prompt": "Luxury editorial design, refined typography, high-end magazine aesthetic, soft contrast, balanced spacing, tasteful color palette, premium visual hierarchy.",
@@ -3456,9 +3496,10 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
     if not slides:
         raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
 
-    style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
+    admin_visual_template = is_admin_user(user)
+    style_id = "osmel_luxury" if admin_visual_template else (inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant")
     style_block = CAROUSEL_VISUAL_STYLES[style_id]["prompt"]
-    total_slides = max(4, min(int(inp.slides_count or 8), min(len(slides), 8)))
+    total_slides = max(4, min((8 if admin_visual_template else int(inp.slides_count or 8)), min(len(slides), 8)))
     selected_slides = slides[:total_slides]
     project_hint = " | ".join(filter(None, [
         coerce_str(project.get("sector", "")),
@@ -3468,21 +3509,37 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
 
     created_media = []
     for index, slide_text in enumerate(selected_slides, start=1):
-        prompt = (
-            f"Create a premium Instagram carousel slide in vertical 4:5 format.\n"
-            f"Style preset: {CAROUSEL_VISUAL_STYLES[style_id]['label']}. {style_block}\n"
-            f"Context: {project_hint or 'generic creator brand'}.\n"
-            f"This is slide {index} of {total_slides}.\n"
-            f"Text to render on the slide:\n{slide_text}\n\n"
-            f"Requirements:\n"
-            f"- one single slide, not a collage\n"
-            f"- precise text rendering, keep the wording faithful\n"
-            f"- strong editorial hierarchy with readable title and body\n"
-            f"- mobile-friendly spacing and margins\n"
-            f"- no watermarks, no UI chrome, no device mockups\n"
-            f"- polished social design suitable for a professional carousel"
-        )
-        image_bytes, ext, source_label = await _generate_image_bytes(prompt, inp.model, size="1024x1536")
+        if admin_visual_template:
+            prompt = (
+                f"{style_block}\n\n"
+                f"Context: {project_hint or 'high-end portrait photography brand'}.\n"
+                f"You are generating slide {index} of 8.\n"
+                f"Use this exact slide content as the text and visual brief to render:\n{slide_text}\n\n"
+                f"Requirements:\n"
+                f"- one single slide only\n"
+                f"- keep the wording faithful to the provided slide content\n"
+                f"- interpret any 'Indicazioni visive' as the art direction for this specific slide\n"
+                f"- preserve the luxury black, cream and gold visual system\n"
+                f"- no collage, no grid, no multiple panels, no UI chrome, no watermark"
+            )
+            model = "openai"
+        else:
+            prompt = (
+                f"Create a premium Instagram carousel slide in vertical 4:5 format.\n"
+                f"Style preset: {CAROUSEL_VISUAL_STYLES[style_id]['label']}. {style_block}\n"
+                f"Context: {project_hint or 'generic creator brand'}.\n"
+                f"This is slide {index} of {total_slides}.\n"
+                f"Text to render on the slide:\n{slide_text}\n\n"
+                f"Requirements:\n"
+                f"- one single slide, not a collage\n"
+                f"- precise text rendering, keep the wording faithful\n"
+                f"- strong editorial hierarchy with readable title and body\n"
+                f"- mobile-friendly spacing and margins\n"
+                f"- no watermarks, no UI chrome, no device mockups\n"
+                f"- polished social design suitable for a professional carousel"
+            )
+            model = inp.model
+        image_bytes, ext, source_label = await _generate_image_bytes(prompt, model, size="1024x1536")
         media_doc = await _save_generated_media(
             inp.content_id,
             image_bytes,
@@ -3490,7 +3547,7 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
             source_label,
             f"Carousel slide {index} - {CAROUSEL_VISUAL_STYLES[style_id]['label']}",
             {
-                "source_model": inp.model,
+                "source_model": model,
                 "carousel_slide_index": index,
                 "carousel_style": style_id,
                 "generated_for_content": "carousel",

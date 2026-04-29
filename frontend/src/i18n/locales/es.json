@@ -355,6 +355,8 @@
     "generateCarouselAction": "Generar carousel",
     "adminCarouselTemplateActive": "Template admin activo",
     "adminCarouselTemplateHint": "Este carousel usara el template luxury personalizado del perfil admin durante la generacion.",
+    "adminCarouselTemplateLocked": "Para el perfil admin este estudio usa un solo template fijo: OpenAI, 8 slides y direccion de arte editorial luxury.",
+    "adminCarouselTemplateName": "Osmel Luxury",
     "slideN": "Slide {{count}}",
     "carouselStyle": {
       "elegant": { "label": "Elegante", "title": "Limpio y premium", "hint": "Editorial refinado" },
