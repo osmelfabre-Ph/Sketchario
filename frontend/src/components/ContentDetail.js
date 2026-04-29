@@ -349,7 +349,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [imageModel, setImageModel] = useState('flux');
   const [showCarouselStudio, setShowCarouselStudio] = useState(false);
   const [carouselStylePreset, setCarouselStylePreset] = useState('elegant');
-  const [carouselSlidesCount, setCarouselSlidesCount] = useState(Math.min(6, Math.max(4, (initialContent.slides || []).length || 6)));
+  const [carouselSlidesCount, setCarouselSlidesCount] = useState(Math.min(8, Math.max(4, (initialContent.slides || []).length || 6)));
   const [showLibrary, setShowLibrary] = useState(false);
   const [libraryItems, setLibraryItems] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -1002,7 +1002,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
         </button>
         {content.format === 'carousel' && carouselSlides.length > 0 && (
           <button className="btn-ghost text-xs py-1.5 px-3" onClick={() => {
-            setCarouselSlidesCount(Math.min(6, Math.max(4, carouselSlides.length || 6)));
+            setCarouselSlidesCount(Math.min(8, Math.max(4, carouselSlides.length || 6)));
             setShowCarouselStudio(true);
           }}>
             <Images size={14} /> {t('editor.generateCarouselSlides')}
@@ -1370,7 +1370,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <input
                 type="range"
                 min={4}
-                max={Math.min(7, Math.max(4, carouselSlides.length))}
+                max={Math.min(8, Math.max(4, carouselSlides.length))}
                 value={carouselSlidesCount}
                 onChange={e => setCarouselSlidesCount(Number(e.target.value))}
                 className="w-full"
