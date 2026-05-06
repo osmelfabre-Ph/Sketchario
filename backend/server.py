@@ -38,14 +38,14 @@ def _parse_dt(s: str) -> datetime:
         return datetime.min.replace(tzinfo=timezone.utc)
 
 async def _run_publish_queue():
-    """Background worker: every 60s publish queued items whose scheduled_at is due."""
+    """Background worker: periodically publish queued items whose scheduled_at is due."""
     await asyncio.sleep(10)  # wait for app to fully start
     while True:
         try:
             await _run_publish_queue_once()
         except Exception as e:
             logger.error(f"Queue worker loop error: {e}")
-        await asyncio.sleep(60)
+        await asyncio.sleep(PUBLISH_QUEUE_LOOP_SECONDS)
 
 @asynccontextmanager
 async def lifespan(app_instance):
@@ -59,6 +59,9 @@ api = APIRouter(prefix="/api")
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
 GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v24.0")
+PUBLISH_QUEUE_LOOP_SECONDS = max(10, int(os.environ.get("PUBLISH_QUEUE_LOOP_SECONDS", "30")))
+PUBLISH_QUEUE_STALE_MINUTES = max(5, int(os.environ.get("PUBLISH_QUEUE_STALE_MINUTES", "12")))
+PUBLISH_QUEUE_HEARTBEAT_SECONDS = max(5, int(os.environ.get("PUBLISH_QUEUE_HEARTBEAT_SECONDS", "15")))
 
 # ── SMTP EMAIL ───────────────────────────────────────
 async def send_email_smtp(to: str, subject: str, html_body: str):
@@ -67,6 +70,8 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASSWORD", "")
     smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    smtp_security = os.environ.get("SMTP_SECURITY", "ssl").strip().lower()
+    smtp_timeout = int(os.environ.get("SMTP_TIMEOUT", "20"))
     if not smtp_user or not smtp_pass:
         logger.warning("SMTP not configured, email not sent")
         return False
@@ -76,9 +81,22 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
         msg["From"] = f"Sketchario <{smtp_from}>"
         msg["To"] = to
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_from, to, msg.as_string())
+        logger.info(f"Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
+        if smtp_security == "starttls":
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, to, msg.as_string())
+        elif smtp_security == "none":
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, to, msg.as_string())
+        else:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, to, msg.as_string())
         logger.info(f"Email sent to {to}")
         return True
     except Exception as e:
@@ -201,6 +219,7 @@ class ProjectCreate(BaseModel):
     name: str
     sector: str
     description: Optional[str] = ""
+    language: Optional[str] = "it"
     objective_awareness: int = 60
     objective_education: int = 30
     objective_monetizing: int = 10
@@ -430,7 +449,7 @@ async def google_login_callback(code: str = None, error: str = None):
 
 @api.get("/auth/facebook/login")
 async def facebook_login_redirect():
-    app_id = os.environ.get("FACEBOOK_APP_ID", "")
+    app_id = _facebook_login_app_id()
     if not app_id:
         raise HTTPException(500, "Facebook OAuth non configurato")
     redirect_uri = f"{_backend_url()}/api/auth/facebook/callback"
@@ -447,8 +466,8 @@ async def facebook_login_callback(code: str = None, error: str = None):
     frontend = _frontend_base()
     if error or not code:
         return RR(f"{frontend}/?social_error=cancelled")
-    app_id = os.environ.get("FACEBOOK_APP_ID", "")
-    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
+    app_id = _facebook_login_app_id()
+    app_secret = _facebook_login_app_secret()
     redirect_uri = f"{_backend_url()}/api/auth/facebook/callback"
     async with httpx.AsyncClient(timeout=15) as c:
         tok = await c.get("https://graph.facebook.com/v19.0/oauth/access_token", params={
@@ -562,10 +581,12 @@ async def list_projects(request: Request):
 async def create_project(inp: ProjectCreate, request: Request):
     user = await get_current_user(request)
     await check_plan_limit(user, "project")
+    project_language = normalize_content_language(inp.language)
     doc = {
         "user_id": user["_id"],
         "name": inp.name,
         "sector": inp.sector,
+        "language": project_language,
         "description": inp.description,
         "objectives": {"awareness": inp.objective_awareness, "education": inp.objective_education, "monetizing": inp.objective_monetizing},
         "formats": inp.formats,
@@ -789,6 +810,65 @@ FEED_KEYWORD_STOPWORDS = {
     "dai", "delle", "della",
 }
 
+SUPPORTED_CONTENT_LANGUAGES = {"it", "en", "es", "fr"}
+CONTENT_LANGUAGE_NAMES = {
+    "it": "Italian",
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+}
+GOOGLE_NEWS_MARKETS = {
+    "it": {"hl": "it", "gl": "IT", "ceid": "IT:it"},
+    "en": {"hl": "en-US", "gl": "US", "ceid": "US:en"},
+    "es": {"hl": "es-419", "gl": "ES", "ceid": "ES:es"},
+    "fr": {"hl": "fr", "gl": "FR", "ceid": "FR:fr"},
+}
+
+def normalize_content_language(value: Optional[str]) -> str:
+    raw = compact_text(value or "").lower().replace("_", "-")
+    base = raw.split("-", 1)[0]
+    return base if base in SUPPORTED_CONTENT_LANGUAGES else "it"
+
+def get_explicit_request_content_language(request: Optional[Request]) -> Optional[str]:
+    if not request:
+        return None
+    raw = compact_text(
+        request.headers.get("X-Sketchario-Language")
+        or request.headers.get("X-Language")
+        or ""
+    )
+    if not raw:
+        return None
+    return normalize_content_language(raw)
+
+def get_request_content_language(request: Optional[Request]) -> str:
+    return get_explicit_request_content_language(request) or "it"
+
+def get_project_content_language(project: Optional[dict], request: Optional[Request] = None) -> str:
+    if project and compact_text(project.get("language", "")):
+        return normalize_content_language(project.get("language"))
+    return get_request_content_language(request)
+
+def get_feed_content_language(project: Optional[dict], request: Optional[Request] = None) -> str:
+    return get_explicit_request_content_language(request) or get_project_content_language(project, None)
+
+def get_content_language_name(lang_code: str) -> str:
+    return CONTENT_LANGUAGE_NAMES.get(normalize_content_language(lang_code), "Italian")
+
+def build_language_output_instruction(lang_code: str) -> str:
+    language_name = get_content_language_name(lang_code)
+    return (
+        f"Tutto l'output testuale finale deve essere scritto in {language_name}. "
+        "Non mischiare lingue diverse salvo nomi propri, brand o termini tecnici indispensabili."
+    )
+
+def build_strict_language_only_instruction(lang_code: str) -> str:
+    language_name = get_content_language_name(lang_code)
+    return (
+        f"IMPORTANT: every user-facing text field in the final output must be written strictly in {language_name}. "
+        f"Do not write in Italian or mix languages unless a proper name, brand name, hashtag, or quoted source title requires it."
+    )
+
 REDDIT_FEED_PRESETS = [
     {
         "match": ("fotograf", "photo", "ritratt", "portrait", "postprodu", "camera"),
@@ -926,6 +1006,106 @@ RSS_CATEGORY_PRESETS = [
     },
 ]
 
+GOOGLE_NEWS_TOPIC_HINTS = [
+    {
+        "match": ("marketing", "social", "content", "copy", "branding", "advertising", "ads", "seo"),
+        "queries": {
+            "it": ["marketing digitale", "social media", "content marketing"],
+            "en": ["digital marketing", "social media marketing", "content marketing"],
+            "es": ["marketing digital", "marketing en redes sociales", "marketing de contenidos"],
+            "fr": ["marketing digital", "marketing sur les reseaux sociaux", "marketing de contenu"],
+        },
+    },
+    {
+        "match": ("fotograf", "photo", "ritratt", "portrait", "arte", "artist", "visual", "mostra"),
+        "queries": {
+            "it": ["fotografia", "arte visiva", "post produzione"],
+            "en": ["photography", "visual art", "photo editing"],
+            "es": ["fotografia", "arte visual", "edicion fotografica"],
+            "fr": ["photographie", "art visuel", "retouche photo"],
+        },
+    },
+    {
+        "match": ("tech", "tecnolog", "software", "app", "startup", "ai", "saas", "digital"),
+        "queries": {
+            "it": ["tecnologia", "startup digitali", "intelligenza artificiale"],
+            "en": ["technology", "digital startups", "artificial intelligence"],
+            "es": ["tecnologia", "startups digitales", "inteligencia artificial"],
+            "fr": ["technologie", "startups numeriques", "intelligence artificielle"],
+        },
+    },
+    {
+        "match": ("scienza", "science", "medicina", "salute", "wellness", "health", "ricerca"),
+        "queries": {
+            "it": ["scienza", "salute", "ricerca"],
+            "en": ["science", "health", "research"],
+            "es": ["ciencia", "salud", "investigacion"],
+            "fr": ["science", "sante", "recherche"],
+        },
+    },
+    {
+        "match": ("economia", "finance", "finanza", "business", "invest", "sales", "vendite"),
+        "queries": {
+            "it": ["economia", "finanza", "business"],
+            "en": ["business", "finance", "markets"],
+            "es": ["negocios", "finanzas", "mercados"],
+            "fr": ["business", "finance", "marches"],
+        },
+    },
+    {
+        "match": ("auto", "automotive", "car", "cars", "dealer", "concessionaria", "veicoli", "motori"),
+        "queries": {
+            "it": ["automotive", "auto", "mobilita"],
+            "en": ["automotive", "cars", "mobility"],
+            "es": ["automocion", "coches", "movilidad"],
+            "fr": ["automobile", "voitures", "mobilite"],
+        },
+    },
+    {
+        "match": ("food", "ristor", "cucina", "chef", "gastronom", "ricette"),
+        "queries": {
+            "it": ["food", "ristorazione", "ricette"],
+            "en": ["food", "restaurants", "recipes"],
+            "es": ["gastronomia", "restaurantes", "recetas"],
+            "fr": ["gastronomie", "restaurants", "recettes"],
+        },
+    },
+    {
+        "match": ("moda", "fashion", "luxury", "beauty", "stile"),
+        "queries": {
+            "it": ["moda", "beauty", "lusso"],
+            "en": ["fashion", "beauty", "luxury"],
+            "es": ["moda", "belleza", "lujo"],
+            "fr": ["mode", "beaute", "luxe"],
+        },
+    },
+    {
+        "match": ("sport", "calcio", "fitness", "tennis", "padel", "allenamento"),
+        "queries": {
+            "it": ["sport", "fitness", "allenamento"],
+            "en": ["sports", "fitness", "training"],
+            "es": ["deportes", "fitness", "entrenamiento"],
+            "fr": ["sport", "fitness", "entrainement"],
+        },
+    },
+    {
+        "match": ("travel", "viaggi", "turismo", "hotel", "vacanze", "destination"),
+        "queries": {
+            "it": ["viaggi", "turismo", "ospitalita"],
+            "en": ["travel", "tourism", "hospitality"],
+            "es": ["viajes", "turismo", "hospitalidad"],
+            "fr": ["voyage", "tourisme", "hotellerie"],
+        },
+    },
+]
+
+DEFAULT_GOOGLE_NEWS_LANGUAGE_TERMS = {
+    "it": ["marketing digitale"],
+    "en": ["digital marketing", "industry trends"],
+    "es": ["marketing digital", "tendencias del sector"],
+    "fr": ["marketing digital", "tendances du secteur"],
+}
+
 
 def build_project_feed_keywords(project: Optional[dict]) -> List[str]:
     if not project:
@@ -970,44 +1150,81 @@ def build_project_feed_keywords(project: Optional[dict]) -> List[str]:
     return unique_keywords[:12]
 
 
-def build_google_news_query(project: Optional[dict]) -> str:
-    keywords = build_project_feed_keywords(project)
-    if not keywords:
-        return "marketing digitale"
+def infer_google_news_topic_terms(project: Optional[dict], language: str) -> List[str]:
+    language = normalize_content_language(language)
+    project_text = " ".join(
+        compact_text((project or {}).get(field, "")).lower()
+        for field in ("sector", "name", "description", "brief_notes", "custom_instructions")
+    )
+    for hint in GOOGLE_NEWS_TOPIC_HINTS:
+        if any(term in project_text for term in hint["match"]):
+            return list(hint["queries"].get(language, []))
+    return []
 
-    primary = keywords[0]
-    secondary = [kw for kw in keywords[1:] if kw != primary][:3]
-    terms = [f'"{primary}"'] if " " in primary else [primary]
-    for kw in secondary:
-        terms.append(f'"{kw}"' if " " in kw else kw)
+
+def build_google_news_query(project: Optional[dict], language: str = "it") -> str:
+    language = normalize_content_language(language)
+    keywords = build_project_feed_keywords(project)
+    base_terms = infer_google_news_topic_terms(project, language) or DEFAULT_GOOGLE_NEWS_LANGUAGE_TERMS.get(
+        language,
+        ["marketing digitale"],
+    )
+    if not keywords and base_terms:
+        seed_terms = [f'"{term}"' if " " in term else term for term in base_terms[:3]]
+        return f"{' OR '.join(seed_terms)} when:14d"
+
+    if language != "it":
+        language_terms = [f'"{term}"' if " " in term else term for term in base_terms[:3]]
+        return f"{' OR '.join(language_terms)} when:14d"
+
+    ordered_terms: List[str] = []
+    seen_terms = set()
+    for term in [*base_terms, *keywords]:
+        clean_term = compact_text(term)
+        key = clean_term.lower()
+        if not clean_term or key in seen_terms:
+            continue
+        seen_terms.add(key)
+        ordered_terms.append(clean_term)
+
+    if not ordered_terms:
+        ordered_terms = DEFAULT_GOOGLE_NEWS_LANGUAGE_TERMS.get(language, ["marketing digitale"])
+
+    terms = [f'"{term}"' if " " in term else term for term in ordered_terms[:4]]
     return f"{' OR '.join(terms)} when:14d"
 
 
-def build_default_project_feeds(project: Optional[dict]) -> List[dict]:
+def build_default_project_feeds(project: Optional[dict], language: str = "it") -> List[dict]:
+    language = normalize_content_language(language)
     project_sector = compact_text((project or {}).get("sector", "")) or "settore"
     sector_text = " ".join(
         compact_text((project or {}).get(field, "")).lower()
         for field in ("sector", "description", "brief_notes", "custom_instructions")
     )
-    google_query = quote(build_google_news_query(project))
+    google_query = quote(build_google_news_query(project, language=language))
+    market = GOOGLE_NEWS_MARKETS[language]
 
     feeds = [{
-        "feed_url": f"https://news.google.com/rss/search?q={google_query}&hl=it&gl=IT&ceid=IT:it",
+        "feed_url": (
+            f"https://news.google.com/rss/search?q={google_query}"
+            f"&hl={quote(market['hl'])}&gl={quote(market['gl'])}&ceid={quote(market['ceid'])}"
+        ),
         "feed_name": f"Google News: {project_sector}",
         "source_type": "google_news",
     }]
 
     matched_rss_category = False
-    for preset in RSS_CATEGORY_PRESETS:
-        if any(term in sector_text for term in preset["match"]):
-            matched_rss_category = True
-            for feed_name, feed_url in preset["feeds"]:
-                feeds.append({
-                    "feed_url": feed_url,
-                    "feed_name": f"{feed_name} — {project_sector}",
-                    "source_type": "editorial_rss",
-                })
-            break
+    if language == "it":
+        for preset in RSS_CATEGORY_PRESETS:
+            if any(term in sector_text for term in preset["match"]):
+                matched_rss_category = True
+                for feed_name, feed_url in preset["feeds"]:
+                    feeds.append({
+                        "feed_url": feed_url,
+                        "feed_name": f"{feed_name} — {project_sector}",
+                        "source_type": "editorial_rss",
+                    })
+                break
 
     for preset in REDDIT_FEED_PRESETS:
         if any(term in sector_text for term in preset["match"]):
@@ -1019,7 +1236,7 @@ def build_default_project_feeds(project: Optional[dict]) -> List[dict]:
                 })
             break
 
-    if not matched_rss_category:
+    if language == "it" and not matched_rss_category:
         feeds.extend([
             {
                 "feed_url": "http://www.ansa.it/sito/ansait_rss.xml",
@@ -1190,17 +1407,22 @@ def caption_has_structure(text: str) -> bool:
     paragraphs = [p.strip() for p in re.split(r"</p>|</div>|</section>|</article>", str(text or ""), flags=re.IGNORECASE) if p.strip()]
     return len(paragraphs) >= 3
 
-async def ensure_caption_structure(content_data: dict, context_block: str) -> dict:
+async def ensure_caption_structure(content_data: dict, context_block: str, lang_code: str = "it") -> dict:
     caption = coerce_str(content_data.get("caption", ""))
     if not caption:
         return content_data
     if caption_has_structure(caption):
         return content_data
 
-    repair_system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un editor senior specializzato in caption social. Rispondi SOLO con JSON valido."
+    repair_system = (
+        f"{GLOBAL_CONTENT_PROMPT}\n\n"
+        f"Sei un editor senior specializzato in caption social. {build_language_output_instruction(lang_code)} "
+        "Rispondi SOLO con JSON valido."
+    )
     repair_prompt = f"""Ristruttura questa caption in modo leggibile e respirato.
 
 {context_block}
+{build_language_output_instruction(lang_code)}
 
 REGOLE TASSATIVE:
 - niente muro di testo
@@ -1298,7 +1520,7 @@ def carousel_slides_are_structured(slides) -> bool:
             return False
     return True
 
-async def ensure_carousel_payload(content_data: dict, hook_text: str, context_block: str) -> dict:
+async def ensure_carousel_payload(content_data: dict, hook_text: str, context_block: str, lang_code: str = "it") -> dict:
     if carousel_slides_are_structured(content_data.get("slides")):
         content_data["script"] = build_carousel_script_from_slides(content_data.get("slides", []))
         return content_data
@@ -1308,11 +1530,16 @@ async def ensure_carousel_payload(content_data: dict, hook_text: str, context_bl
     source_slides = content_data.get("slides", [])
     source_slides_text = "\n\n".join(coerce_str(slide) for slide in source_slides) if isinstance(source_slides, list) else coerce_str(source_slides)
 
-    repair_system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un editor senior specializzato in carousel premium per social. Rispondi SOLO con JSON valido."
+    repair_system = (
+        f"{GLOBAL_CONTENT_PROMPT}\n\n"
+        f"Sei un editor senior specializzato in carousel premium per social. {build_language_output_instruction(lang_code)} "
+        "Rispondi SOLO con JSON valido."
+    )
     repair_prompt = f"""Ristruttura questo contenuto in un carousel premium.
 
 Hook: {hook_text}
 {context_block}
+{build_language_output_instruction(lang_code)}
 
 REGOLE TASSATIVE:
 - crea massimo 6 slide
@@ -1357,9 +1584,15 @@ async def generate_personas(inp: GeneratePersonasInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
-    system = "Sei un esperto di marketing strategico. Genera buyer personas dettagliate in formato JSON. Rispondi SOLO con un array JSON valido, senza markdown."
+    language = get_project_content_language(project, request)
+    system = (
+        "Sei un esperto di marketing strategico. "
+        f"{build_language_output_instruction(language)} "
+        "Genera buyer personas dettagliate in formato JSON. Rispondi SOLO con un array JSON valido, senza markdown."
+    )
     prompt = f"""Genera 6 buyer personas MECE per questo progetto.
 {build_project_context(project)}
+{build_language_output_instruction(language)}
 
 Per ogni persona restituisci un oggetto JSON con:
 - role: professione o tipo di persona (es. "Insegnante", "Libero professionista", "Imprenditore")
@@ -1414,10 +1647,16 @@ async def generate_hooks(inp: GenerateHooksInput, request: Request):
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     weeks = project.get("duration_weeks", 1)
     num_hooks = weeks * 7
+    language = get_project_content_language(project, request)
     context_block = build_project_context(project, personas=personas, tov=tov)
-    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un content strategist esperto. Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
+    system = (
+        f"{GLOBAL_CONTENT_PROMPT}\n\n"
+        f"Sei un content strategist esperto. {build_language_output_instruction(language)} "
+        "Genera hook per contenuti social in formato JSON. Rispondi SOLO con un array JSON valido."
+    )
     prompt = f"""Genera {num_hooks} hook per questo progetto.
 {context_block}
+{build_language_output_instruction(language)}
 
 Per ogni hook restituisci:
 - hook_text: testo dell'hook (frase ad effetto)
@@ -1483,6 +1722,7 @@ async def generate_content(inp: GenerateContentInput, request: Request):
     if not hooks:
         raise HTTPException(400, "Nessun hook trovato")
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
+    language = get_project_content_language(project, request)
     caption_len = "120-180 parole"
     if tov:
         cl = tov.get("caption_length", "medium")
@@ -1493,13 +1733,18 @@ async def generate_content(inp: GenerateContentInput, request: Request):
     carousel_requirements = build_carousel_requirements()
     generated = []
     for hook in hooks:
-        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Genera contenuti completi in italiano. Rispondi SOLO con JSON valido."
+        system = (
+            f"{GLOBAL_CONTENT_PROMPT}\n\n"
+            f"Sei un copywriter professionista per social media. {build_language_output_instruction(language)} "
+            "Genera contenuti completi. Rispondi SOLO con JSON valido."
+        )
         fmt = hook.get('format', 'reel')
         if fmt == 'prompted_reel':
             prompt = f"""Sei un esperto di video marketing con avatar AI. Crea materiale completo per un Prompted Reel da usare con strumenti come HeyGen o D-ID.
 
 Hook: {hook.get('hook_text','')}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 
 Restituisci un oggetto JSON con:
@@ -1514,6 +1759,7 @@ Restituisci un oggetto JSON con:
 Hook: {hook.get('hook_text','')}
 Formato: {fmt}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 {carousel_requirements}
 
@@ -1527,9 +1773,9 @@ Restituisci un oggetto JSON con:
         try:
             result = await call_ai(system, prompt)
             content_data = extract_json(result)
-            content_data = await ensure_caption_structure(content_data, context_block)
+            content_data = await ensure_caption_structure(content_data, context_block, language)
             if fmt == 'carousel':
-                content_data = await ensure_carousel_payload(content_data, hook.get('hook_text', ''), context_block)
+                content_data = await ensure_carousel_payload(content_data, hook.get('hook_text', ''), context_block, language)
             content_doc = {
                 "id": str(uuid.uuid4()),
                 "project_id": inp.project_id,
@@ -1588,6 +1834,7 @@ async def create_post(inp: PostCreate, request: Request):
     if inp.use_ai:
         tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
         personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+        language = get_project_content_language(project, request)
         context_block = build_project_context(project, personas=personas, tov=tov)
         caption_len = "120-180 parole"
         if tov:
@@ -1595,11 +1842,16 @@ async def create_post(inp: PostCreate, request: Request):
             caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
         caption_requirements = build_caption_requirements(caption_len)
         carousel_requirements = build_carousel_requirements()
-        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social in italiano. Rispondi SOLO con JSON."
+        system = (
+            f"{GLOBAL_CONTENT_PROMPT}\n\n"
+            f"Sei un copywriter professionista. {build_language_output_instruction(language)} "
+            "Genera contenuto social. Rispondi SOLO con JSON."
+        )
         if inp.format == 'prompted_reel':
             prompt = f"""Crea un Prompted Reel per avatar AI.
 Hook: {inp.hook_text}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 
 JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: chi è il soggetto con dettagli fisici/abbigliamento precisi, cosa fa esattamente, dove si trova con ambientazione specifica e illuminazione, che espressione ha, e inquadratura consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)."""
@@ -1608,6 +1860,7 @@ JSON con: opening_hook, script (con note di ritmo [pausa][enfasi]), visual_direc
 Hook: {inp.hook_text}
 Formato: {inp.format}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 {carousel_requirements}
 
@@ -1615,9 +1868,9 @@ JSON con: script, caption, hashtags, slides (array), opening_hook (''), visual_d
         try:
             result = await call_ai(system, prompt)
             data = extract_json(result)
-            data = await ensure_caption_structure(data, context_block)
+            data = await ensure_caption_structure(data, context_block, language)
             if inp.format == 'carousel':
-                data = await ensure_carousel_payload(data, inp.hook_text, context_block)
+                data = await ensure_carousel_payload(data, inp.hook_text, context_block, language)
             content_doc.update({k: data.get(k, content_doc[k]) for k in ["script", "caption", "hashtags", "slides", "opening_hook"]})
             if "visual_direction" in data:
                 content_doc["visual_direction"] = coerce_str(data["visual_direction"])
@@ -1670,6 +1923,7 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+    language = get_project_content_language(project, request)
     context_block = build_project_context(project, personas=personas, tov=tov)
     caption_len = "120-180 parole"
     if tov:
@@ -1677,12 +1931,17 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
         caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
     caption_requirements = build_caption_requirements(caption_len)
     carousel_requirements = build_carousel_requirements()
-    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista per social media. Rigenera questo contenuto migliorandolo. Rispondi SOLO con JSON valido. Scrivi in italiano."
+    system = (
+        f"{GLOBAL_CONTENT_PROMPT}\n\n"
+        f"Sei un copywriter professionista per social media. {build_language_output_instruction(language)} "
+        "Rigenera questo contenuto migliorandolo. Rispondi SOLO con JSON valido."
+    )
     fmt = content.get('format', 'reel')
     if fmt == 'prompted_reel':
         prompt = f"""Rigenera questo Prompted Reel migliorandolo:
 Hook: {content.get('hook_text','')}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA: CHI il soggetto con dettagli fisici/abbigliamento, COSA fa con postura/gesti esatti, DOVE ambientazione specifica con luce e sfondo, CHE espressione, INQUADRATURA consigliata tra Wide shot/Full body/Medium shot/Close-up/Macro — leggibile come brief fotografico), caption, hashtags, slides (array vuoto)"""
     else:
@@ -1690,15 +1949,16 @@ Restituisci JSON con: hook_text, opening_hook, script (con note ritmo [pausa][en
 Hook originale: {content.get('hook_text','')}
 Formato: {fmt}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 {carousel_requirements}
 Restituisci JSON con: hook_text, script, caption, hashtags, slides (se carousel: array di 8-10 stringhe coerente con la struttura tassativa sopra; se reel: array vuoto), opening_hook (''), visual_direction ('')"""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
-        data = await ensure_caption_structure(data, context_block)
+        data = await ensure_caption_structure(data, context_block, language)
         if fmt == 'carousel':
-            data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block)
+            data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block, language)
         updates = {}
         for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
@@ -1723,6 +1983,7 @@ async def convert_content(inp: ContentConvertInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
+    language = get_project_content_language(project, request)
     context_block = build_project_context(project, personas=personas, tov=tov)
     caption_len = "120-180 parole"
     if tov:
@@ -1731,30 +1992,45 @@ async def convert_content(inp: ContentConvertInput, request: Request):
     caption_requirements = build_caption_requirements(caption_len)
     carousel_requirements = build_carousel_requirements()
     if inp.target_format == "prompted_reel":
-        system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un esperto di video marketing con avatar AI. Converti questo contenuto in un Prompted Reel. Rispondi SOLO con JSON valido. Scrivi in italiano."
+        system = (
+            f"{GLOBAL_CONTENT_PROMPT}\n\n"
+            f"Sei un esperto di video marketing con avatar AI. {build_language_output_instruction(language)} "
+            "Converti questo contenuto in un Prompted Reel. Rispondi SOLO con JSON valido."
+        )
         prompt = f"""Converti questo contenuto in un Prompted Reel per avatar AI.
 Hook: {content.get('hook_text','')}
 Script originale: {content.get('script', '') or ' '.join(content.get('slides', []))}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 
 Restituisci JSON con: hook_text, opening_hook (primi 3-5 secondi), script (per avatar con [pausa][enfasi]), visual_direction (descrizione visiva CONCRETA della scena: CHI è il soggetto con dettagli fisici e abbigliamento precisi, COSA fa esattamente con postura e gesti specifici, DOVE si trova con ambientazione dettagliata e illuminazione, CHE ESPRESSIONE ha — deve funzionare come brief fotografico), caption, hashtags, slides (array vuoto)"""
     elif inp.target_format == "carousel":
-        system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Reel in un Carousel con slide numerate. Rispondi SOLO con JSON valido. Scrivi in italiano."""
+        system = (
+            f"{GLOBAL_CONTENT_PROMPT}\n\n"
+            f"Sei un copywriter. {build_language_output_instruction(language)} "
+            "Converti questo Reel in un Carousel con slide numerate. Rispondi SOLO con JSON valido."
+        )
         prompt = f"""Converti questo Reel in un Carousel strutturato.
 Hook: {content.get('hook_text','')}
 Script Reel: {content.get('script','')}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 {carousel_requirements}
 
 Restituisci JSON con: hook_text, script (testo completo separato da ---), caption, hashtags, slides (array di 8-10 stringhe, coerente con la struttura tassativa sopra)"""
     else:
-        system = f"""{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter. Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido. Scrivi in italiano."""
+        system = (
+            f"{GLOBAL_CONTENT_PROMPT}\n\n"
+            f"Sei un copywriter. {build_language_output_instruction(language)} "
+            "Converti questo Carousel in un Reel script. Rispondi SOLO con JSON valido."
+        )
         prompt = f"""Converti questo Carousel in un Reel script parlato.
 Hook: {content.get('hook_text','')}
 Slides: {json.dumps(content.get('slides',[]))}
 {context_block}
+{build_language_output_instruction(language)}
 {caption_requirements}
 
 Crea un Reel con: HOOK (max 5 parole) → SETUP → VALUE → CTA
@@ -1762,9 +2038,9 @@ Restituisci JSON con: hook_text, script (script parlato completo), caption, hash
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
-        data = await ensure_caption_structure(data, context_block)
+        data = await ensure_caption_structure(data, context_block, language)
         if inp.target_format == "carousel":
-            data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block)
+            data = await ensure_carousel_payload(data, data.get("hook_text") or content.get('hook_text', ''), context_block, language)
         updates = {"format": inp.target_format}
         for k in ["hook_text", "script", "caption", "hashtags", "slides", "opening_hook"]:
             if k in data:
@@ -1840,7 +2116,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "TIKTOK_CLIENT_KEY",
         "client_id_param": "client_key",
         "client_secret_env": "TIKTOK_CLIENT_SECRET",
-        "token_url": "https://open.tiktok.com/v2/oauth/token/",
+        "token_url": "https://open.tiktokapis.com/v2/oauth/token/",
         "scope": "user.info.basic,video.publish",
     },
     "pinterest": {
@@ -1865,8 +2141,19 @@ SOCIAL_PLATFORMS = {
 def _app_url() -> str:
     return os.environ.get("APP_URL", os.environ.get("FRONTEND_URL", "http://localhost:3000"))
 
+def _facebook_login_app_id() -> str:
+    return os.environ.get("FACEBOOK_LOGIN_APP_ID", "") or os.environ.get("FACEBOOK_APP_ID", "")
+
+def _facebook_login_app_secret() -> str:
+    return os.environ.get("FACEBOOK_LOGIN_APP_SECRET", "") or os.environ.get("FACEBOOK_APP_SECRET", "")
+
 def _oauth_callback_url() -> str:
-    return f"{_app_url()}/api/social/oauth/callback"
+    base = (
+        os.environ.get("SOCIAL_OAUTH_CALLBACK_BASE_URL", "")
+        or os.environ.get("BACKEND_URL", "")
+        or _app_url()
+    ).rstrip("/")
+    return f"{base}/api/social/oauth/callback"
 
 async def _exchange_token_instagram(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("INSTAGRAM_CLIENT_ID", "")
@@ -1943,13 +2230,49 @@ async def _exchange_token_tiktok(code: str, redirect_uri: str) -> dict:
     client_key = os.environ.get("TIKTOK_CLIENT_KEY", "")
     client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "")
     async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post("https://open.tiktok.com/v2/oauth/token/", data={
+        r = await c.post("https://open.tiktokapis.com/v2/oauth/token/", data={
             "client_key": client_key, "client_secret": client_secret,
             "code": code, "grant_type": "authorization_code", "redirect_uri": redirect_uri,
         }, headers={"Content-Type": "application/x-www-form-urlencoded"})
-        r.raise_for_status()
-        d = r.json().get("data", r.json())
-        return {"access_token": d.get("access_token", ""), "profile_id": d.get("open_id", ""), "profile_name": d.get("display_name", "TikTok")}
+        if r.status_code != 200:
+            try:
+                payload = r.json()
+            except Exception:
+                payload = {}
+            message = payload.get("error_description") or payload.get("message") or r.text[:400]
+            raise ValueError(f"TikTok OAuth token exchange error: {message}")
+        payload = r.json()
+        d = payload.get("data", payload)
+        token = d.get("access_token", "")
+        if not token:
+            raise ValueError(f"TikTok OAuth token response incompleta: {payload}")
+
+        profile_id = d.get("open_id", "")
+        profile_name = "TikTok"
+        user_r = await c.get(
+            "https://open.tiktokapis.com/v2/user/info/",
+            params={"fields": "open_id,display_name,avatar_url"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if user_r.status_code == 200:
+            user_data = user_r.json().get("data", {}).get("user", {})
+            profile_id = user_data.get("open_id", profile_id)
+            profile_name = user_data.get("display_name") or profile_name
+
+        result = {
+            "access_token": token,
+            "profile_id": profile_id,
+            "profile_name": profile_name,
+        }
+        if d.get("refresh_token"):
+            result["refresh_token"] = d["refresh_token"]
+        if d.get("scope"):
+            result["granted_scopes"] = d["scope"]
+        if d.get("expires_in"):
+            result["expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=int(d["expires_in"]))).isoformat()
+        if d.get("refresh_expires_in"):
+            result["refresh_expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=int(d["refresh_expires_in"]))).isoformat()
+        return result
 
 async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
@@ -1969,6 +2292,8 @@ async def _exchange_token_pinterest(code: str, redirect_uri: str) -> dict:
         result = {"access_token": token, "profile_id": profile.get("username", ""), "profile_name": profile.get("username", "Pinterest")}
         if token_data.get("refresh_token"):
             result["refresh_token"] = token_data["refresh_token"]
+        if token_data.get("scope"):
+            result["granted_scopes"] = token_data["scope"]
         return result
 
 async def _get_pinterest_access_token(user_id, social_profile_id: Optional[str] = None) -> str:
@@ -1999,6 +2324,58 @@ async def _get_pinterest_access_token(user_id, social_profile_id: Optional[str] 
         update = {"access_token": new_token}
         if rr.json().get("refresh_token"):
             update["refresh_token"] = rr.json()["refresh_token"]
+        if rr.json().get("scope"):
+            update["granted_scopes"] = rr.json()["scope"]
+        await db.social_accounts.update_one(query, {"$set": update})
+        return new_token
+
+async def _get_tiktok_access_token(user_id, social_profile_id: Optional[str] = None) -> str:
+    query = {"user_id": user_id, "platform": "tiktok"}
+    if social_profile_id:
+        query["id"] = social_profile_id
+    account = await db.social_accounts.find_one(query)
+    if not account:
+        raise HTTPException(400, "TikTok non connesso.")
+    token = account.get("access_token", "")
+    expires_at = _parse_dt(account.get("expires_at", ""))
+    if token and expires_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+        return token
+
+    refresh_token = account.get("refresh_token", "")
+    if not refresh_token:
+        if token:
+            return token
+        raise HTTPException(401, "Token TikTok scaduto. Ricollega il tuo account TikTok.")
+
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY", "")
+    client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        rr = await c.post(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            data={
+                "client_key": client_key,
+                "client_secret": client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if rr.status_code != 200:
+            raise HTTPException(401, "Token TikTok scaduto. Ricollega il tuo account TikTok.")
+        payload = rr.json()
+        data = payload.get("data", payload)
+        new_token = data.get("access_token", "")
+        if not new_token:
+            raise HTTPException(401, "Token TikTok non valido. Ricollega il tuo account TikTok.")
+        update = {"access_token": new_token}
+        if data.get("refresh_token"):
+            update["refresh_token"] = data["refresh_token"]
+        if data.get("scope"):
+            update["granted_scopes"] = data["scope"]
+        if data.get("expires_in"):
+            update["expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))).isoformat()
+        if data.get("refresh_expires_in"):
+            update["refresh_expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=int(data["refresh_expires_in"]))).isoformat()
         await db.social_accounts.update_one(query, {"$set": update})
         return new_token
 
@@ -2040,24 +2417,48 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
         while datetime.now(timezone.utc) < deadline:
             status_r = await c.get(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{container_id}",
-                params={"fields": "status_code,status,error_message,status_message", "access_token": token},
+                params={"fields": "status_code,status,error_message,status_message"},
+                headers={"Authorization": f"Bearer {token}"},
             )
-            if status_r.status_code != 200:
+            if status_r.status_code == 200:
+                data = status_r.json()
+                last_status = (data.get("status_code") or data.get("status") or "").upper()
+                last_message = data.get("status_message") or data.get("error_message") or ""
+
+                if last_status in {"FINISHED", "PUBLISHED"}:
+                    return
+                if not last_status:
+                    return
+                if last_status in {"ERROR", "EXPIRED", "FAILED"}:
+                    raise ValueError(f"Instagram media non pronto: {last_message or last_status}")
+
                 await asyncio.sleep(3)
                 continue
 
-            data = status_r.json()
-            last_status = (data.get("status_code") or data.get("status") or "").upper()
-            last_message = data.get("status_message") or data.get("error_message") or ""
+            if status_r.status_code in {400, 401, 403, 404}:
+                err_payload = {}
+                try:
+                    err_payload = status_r.json().get("error", {})
+                except Exception:
+                    err_payload = {}
+                code = err_payload.get("code", "")
+                subcode = err_payload.get("error_subcode", "")
+                message = err_payload.get("message") or status_r.text[:300]
+                trace = err_payload.get("fbtrace_id", "")
+                raise ValueError(
+                    f"Instagram container status error [{code}/{subcode}]: {message}"
+                    f"{f' fbtrace: {trace}' if trace else ''}"
+                )
 
-            if last_status in {"FINISHED", "PUBLISHED"}:
-                return
-            if not last_status:
-                return
-            if last_status in {"ERROR", "EXPIRED", "FAILED"}:
-                raise ValueError(f"Instagram media non pronto: {last_message or last_status}")
+            if status_r.status_code == 429:
+                await asyncio.sleep(5)
+                continue
 
-            await asyncio.sleep(3)
+            if status_r.status_code >= 500:
+                await asyncio.sleep(3)
+                continue
+
+            raise ValueError(f"Instagram container status error HTTP {status_r.status_code}: {status_r.text[:300]}")
 
     if last_status:
         raise ValueError(f"Instagram media ancora in elaborazione ({last_status}). Riprova tra poco.{f' Dettaglio: {last_message}' if last_message else ''}")
@@ -2223,21 +2624,238 @@ async def _publish_pinterest(token: str, text: str, title: str, image_url: Optio
         else:
             pin["media_source"] = {"source_type": "image_url", "url": "https://via.placeholder.com/800x800?text=Sketchario"}
         r = await c.post("https://api.pinterest.com/v5/pins", json=pin, headers={"Authorization": f"Bearer {token}"})
-        if r.status_code == 401:
+        if r.status_code >= 400:
             detail = ""
+            code = ""
+            payload = None
             try:
                 payload = r.json()
                 if isinstance(payload, dict):
-                    detail = payload.get("message") or payload.get("error") or payload.get("code") or ""
+                    code = str(payload.get("code") or payload.get("error") or "")
+                    detail = (
+                        payload.get("message")
+                        or payload.get("details")
+                        or payload.get("error_description")
+                        or code
+                        or ""
+                    )
             except Exception:
-                detail = r.text[:300]
+                detail = r.text[:500]
+
+            detail_lc = detail.lower()
+            code_lc = code.lower()
+            permission_like = (
+                r.status_code in {401, 403}
+                or "scope" in detail_lc
+                or "permission" in detail_lc
+                or "authorization" in detail_lc
+                or "not authorized" in detail_lc
+                or "insufficient" in detail_lc
+                or "forbidden" in detail_lc
+                or "scope" in code_lc
+                or "permission" in code_lc
+            )
+            if permission_like:
+                raise ValueError(
+                    "Pinterest ha rifiutato il token di pubblicazione. "
+                    "L'app probabilmente non sta ricevendo un'autorizzazione reale di scrittura "
+                    f"(pins:write). HTTP {r.status_code}.{f' Dettaglio Pinterest: {detail}' if detail else ''}"
+                )
             raise ValueError(
-                "Pinterest ha rifiutato il token di pubblicazione. "
-                "L'app probabilmente non sta ricevendo un'autorizzazione reale di scrittura "
-                f"(pins:write).{f' Dettaglio Pinterest: {detail}' if detail else ''}"
+                f"Pinterest publish error HTTP {r.status_code}."
+                f"{f' Dettaglio Pinterest: {detail}' if detail else ''}"
             )
         r.raise_for_status()
         return r.json().get("id", "")
+
+
+async def _query_tiktok_creator_info(token: str) -> dict:
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(
+            "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+            json={},
+        )
+        payload = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        if r.status_code != 200 or error.get("code") not in {"", "ok", None}:
+            message = error.get("message") or payload or r.text[:400]
+            code = error.get("code", "")
+            raise ValueError(f"TikTok creator info error [{code}]: {message}")
+        return payload.get("data", {})
+
+
+async def _fetch_tiktok_publish_status(token: str, publish_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(
+            "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+            json={"publish_id": publish_id},
+        )
+        payload = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        if r.status_code != 200 or error.get("code") not in {"", "ok", None}:
+            message = error.get("message") or payload or r.text[:400]
+            code = error.get("code", "")
+            raise ValueError(f"TikTok publish status error [{code}]: {message}")
+        return payload.get("data", {})
+
+
+async def _wait_for_tiktok_publish(token: str, publish_id: str, timeout_seconds: int = 120) -> str:
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+    last_status = ""
+    while datetime.now(timezone.utc) < deadline:
+        status_data = await _fetch_tiktok_publish_status(token, publish_id)
+        last_status = str(status_data.get("status") or "").upper()
+        public_ids = status_data.get("publicaly_available_post_id") or status_data.get("publicly_available_post_id") or []
+        if last_status == "FAILED":
+            raise ValueError(
+                f"TikTok publish failed: {status_data.get('fail_reason') or 'errore sconosciuto'}"
+            )
+        if last_status == "PUBLISH_COMPLETE":
+            if isinstance(public_ids, list) and public_ids:
+                return str(public_ids[0])
+            return publish_id
+        await asyncio.sleep(4)
+    logger.info("TikTok publish still processing publish_id=%s last_status=%s", publish_id, last_status)
+    return publish_id
+
+
+async def _publish_tiktok(
+    token: str,
+    text: str,
+    title: str,
+    image_urls: list,
+    video_url: Optional[str] = None,
+) -> str:
+    creator_info = await _query_tiktok_creator_info(token)
+    privacy_options = creator_info.get("privacy_level_options") or []
+    if not privacy_options:
+        raise ValueError("TikTok non ha restituito opzioni di privacy per questo account.")
+    privacy_level = "SELF_ONLY" if "SELF_ONLY" in privacy_options else privacy_options[0]
+    disable_comment = bool(creator_info.get("comment_disabled"))
+    disable_duet = bool(creator_info.get("duet_disabled"))
+    disable_stitch = bool(creator_info.get("stitch_disabled"))
+
+    async with httpx.AsyncClient(timeout=60) as c:
+        if video_url:
+            payload = {
+                "post_info": {
+                    "title": text[:2200],
+                    "privacy_level": privacy_level,
+                    "disable_duet": disable_duet,
+                    "disable_comment": disable_comment,
+                    "disable_stitch": disable_stitch,
+                    "video_cover_timestamp_ms": 1000,
+                },
+                "source_info": {
+                    "source": "PULL_FROM_URL",
+                    "video_url": video_url,
+                }
+            }
+            r = await c.post(
+                "https://open.tiktokapis.com/v2/post/publish/video/init/",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json; charset=UTF-8",
+                },
+                json=payload,
+            )
+        else:
+            if not image_urls:
+                raise ValueError("TikTok richiede almeno un video o una foto pubblica e raggiungibile.")
+            payload = {
+                "media_type": "PHOTO",
+                "post_mode": "DIRECT_POST",
+                "post_info": {
+                    "title": title[:90],
+                    "description": text[:4000],
+                    "privacy_level": privacy_level,
+                    "disable_comment": disable_comment,
+                    "auto_add_music": True,
+                    "brand_content_toggle": False,
+                    "brand_organic_toggle": False,
+                },
+                "source_info": {
+                    "source": "PULL_FROM_URL",
+                    "photo_cover_index": 0,
+                    "photo_images": image_urls[:35],
+                }
+            }
+            r = await c.post(
+                "https://open.tiktokapis.com/v2/post/publish/content/init/",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json; charset=UTF-8",
+                },
+                json=payload,
+            )
+
+        payload = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        if r.status_code != 200 or error.get("code") not in {"", "ok", None}:
+            message = error.get("message") or payload or r.text[:400]
+            code = error.get("code", "")
+            raise ValueError(f"TikTok publish init error [{code}]: {message}")
+
+        publish_id = payload.get("data", {}).get("publish_id", "")
+        if not publish_id:
+            raise ValueError("TikTok publish init non ha restituito publish_id.")
+        return await _wait_for_tiktok_publish(token, publish_id)
+
+def _scope_list(value: Optional[str]) -> List[str]:
+    raw = compact_text(value or "")
+    if not raw:
+        return []
+    return [part.strip() for part in raw.replace(" ", ",").split(",") if part.strip()]
+
+
+async def _set_social_publish_diagnostics(
+    social_profile_id: Optional[str],
+    *,
+    status: Optional[str] = None,
+    warning: Optional[str] = None,
+):
+    if not social_profile_id:
+        return
+    updates = {}
+    if status is not None:
+        updates["publish_capability_status"] = status
+    if warning is not None:
+        updates["publish_warning"] = warning
+    if updates:
+        await db.social_accounts.update_one({"id": social_profile_id}, {"$set": updates})
+
+
+def _social_profile_connection_warning(profile: dict) -> str:
+    if profile.get("connection_mode") != "oauth":
+        return ""
+    explicit_warning = compact_text(profile.get("publish_warning", ""))
+    if explicit_warning:
+        return explicit_warning
+    scopes = set(_scope_list(profile.get("granted_scopes", "")))
+    platform = profile.get("platform", "")
+    if platform == "pinterest" and scopes and "pins:write" not in scopes:
+        return "Pinterest collegato senza scope pins:write. Ricollega l'account con l'app approvata."
+    if platform == "pinterest" and not scopes:
+        return "Pinterest collegato ma permessi di pubblicazione non verificati. Ricollega l'account e fai un test publish."
+    if platform == "tiktok" and scopes and "video.publish" not in scopes:
+        return "TikTok collegato senza scope video.publish. Ricollega l'account dopo aver abilitato Content Posting API."
+    return ""
+
+
+def _sanitize_social_profile(profile: dict) -> dict:
+    safe = {k: v for k, v in profile.items() if k not in {"_id", "access_token", "refresh_token"}}
+    safe["granted_scopes"] = _scope_list(profile.get("granted_scopes", ""))
+    safe["connection_warning"] = _social_profile_connection_warning(profile)
+    safe["publish_capability_status"] = profile.get("publish_capability_status", "")
+    return safe
 
 def _media_extension(media_doc: dict) -> str:
     raw = str(
@@ -2370,6 +2988,8 @@ async def _publish_instagram(
             container_r = await c.post(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                 data={
+                    # Keep the media type explicit for Meta's container parser.
+                    "media_type": "IMAGE",
                     "image_url": image_urls[0],
                     "caption": text,
                     "access_token": publish_token
@@ -2398,6 +3018,7 @@ async def _publish_instagram(
                 item_r = await c.post(
                     f"https://graph.facebook.com/{GRAPH_API_VERSION}/{ig_id}/media",
                     data={
+                        "media_type": "IMAGE",
                         "image_url": url,
                         "is_carousel_item": "true",
                         "access_token": publish_token
@@ -2467,6 +3088,8 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
         return f"{media_base_url}{u}" if u and u.startswith("/") else u
     image_urls = [full_url(m.get("url")) for m in media if m.get("type") == "image" and m.get("url")]
     image_url = image_urls[0] if image_urls else None
+    video_urls = [full_url(m.get("url")) for m in media if m.get("type") == "video" and m.get("url")]
+    video_url = video_urls[0] if video_urls else None
     if platform == "facebook":
         return await _publish_facebook(token, text, image_urls)
     elif platform == "instagram":
@@ -2527,7 +3150,7 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     elif platform == "pinterest":
         return await _publish_pinterest(token, text, title, image_url)
     elif platform == "tiktok":
-        raise ValueError("TikTok richiede upload video. Usa l'app TikTok direttamente.")
+        return await _publish_tiktok(token, text, title, image_urls, video_url)
     else:
         raise ValueError(f"Piattaforma {platform} non supportata per la pubblicazione")
 
@@ -2555,6 +3178,25 @@ async def list_platforms(request: Request):
             "is_tool": key == "google_slides",  # not a social platform, shown separately
         })
     return platforms
+
+
+@api.get("/social/oauth-config")
+async def get_social_oauth_config(request: Request):
+    await get_current_user(request)
+    callback_url = _oauth_callback_url()
+    items = []
+    for key, cfg in SOCIAL_PLATFORMS.items():
+        items.append({
+            "id": key,
+            "name": cfg["name"],
+            "auth_url": cfg["auth_url"],
+            "token_url": cfg["token_url"],
+            "scope": cfg["scope"],
+            "client_id_env": cfg["client_id_env"],
+            "configured": bool(os.environ.get(cfg["client_id_env"], "")),
+            "callback_url": callback_url,
+        })
+    return {"callback_url": callback_url, "platforms": items}
 
 
 @api.get("/social/oauth/start/{platform}")
@@ -2617,6 +3259,23 @@ async def social_oauth_callback(request: Request):
         }
         if result.get("refresh_token"):
             doc["refresh_token"] = result["refresh_token"]
+        if result.get("granted_scopes"):
+            doc["granted_scopes"] = result["granted_scopes"]
+        elif params.get("scopes"):
+            doc["granted_scopes"] = params.get("scopes", "")
+        if result.get("expires_at"):
+            doc["expires_at"] = result["expires_at"]
+        if result.get("refresh_expires_at"):
+            doc["refresh_expires_at"] = result["refresh_expires_at"]
+        if platform == "pinterest":
+            doc["publish_capability_status"] = "unverified"
+            if not result.get("granted_scopes"):
+                doc["publish_warning"] = (
+                    "Pinterest collegato ma permessi di pubblicazione non verificati. "
+                    "Ricollega l'account e fai un test publish."
+                )
+        if platform == "tiktok":
+            doc["publish_capability_status"] = "unverified"
         await db.social_accounts.delete_many({"user_id": user_id, "platform": platform, "profile_id": result["profile_id"]})
         await db.social_accounts.insert_one(doc)
         pname = result["profile_name"]
@@ -2632,7 +3291,7 @@ async def list_social_profiles(request: Request):
     profiles = await db.social_accounts.find(
         {"user_id": user["_id"]}, {"_id": 0}
     ).to_list(50)
-    return profiles
+    return [_sanitize_social_profile(profile) for profile in profiles]
 
 @api.post("/social/profiles")
 async def save_social_profile(inp: SocialProfileSave, request: Request):
@@ -2665,7 +3324,7 @@ async def get_project_social_profiles(project_id: str, request: Request):
     links = await db.project_social_accounts.find({"project_id": project_id}, {"_id": 0}).to_list(20)
     profile_ids = [l["social_profile_id"] for l in links]
     profiles = await db.social_accounts.find({"id": {"$in": profile_ids}, "user_id": user["_id"]}, {"_id": 0}).to_list(20)
-    return profiles
+    return [_sanitize_social_profile(profile) for profile in profiles]
 
 @api.post("/social/project/link")
 async def link_social_to_project(inp: ProjectSocialLink, request: Request):
@@ -2698,14 +3357,33 @@ async def bootstrap_project_feeds(project_id: str, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
+    language = get_feed_content_language(project, request)
 
     existing = await db.feeds.find({"project_id": project_id, "user_id": user["_id"]}, {"_id": 0}).to_list(50)
-    existing_urls = {feed.get("feed_url") for feed in existing}
+    managed_source_types = {"google_news", "editorial_rss", "reddit"}
+    desired_defaults = build_default_project_feeds(project, language=language)
+    desired_by_url = {feed["feed_url"]: feed for feed in desired_defaults}
+    desired_urls = set(desired_by_url.keys())
 
-    created = list(existing)
-    for default_feed in build_default_project_feeds(project):
-        if default_feed["feed_url"] in existing_urls:
+    managed_existing = [feed for feed in existing if feed.get("source_type") in managed_source_types]
+    manual_existing = [feed for feed in existing if feed.get("source_type") not in managed_source_types]
+    managed_by_url = {feed.get("feed_url"): feed for feed in managed_existing if feed.get("feed_url")}
+
+    created = list(manual_existing)
+    for feed_url, default_feed in desired_by_url.items():
+        current = managed_by_url.get(feed_url)
+        if current:
+            updates = {}
+            if current.get("feed_name") != default_feed["feed_name"]:
+                updates["feed_name"] = default_feed["feed_name"]
+            if current.get("source_type") != default_feed.get("source_type", "rss"):
+                updates["source_type"] = default_feed.get("source_type", "rss")
+            if updates:
+                await db.feeds.update_one({"id": current["id"]}, {"$set": updates})
+                current = {**current, **updates}
+            created.append(current)
             continue
+
         doc = {
             "id": str(uuid.uuid4()),
             "project_id": project_id,
@@ -2718,6 +3396,13 @@ async def bootstrap_project_feeds(project_id: str, request: Request):
         await db.feeds.insert_one(doc)
         doc.pop("_id", None)
         created.append(doc)
+
+    obsolete_managed = [feed for feed in managed_existing if feed.get("feed_url") not in desired_urls]
+    if obsolete_managed:
+        obsolete_ids = [feed["id"] for feed in obsolete_managed]
+        await db.feeds.delete_many({"id": {"$in": obsolete_ids}})
+        await db.feed_cache.delete_many({"feed_id": {"$in": obsolete_ids}})
+
     return created
 
 @api.post("/feeds/add")
@@ -2839,6 +3524,8 @@ async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
+    language = get_feed_content_language(project, request)
+    language_name = get_content_language_name(language)
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
     context_block = build_project_context(project, personas=personas, tov=tov)
@@ -2848,21 +3535,29 @@ async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
         caption_len = "max 60 parole" if cl == "short" else ("300-450 parole" if cl == "long" else "120-180 parole")
     caption_requirements = build_caption_requirements(caption_len)
     carousel_requirements = build_carousel_requirements()
-    system = f"{GLOBAL_CONTENT_PROMPT}\n\nSei un copywriter professionista. Genera contenuto social ispirato da un articolo/feed esterno. Rispondi SOLO con JSON."
-    prompt = f"""Genera un contenuto social ispirato a questo articolo:
-Titolo: {inp.feed_item_title}
-Sommario: {inp.feed_item_summary}
+    system = (
+        f"{GLOBAL_CONTENT_PROMPT}\n\n"
+        "You are a professional social media copywriter. "
+        "Create a social post inspired by an external article or feed item. "
+        f"{build_strict_language_only_instruction(language)} "
+        "Return valid JSON only."
+    )
+    prompt = f"""Create a social media post inspired by this article:
+Title: {inp.feed_item_title}
+Summary: {inp.feed_item_summary}
 {context_block}
+Requested output language: {language_name}
+{build_strict_language_only_instruction(language)}
 {caption_requirements}
 {carousel_requirements}
 
-Restituisci JSON con: hook_text (frase ad effetto ispirata all'articolo), script (paragrafi separati da \n\n: Problema → Risonanza → Soluzione → CTA), caption (con la struttura obbligatoria sopra), hashtags, format ("reel" o "carousel"), slides (se carousel)"""
+Return JSON with: hook_text, script, caption, hashtags, format ("reel" or "carousel"), slides (if carousel)."""
     try:
         result = await call_ai(system, prompt)
         data = extract_json(result)
-        data = await ensure_caption_structure(data, context_block)
+        data = await ensure_caption_structure(data, context_block, language)
         if data.get("format", "reel") == "carousel":
-            data = await ensure_carousel_payload(data, data.get("hook_text", inp.feed_item_title), context_block)
+            data = await ensure_carousel_payload(data, data.get("hook_text", inp.feed_item_title), context_block, language)
         content_doc = {
             "id": str(uuid.uuid4()),
             "project_id": inp.project_id,
@@ -2895,9 +3590,11 @@ async def get_ai_feed_suggestions(project_id: str, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
+    language = get_feed_content_language(project, request)
+    language_name = get_content_language_name(language)
 
     # Check cache first (valid for 10 minutes)
-    cache_key = f"ai_feed_{project_id}"
+    cache_key = f"ai_feed_v2_{project_id}_{language}"
     cached = await db.ai_feed_cache.find_one({"cache_key": cache_key}, {"_id": 0})
     if cached:
         cached_time = datetime.fromisoformat(cached["cached_at"])
@@ -2906,21 +3603,32 @@ async def get_ai_feed_suggestions(project_id: str, request: Request):
 
     sector = project.get("sector", "marketing digitale")
     description = project.get("description", "")
-    system = "Sei un esperto di content strategy per social media. Genera idee di contenuto innovative e attuali. Rispondi SOLO con JSON array."
-    prompt = f"""Genera 5 idee di contenuto social media per il settore: {sector}
-{f'Descrizione progetto: {description}' if description else ''}
+    audience_hint = {
+        "it": "relevant for the Italian market",
+        "en": "relevant for an English-speaking international market",
+        "es": "relevant for a Spanish-speaking market",
+        "fr": "relevant for a French-speaking market",
+    }.get(language, "relevant for the target audience")
+    system = (
+        "You are a senior social media content strategist. "
+        f"{build_strict_language_only_instruction(language)} "
+        "Generate current, platform-native content ideas. Return a JSON array only."
+    )
+    prompt = f"""Generate 5 social media content ideas for this sector: {sector}
+{f'Project description: {description}' if description else ''}
 
-Ogni idea deve essere:
-- Attuale e rilevante per il mercato italiano nel 2026
-- Originale e coinvolgente
-- Adatta a formati Reel o Carousel
+Requirements:
+- Every idea must be written in {language_name}
+- Every idea must be {audience_hint} in 2026
+- Keep the ideas original, engaging, and suitable for Reel or Carousel formats
+- Never write the output in Italian unless a proper name requires it
 
-Restituisci un JSON array di 5 oggetti con:
-- "title": titolo breve e accattivante (max 60 caratteri)
-- "summary": breve descrizione dell'idea (max 120 caratteri)
-- "format": "reel" o "carousel"
-- "pillar": "awareness" o "education" o "monetizing"
-- "trend_tag": un tag di tendenza correlato"""
+Return a JSON array of 5 objects with:
+- "title": short compelling title (max 60 characters)
+- "summary": short description of the idea (max 120 characters)
+- "format": "reel" or "carousel"
+- "pillar": "awareness" or "education" or "monetizing"
+- "trend_tag": a related trend tag"""
 
     try:
         result = await call_ai(system, prompt)
@@ -2955,7 +3663,9 @@ Restituisci un JSON array di 5 oggetti con:
 async def refresh_ai_feed_suggestions(project_id: str, request: Request):
     """Force refresh AI feed suggestions, keeping pinned items."""
     user = await get_current_user(request)
-    cache_key = f"ai_feed_{project_id}"
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"_id": 0})
+    language = get_feed_content_language(project, request)
+    cache_key = f"ai_feed_v2_{project_id}_{language}"
     await db.ai_feed_cache.delete_one({"cache_key": cache_key})
     return await get_ai_feed_suggestions(project_id, request)
 
@@ -2972,6 +3682,60 @@ class PublishSchedule(BaseModel):
 class PublishUpdate(BaseModel):
     status: Optional[str] = None
     error_message: Optional[str] = None
+
+
+def _publish_target_query(content_id: str, social_profile_id: str) -> dict:
+    return {"content_id": content_id, "social_profile_id": social_profile_id}
+
+
+async def _find_active_publish_item(content_id: str, social_profile_id: str, exclude_id: Optional[str] = None) -> Optional[dict]:
+    query = {
+        **_publish_target_query(content_id, social_profile_id),
+        "status": {"$in": ["queued", "processing"]},
+    }
+    if exclude_id:
+        query["id"] = {"$ne": exclude_id}
+    return await db.publish_queue.find_one(query, {"_id": 0})
+
+
+async def _find_newer_published_duplicate(item: dict) -> Optional[dict]:
+    created_at = _parse_dt(item.get("created_at", ""))
+    published_items = await db.publish_queue.find(
+        {
+            **_publish_target_query(item["content_id"], item["social_profile_id"]),
+            "id": {"$ne": item["id"]},
+            "status": "published",
+            "post_id": {"$exists": True, "$ne": ""},
+        },
+        {"_id": 0},
+    ).sort("published_at", -1).to_list(10)
+    for published in published_items:
+        if _parse_dt(published.get("published_at", "")) >= created_at:
+            return published
+    return None
+
+
+async def _publish_queue_claim_is_active(item_id: str, processing_token: str) -> bool:
+    current = await db.publish_queue.find_one(
+        {"id": item_id},
+        {"_id": 0, "status": 1, "processing_token": 1},
+    )
+    return bool(
+        current
+        and current.get("status") == "processing"
+        and current.get("processing_token") == processing_token
+    )
+
+
+def _duplicate_publish_message(platform: str, existing_item: dict) -> str:
+    published_at = existing_item.get("published_at", "")
+    when = ""
+    if published_at:
+        when = f" alle {published_at}"
+    return (
+        f"Pubblicazione duplicata evitata: questo contenuto risulta gia pubblicato su "
+        f"{platform or 'social'}{when}."
+    )[:1000]
 
 @api.post("/publish/schedule")
 async def schedule_publish(inp: PublishSchedule, request: Request):
@@ -2995,6 +3759,15 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
         profile = await db.social_accounts.find_one({"id": sp_id, "user_id": user["_id"]}, {"_id": 0})
         if not profile:
             continue
+        existing_active = await _find_active_publish_item(inp.content_id, sp_id)
+        if existing_active:
+            logger.info(
+                "Queue duplicate schedule ignored content=%s social=%s existing=%s",
+                inp.content_id,
+                sp_id,
+                existing_active.get("id", ""),
+            )
+            continue
         item_scheduled_at = schedule_map.get(sp_id, inp.scheduled_at)
         try:
             scheduled_dt = datetime.fromisoformat(item_scheduled_at.replace("Z", "+00:00"))
@@ -3016,7 +3789,7 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
         items.append(doc)
 
     if not items:
-        raise HTTPException(400, "Nessun profilo social valido selezionato")
+        raise HTTPException(400, "Nessun profilo social valido selezionato o gia in coda")
 
     new_status = "scheduled"
     await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": new_status}})
@@ -3033,38 +3806,97 @@ async def trigger_queue_processing(request: Request):
     asyncio.create_task(_run_publish_queue_once())
     return {"ok": True, "message": "Queue processing triggered"}
 
+async def _publish_queue_heartbeat(item_id: str, processing_token: str):
+    """Keep a heartbeat on active processing jobs so stale recovery only requeues dead workers."""
+    try:
+        while True:
+            await db.publish_queue.update_one(
+                {"id": item_id, "status": "processing", "processing_token": processing_token},
+                {"$set": {"processing_heartbeat_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            await asyncio.sleep(PUBLISH_QUEUE_HEARTBEAT_SECONDS)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning(f"Queue heartbeat error [{item_id}]: {e}")
+
 async def _run_publish_queue_once():
     """Single pass of the queue worker (used by manual trigger)."""
     now = datetime.now(timezone.utc)
     stale_processing = await db.publish_queue.find({"status": "processing"}, {"_id": 0}).to_list(200)
     for item in stale_processing:
-        processing_started = _parse_dt(
-            item.get("processing_started_at")
+        heartbeat_at = _parse_dt(
+            item.get("processing_heartbeat_at")
+            or item.get("processing_started_at")
             or item.get("scheduled_at", "")
             or item.get("created_at", "")
         )
-        if processing_started <= now - timedelta(minutes=10):
+        if heartbeat_at <= now - timedelta(minutes=PUBLISH_QUEUE_STALE_MINUTES):
+            newer_published = await _find_newer_published_duplicate(item)
+            if newer_published:
+                await db.publish_queue.update_one(
+                    {"id": item["id"], "status": "processing"},
+                    {
+                        "$set": {
+                            "status": "failed",
+                            "error_message": _duplicate_publish_message(item.get("platform", ""), newer_published),
+                        },
+                        "$unset": {
+                            "processing_started_at": "",
+                            "processing_heartbeat_at": "",
+                            "processing_token": "",
+                        },
+                    }
+                )
+                continue
+            logger.warning(
+                "Queue stale processing recovered [%s] platform=%s content=%s",
+                item["id"],
+                item.get("platform", ""),
+                item.get("content_id", ""),
+            )
             await db.publish_queue.update_one(
                 {"id": item["id"], "status": "processing"},
                 {
                     "$set": {
                         "status": "queued",
-                        "error_message": "Job ripristinato automaticamente dopo un processing rimasto bloccato."
+                        "error_message": (
+                            f"Job ripristinato automaticamente dopo un processing senza heartbeat per oltre "
+                            f"{PUBLISH_QUEUE_STALE_MINUTES} minuti."
+                        )
                     },
-                    "$unset": {"processing_started_at": ""}
+                    "$unset": {
+                        "processing_started_at": "",
+                        "processing_heartbeat_at": "",
+                        "processing_token": "",
+                    }
                 }
             )
 
     queued = await db.publish_queue.find({"status": "queued"}, {"_id": 0}).to_list(200)
     due = [q for q in queued if _parse_dt(q.get("scheduled_at", "")) <= now]
     for item in due:
+        processing_token = uuid.uuid4().hex
         result = await db.publish_queue.find_one_and_update(
             {"id": item["id"], "status": "queued"},
-            {"$set": {"status": "processing", "processing_started_at": now.isoformat()}}
+            {
+                "$set": {
+                    "status": "processing",
+                    "processing_started_at": now.isoformat(),
+                    "processing_heartbeat_at": now.isoformat(),
+                    "processing_token": processing_token,
+                }
+            }
         )
         if not result:
             continue
+        heartbeat_task = asyncio.create_task(_publish_queue_heartbeat(item["id"], processing_token))
         try:
+            newer_published = await _find_newer_published_duplicate(item)
+            if newer_published:
+                raise ValueError(_duplicate_publish_message(item.get("platform", ""), newer_published))
+            if not await _publish_queue_claim_is_active(item["id"], processing_token):
+                raise RuntimeError("Publish interrotto: job gia ripreso da un altro worker.")
             content = await db.contents.find_one({"id": item["content_id"]}, {"_id": 0})
             if not content:
                 raise ValueError("Contenuto non trovato")
@@ -3076,17 +3908,54 @@ async def _run_publish_queue_once():
                 raise ValueError("Account social non trovato")
             token = account["access_token"]
             if item["platform"] == "pinterest":
+                granted_scopes = set(_scope_list(account.get("granted_scopes", "")))
+                if granted_scopes and "pins:write" not in granted_scopes:
+                    await _set_social_publish_diagnostics(
+                        item.get("social_profile_id"),
+                        status="blocked",
+                        warning="Pinterest collegato senza scope pins:write. Ricollega l'account con l'app approvata.",
+                    )
+                    raise ValueError(
+                        "Pinterest connesso senza scope pins:write. "
+                        "Scollega e ricollega l'account Pinterest dopo aver verificato l'app approvata."
+                    )
                 token = await _get_pinterest_access_token(item["user_id"], item.get("social_profile_id"))
+            if item["platform"] == "tiktok":
+                token = await _get_tiktok_access_token(item["user_id"], item.get("social_profile_id"))
             post_id = await _do_publish(
                 item["platform"], token, account.get("profile_id", ""), content)
             now_iso = datetime.now(timezone.utc).isoformat()
-            await db.publish_queue.update_one(
-                {"id": item["id"]},
+            publish_result = await db.publish_queue.update_one(
+                {"id": item["id"], "status": "processing", "processing_token": processing_token},
                 {
                     "$set": {"status": "published", "published_at": now_iso, "post_id": post_id},
-                    "$unset": {"processing_started_at": ""}
+                    "$unset": {
+                        "processing_started_at": "",
+                        "processing_heartbeat_at": "",
+                        "processing_token": "",
+                    }
                 }
             )
+            if publish_result.modified_count == 0:
+                logger.warning(
+                    "Queue publish completed without active claim [%s] platform=%s content=%s",
+                    item["id"],
+                    item.get("platform", ""),
+                    item.get("content_id", ""),
+                )
+                continue
+            if item["platform"] == "pinterest":
+                await _set_social_publish_diagnostics(
+                    item.get("social_profile_id"),
+                    status="verified",
+                    warning="",
+                )
+            if item["platform"] == "tiktok":
+                await _set_social_publish_diagnostics(
+                    item.get("social_profile_id"),
+                    status="verified",
+                    warning="",
+                )
             remaining = await db.publish_queue.count_documents(
                 {"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
             if remaining == 0:
@@ -3094,13 +3963,38 @@ async def _run_publish_queue_once():
                     {"id": item["content_id"]}, {"$set": {"status": "published"}})
         except Exception as e:
             logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
-            await db.publish_queue.update_one(
-                {"id": item["id"]},
-                {
-                    "$set": {"status": "failed", "error_message": str(e)[:300]},
-                    "$unset": {"processing_started_at": ""}
-                }
-            )
+            error_text = str(e)[:1000]
+            if item["platform"] == "pinterest":
+                warning = (
+                    "Pinterest ha rifiutato il token di pubblicazione. "
+                    "Ricollega l'account e verifica che l'app abbia davvero pins:write."
+                    if "Pinterest ha rifiutato il token di pubblicazione" in error_text
+                    else error_text
+                )
+                await _set_social_publish_diagnostics(
+                    item.get("social_profile_id"),
+                    status="blocked",
+                    warning=warning,
+                )
+            if item["platform"] == "tiktok":
+                await _set_social_publish_diagnostics(
+                    item.get("social_profile_id"),
+                    status="blocked",
+                    warning=error_text,
+                )
+            claim_active = await _publish_queue_claim_is_active(item["id"], processing_token)
+            if claim_active:
+                await db.publish_queue.update_one(
+                    {"id": item["id"], "status": "processing", "processing_token": processing_token},
+                    {
+                        "$set": {"status": "failed", "error_message": error_text},
+                        "$unset": {
+                            "processing_started_at": "",
+                            "processing_heartbeat_at": "",
+                            "processing_token": "",
+                        }
+                    }
+                )
             remaining = await db.publish_queue.count_documents(
                 {"content_id": item["content_id"], "status": {"$in": ["queued", "processing"]}})
             if remaining == 0:
@@ -3110,6 +4004,12 @@ async def _run_publish_queue_once():
                     {"id": item["content_id"]},
                     {"$set": {"status": "published" if published_count > 0 else "draft"}}
                 )
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
 @api.get("/publish/queue/{project_id}")
 async def get_publish_queue(project_id: str, request: Request):
@@ -3278,15 +4178,23 @@ CAROUSEL_VISUAL_STYLES = {
     },
 }
 
-async def _generate_image_bytes(prompt: str, model: str, size: str = "1024x1536") -> tuple[bytes, str, str]:
+async def _generate_image_bytes(
+    prompt: str,
+    model: str,
+    size: str = "1024x1536",
+    quality: str = "medium",
+) -> tuple[bytes, str, str]:
     if model == "openai":
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        resp = await client.images.generate(
-            model="gpt-image-1",
-            prompt=prompt,
-            size=size,
-            quality="medium",
+        resp = await asyncio.wait_for(
+            client.images.generate(
+                model="gpt-image-1",
+                prompt=prompt,
+                size=size,
+                quality=quality,
+            ),
+            timeout=120,
         )
         image_b64 = resp.data[0].b64_json
         return base64.b64decode(image_b64), "png", "OpenAI GPT Image"
@@ -3297,10 +4205,14 @@ async def _generate_image_bytes(prompt: str, model: str, size: str = "1024x1536"
         from google import genai as ggenai
         from google.genai import types as gtypes
         gclient = ggenai.Client(api_key=gemini_key)
-        resp = gclient.models.generate_images(
-            model="imagen-3.0-generate-002",
-            prompt=prompt,
-            config=gtypes.GenerateImagesConfig(number_of_images=1, aspect_ratio="3:4")
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(
+                gclient.models.generate_images,
+                model="imagen-3.0-generate-002",
+                prompt=prompt,
+                config=gtypes.GenerateImagesConfig(number_of_images=1, aspect_ratio="3:4")
+            ),
+            timeout=120,
         )
         image_bytes = resp.generated_images[0].image.image_bytes
         return image_bytes, "png", "Nano Banana"
@@ -3342,6 +4254,69 @@ async def _save_generated_media(content_id: str, image_bytes: bytes, ext: str, s
     await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
     return media_doc
 
+def _build_carousel_slide_prompt(
+    slide_text: str,
+    index: int,
+    total_slides: int,
+    style_id: str,
+    project_hint: str,
+) -> str:
+    style_block = CAROUSEL_VISUAL_STYLES[style_id]["prompt"]
+    return (
+        f"Create a premium Instagram carousel slide in vertical 4:5 format.\n"
+        f"Style preset: {CAROUSEL_VISUAL_STYLES[style_id]['label']}. {style_block}\n"
+        f"Context: {project_hint or 'generic creator brand'}.\n"
+        f"This is slide {index} of {total_slides}.\n"
+        f"Text to render on the slide:\n{slide_text}\n\n"
+        f"Requirements:\n"
+        f"- one single slide, not a collage\n"
+        f"- precise text rendering, keep the wording faithful\n"
+        f"- strong editorial hierarchy with readable title and body\n"
+        f"- mobile-friendly spacing and margins\n"
+        f"- no watermarks, no UI chrome, no device mockups\n"
+        f"- polished social design suitable for a professional carousel"
+    )
+
+async def _generate_carousel_slide_media(
+    content_id: str,
+    slide_text: str,
+    index: int,
+    total_slides: int,
+    style_id: str,
+    project_hint: str,
+    model: str,
+    semaphore: asyncio.Semaphore,
+) -> tuple[int, dict]:
+    prompt = _build_carousel_slide_prompt(slide_text, index, total_slides, style_id, project_hint)
+    async with semaphore:
+        try:
+            image_bytes, ext, source_label = await _generate_image_bytes(
+                prompt,
+                model,
+                size="1024x1536",
+                quality="medium",
+            )
+            media_doc = await _save_generated_media(
+                content_id,
+                image_bytes,
+                ext,
+                source_label,
+                f"Carousel slide {index} - {CAROUSEL_VISUAL_STYLES[style_id]['label']}",
+                {
+                    "source_model": model,
+                    "carousel_slide_index": index,
+                    "carousel_style": style_id,
+                    "generated_for_content": "carousel",
+                }
+            )
+            return index, media_doc
+        except HTTPException as e:
+            raise HTTPException(e.status_code, f"Slide {index}: {e.detail}") from e
+        except asyncio.TimeoutError as e:
+            raise HTTPException(504, f"Slide {index}: timeout del provider immagini") from e
+        except Exception as e:
+            raise HTTPException(500, f"Slide {index}: {str(e)}") from e
+
 @api.post("/media/generate-dalle")
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
     await get_current_user(request)
@@ -3364,60 +4339,66 @@ async def generate_dalle(inp: DalleGenerateInput, request: Request):
 
 @api.post("/media/generate-carousel-slides")
 async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Request):
-    user = await get_current_user(request)
-    content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
-    if not content:
-        raise HTTPException(404, "Contenuto non trovato")
-    project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]}, {"_id": 0})
-    if not project:
-        raise HTTPException(404, "Progetto non trovato")
-    slides = [coerce_str(s).strip() for s in (content.get("slides") or []) if coerce_str(s).strip()]
-    if not slides:
-        raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
+    try:
+        user = await get_current_user(request)
+        content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
+        if not content:
+            raise HTTPException(404, "Contenuto non trovato")
+        project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]}, {"_id": 0})
+        if not project:
+            raise HTTPException(404, "Progetto non trovato")
+        slides = [coerce_str(s).strip() for s in (content.get("slides") or []) if coerce_str(s).strip()]
+        if not slides:
+            raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
 
-    style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
-    style_block = CAROUSEL_VISUAL_STYLES[style_id]["prompt"]
-    total_slides = max(4, min(int(inp.slides_count or 6), min(len(slides), 7)))
-    selected_slides = slides[:total_slides]
-    project_hint = " | ".join(filter(None, [
-        coerce_str(project.get("sector", "")),
-        coerce_str(project.get("description", ""))[:180],
-        coerce_str(project.get("brief_notes", ""))[:180],
-    ]))
+        style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
+        total_slides = max(4, min(int(inp.slides_count or 6), min(len(slides), 7)))
+        selected_slides = slides[:total_slides]
+        project_hint = " | ".join(filter(None, [
+            coerce_str(project.get("sector", "")),
+            coerce_str(project.get("description", ""))[:180],
+            coerce_str(project.get("brief_notes", ""))[:180],
+        ]))
 
-    created_media = []
-    for index, slide_text in enumerate(selected_slides, start=1):
-        prompt = (
-            f"Create a premium Instagram carousel slide in vertical 4:5 format.\n"
-            f"Style preset: {CAROUSEL_VISUAL_STYLES[style_id]['label']}. {style_block}\n"
-            f"Context: {project_hint or 'generic creator brand'}.\n"
-            f"This is slide {index} of {total_slides}.\n"
-            f"Text to render on the slide:\n{slide_text}\n\n"
-            f"Requirements:\n"
-            f"- one single slide, not a collage\n"
-            f"- precise text rendering, keep the wording faithful\n"
-            f"- strong editorial hierarchy with readable title and body\n"
-            f"- mobile-friendly spacing and margins\n"
-            f"- no watermarks, no UI chrome, no device mockups\n"
-            f"- polished social design suitable for a professional carousel"
-        )
-        image_bytes, ext, source_label = await _generate_image_bytes(prompt, inp.model, size="1024x1536")
-        media_doc = await _save_generated_media(
+        logger.info(
+            "Carousel generation start content=%s project=%s model=%s slides=%s user=%s",
             inp.content_id,
-            image_bytes,
-            ext,
-            source_label,
-            f"Carousel slide {index} - {CAROUSEL_VISUAL_STYLES[style_id]['label']}",
-            {
-                "source_model": inp.model,
-                "carousel_slide_index": index,
-                "carousel_style": style_id,
-                "generated_for_content": "carousel",
-            }
+            inp.project_id,
+            inp.model,
+            total_slides,
+            user.get("email", ""),
         )
-        created_media.append(media_doc)
 
-    return {"items": created_media, "count": len(created_media), "style": style_id, "model": inp.model}
+        max_parallel = 2 if inp.model in {"openai", "flux"} else 1
+        semaphore = asyncio.Semaphore(max_parallel)
+        tasks = [
+            _generate_carousel_slide_media(
+                inp.content_id,
+                slide_text,
+                index,
+                total_slides,
+                style_id,
+                project_hint,
+                inp.model,
+                semaphore,
+            )
+            for index, slide_text in enumerate(selected_slides, start=1)
+        ]
+        results = await asyncio.gather(*tasks)
+        created_media = [media_doc for _, media_doc in sorted(results, key=lambda item: item[0])]
+
+        logger.info(
+            "Carousel generation completed content=%s model=%s generated=%s",
+            inp.content_id,
+            inp.model,
+            len(created_media),
+        )
+        return {"items": created_media, "count": len(created_media), "style": style_id, "model": inp.model}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Carousel generation error content=%s model=%s", inp.content_id, inp.model)
+        raise HTTPException(500, f"Errore generazione carousel: {str(e)}")
 
 # ── ADMIN CONSOLE ─────────────────────────────────────
 class PowerUserInput(BaseModel):
@@ -4692,6 +5673,7 @@ async def startup():
     await db.feeds.create_index("project_id")
     await db.feed_cache.create_index("feed_id")
     await db.publish_queue.create_index([("project_id", 1), ("scheduled_at", 1)])
+    await db.publish_queue.create_index([("content_id", 1), ("social_profile_id", 1), ("status", 1)])
     await db.power_users.create_index("email", unique=True)
     await db.release_notes.create_index("created_at")
     await db.payment_transactions.create_index("session_id")
