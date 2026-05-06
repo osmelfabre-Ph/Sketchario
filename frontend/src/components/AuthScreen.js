@@ -178,22 +178,6 @@ export default function AuthScreen() {
           )}
         </form>
 
-        {!lockRegistrationFlow && (
-          <p className="text-center mt-6 text-sm text-[var(--text-muted)]">
-            {isRegisterMode ? t('auth.haveAccount') : t('auth.noAccount')}{' '}
-            <button
-              type="button"
-              className="underline hover:text-white transition-colors"
-              onClick={() => {
-                setError('');
-                setMode(isRegisterMode ? 'login' : 'register');
-              }}
-            >
-              {isRegisterMode ? t('auth.login') : t('auth.register')}
-            </button>
-          </p>
-        )}
-
         {lockRegistrationFlow && (
           <p className="text-center mt-6 text-xs text-[var(--text-muted)]">
             Dopo la registrazione entrerai direttamente nella tua area Sketchario.
