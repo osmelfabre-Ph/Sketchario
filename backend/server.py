@@ -78,6 +78,8 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASSWORD", "")
     smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    smtp_security = os.environ.get("SMTP_SECURITY", "ssl").strip().lower()
+    smtp_timeout = int(os.environ.get("SMTP_TIMEOUT", "20"))
     if not smtp_user or not smtp_pass:
         logger.warning("SMTP not configured, email not sent")
         return False
@@ -87,9 +89,22 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
         msg["From"] = f"Sketchario <{smtp_from}>"
         msg["To"] = to
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_from, to, msg.as_string())
+        logger.info(f"Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
+        if smtp_security == "starttls":
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, to, msg.as_string())
+        elif smtp_security == "none":
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, to, msg.as_string())
+        else:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, to, msg.as_string())
         logger.info(f"Email sent to {to}")
         return True
     except Exception as e:
