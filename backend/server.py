@@ -92,19 +92,31 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
         logger.info(f"Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
         if smtp_security == "starttls":
             with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                logger.info("SMTP connected, sending EHLO")
                 server.ehlo()
+                logger.info("SMTP EHLO OK, starting STARTTLS")
                 server.starttls()
+                logger.info("SMTP STARTTLS OK, sending EHLO again")
                 server.ehlo()
+                logger.info("SMTP TLS EHLO OK, logging in")
                 server.login(smtp_user, smtp_pass)
+                logger.info("SMTP login OK, sending message")
                 server.sendmail(smtp_from, to, msg.as_string())
+                logger.info("SMTP sendmail OK")
         elif smtp_security == "none":
             with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                logger.info("SMTP connected, logging in")
                 server.login(smtp_user, smtp_pass)
+                logger.info("SMTP login OK, sending message")
                 server.sendmail(smtp_from, to, msg.as_string())
+                logger.info("SMTP sendmail OK")
         else:
             with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+                logger.info("SMTP SSL connected, logging in")
                 server.login(smtp_user, smtp_pass)
+                logger.info("SMTP login OK, sending message")
                 server.sendmail(smtp_from, to, msg.as_string())
+                logger.info("SMTP sendmail OK")
         logger.info(f"Email sent to {to}")
         return True
     except Exception as e:
