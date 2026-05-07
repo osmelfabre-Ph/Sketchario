@@ -8,6 +8,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Upload
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, html as html_lib
@@ -17,6 +18,7 @@ from starlette.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
+from collections import defaultdict, deque
 import bcrypt
 import jwt as pyjwt
 import feedparser
@@ -70,6 +72,25 @@ api = APIRouter(prefix="/api")
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
 GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v24.0")
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    host = _normalize_host(request)
+    path = request.url.path
+    if SECURITY_ALLOWED_HOSTS and host and host not in SECURITY_ALLOWED_HOSTS:
+        logger.warning(f"Blocked disallowed host {host} for path {path}")
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    if _looks_malicious(request):
+        logger.warning(f"Blocked suspicious request from {_client_ip(request)}: {path}?{request.url.query}")
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    if request.method != "OPTIONS" and _is_rate_limited(request):
+        logger.warning(f"Rate limited {_client_ip(request)} on {path}")
+        return JSONResponse(status_code=429, content={"detail": "Too many requests"})
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
 
 # ── SMTP EMAIL ───────────────────────────────────────
 def _email_from_header() -> str:
@@ -221,6 +242,86 @@ GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIA
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ── SECURITY / ANTI-SCAN ────────────────────────────
+SECURITY_RATE_LIMIT_WINDOW_SECONDS = max(10, int(os.environ.get("SECURITY_RATE_LIMIT_WINDOW_SECONDS", "60")))
+SECURITY_RATE_LIMIT_MAX_REQUESTS = max(20, int(os.environ.get("SECURITY_RATE_LIMIT_MAX_REQUESTS", "120")))
+SECURITY_RATE_LIMIT_AUTH_MAX_REQUESTS = max(5, int(os.environ.get("SECURITY_RATE_LIMIT_AUTH_MAX_REQUESTS", "20")))
+SECURITY_RATE_LIMIT_BAN_SECONDS = max(30, int(os.environ.get("SECURITY_RATE_LIMIT_BAN_SECONDS", "600")))
+SECURITY_ALLOWED_HOSTS = {
+    h.strip().lower()
+    for h in os.environ.get("SECURITY_ALLOWED_HOSTS", "").split(",")
+    if h.strip()
+}
+_RATE_LIMIT_BUCKETS = defaultdict(deque)
+_RATE_LIMIT_BANS = {}
+_AUTH_RATE_LIMIT_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+}
+_BLOCKED_PATH_PATTERNS = (
+    re.compile(r"/\.env(?:\.|$)", re.IGNORECASE),
+    re.compile(r"/(?:wp-admin|wp-login|wordpress)(?:/|$)", re.IGNORECASE),
+    re.compile(r"/(?:phpmyadmin|pma)(?:/|$)", re.IGNORECASE),
+    re.compile(r"/(?:cgi-bin|server-status|actuator|manager/html)(?:/|$)", re.IGNORECASE),
+    re.compile(r"/(?:vendor/phpunit|boaform|hudson|jenkins)(?:/|$)", re.IGNORECASE),
+)
+_BLOCKED_QUERY_PATTERNS = (
+    re.compile(r"169\.254\.169\.254"),
+    re.compile(r"latest/meta-data", re.IGNORECASE),
+    re.compile(r"(?:file|gopher|dict|ftp)://", re.IGNORECASE),
+    re.compile(r"/etc/passwd", re.IGNORECASE),
+)
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+def _normalize_host(request: Request) -> str:
+    return request.headers.get("host", "").split(":")[0].strip().lower()
+
+def _looks_malicious(request: Request) -> bool:
+    path = request.url.path
+    query = request.url.query or ""
+    return any(p.search(path) for p in _BLOCKED_PATH_PATTERNS) or any(p.search(query) for p in _BLOCKED_QUERY_PATTERNS)
+
+def _rate_limit_scope(request: Request) -> str:
+    if request.url.path in _AUTH_RATE_LIMIT_PATHS:
+        return "auth"
+    return "global"
+
+def _rate_limit_key(request: Request) -> str:
+    return f"{_client_ip(request)}:{_rate_limit_scope(request)}"
+
+def _is_rate_limited(request: Request) -> bool:
+    now = datetime.now(timezone.utc)
+    key = _rate_limit_key(request)
+    banned_until = _RATE_LIMIT_BANS.get(key)
+    if banned_until and banned_until > now:
+        return True
+    if banned_until and banned_until <= now:
+        _RATE_LIMIT_BANS.pop(key, None)
+    bucket = _RATE_LIMIT_BUCKETS[key]
+    cutoff = now - timedelta(seconds=SECURITY_RATE_LIMIT_WINDOW_SECONDS)
+    while bucket and bucket[0] < cutoff:
+        bucket.popleft()
+    limit = SECURITY_RATE_LIMIT_AUTH_MAX_REQUESTS if _rate_limit_scope(request) == "auth" else SECURITY_RATE_LIMIT_MAX_REQUESTS
+    if len(bucket) >= limit:
+        _RATE_LIMIT_BANS[key] = now + timedelta(seconds=SECURITY_RATE_LIMIT_BAN_SECONDS)
+        return True
+    bucket.append(now)
+    return False
 
 # ── Helpers ──────────────────────────────────────────
 def hash_password(password: str) -> str:
