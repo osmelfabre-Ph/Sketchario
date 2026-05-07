@@ -72,6 +72,42 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v24.0")
 
 # ── SMTP EMAIL ───────────────────────────────────────
+def _email_from_header() -> str:
+    from_name = os.environ.get("EMAIL_FROM_NAME", "Sketchario").strip() or "Sketchario"
+    smtp_from = os.environ.get("SMTP_FROM", "").strip()
+    return f"{from_name} <{smtp_from}>" if smtp_from else from_name
+
+async def send_email_resend(to: str, subject: str, html_body: str):
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    smtp_from = os.environ.get("SMTP_FROM", "").strip()
+    if not api_key or not smtp_from:
+        logger.warning("Resend not configured, API email not sent")
+        return False
+    payload = {
+        "from": _email_from_header(),
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    api_base = os.environ.get("RESEND_API_BASE_URL", "https://api.resend.com").rstrip("/")
+    timeout = int(os.environ.get("EMAIL_API_TIMEOUT", "20"))
+    try:
+        logger.info(f"Sending email via Resend API to {to}")
+        async with httpx.AsyncClient(timeout=timeout) as client_http:
+            response = await client_http.post(f"{api_base}/emails", headers=headers, json=payload)
+        if response.status_code >= 400:
+            logger.error(f"Resend API error {response.status_code}: {response.text}")
+            return False
+        logger.info(f"Resend API email sent to {to}")
+        return True
+    except Exception as e:
+        logger.error(f"Resend API email error: {e}")
+        return False
+
 async def send_email_smtp(to: str, subject: str, html_body: str):
     smtp_host = os.environ.get("SMTP_HOST", "smtps.aruba.it")
     smtp_port = int(os.environ.get("SMTP_PORT", "465"))
@@ -86,7 +122,7 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"Sketchario <{smtp_from}>"
+        msg["From"] = _email_from_header()
         msg["To"] = to
         msg.attach(MIMEText(html_body, "html"))
         logger.info(f"[SMTPTRACE v3] Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
@@ -122,6 +158,16 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     except Exception as e:
         logger.error(f"SMTP email error: {e}")
         return False
+
+async def send_email(to: str, subject: str, html_body: str):
+    email_provider = os.environ.get("EMAIL_PROVIDER", "auto").strip().lower()
+    resend_api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if email_provider in {"resend", "api"} or (email_provider == "auto" and resend_api_key):
+        sent = await send_email_resend(to, subject, html_body)
+        if sent or email_provider in {"resend", "api"}:
+            return sent
+        logger.warning("Resend API send failed, falling back to SMTP")
+    return await send_email_smtp(to, subject, html_body)
 
 # ── GLOBAL PROMPTING ─────────────────────────────────
 GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIAL (da rispettare sempre, senza eccezioni):
@@ -4194,7 +4240,7 @@ async def forgot_password(inp: ForgotPasswordInput):
         <hr style="border:1px solid #1a2540;margin:20px 0;">
         <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
     </div>"""
-    email_sent = await send_email_smtp(email, "Sketchario - Reset Password", html)
+    email_sent = await send_email(email, "Sketchario - Reset Password", html)
     return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset.", "email_sent": email_sent}
 
 @api.post("/auth/reset-password")
