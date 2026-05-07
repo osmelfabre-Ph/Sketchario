@@ -89,7 +89,7 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
         msg["From"] = f"Sketchario <{smtp_from}>"
         msg["To"] = to
         msg.attach(MIMEText(html_body, "html"))
-        logger.info(f"Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
+        logger.info(f"[SMTPTRACE v3] Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
         if smtp_security == "starttls":
             with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
                 logger.info("SMTP connected, sending EHLO")
