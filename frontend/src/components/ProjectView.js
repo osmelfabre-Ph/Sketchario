@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,9 +32,10 @@ function useIsMobile() {
 
 export default function ProjectView({ project, setActiveView, activeTab }) {
   const { api, planLimits } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const canAnalytics = Boolean(planLimits?.can_analytics);
+  const lastFeedLanguageRef = useRef(null);
   const [tab, setTab] = useState(activeTab || 'list');
   const [contents, setContents] = useState([]);
   const [personas, setPersonas] = useState([]);
@@ -166,6 +167,37 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       })
       .catch(() => {});
   }, [api, project?.id, loading]);
+
+  useEffect(() => {
+    if (!project?.id || loading) return;
+    const currentLang = (i18n.language || 'it').toLowerCase().split('-', 1)[0];
+    if (lastFeedLanguageRef.current === currentLang) return;
+    lastFeedLanguageRef.current = currentLang;
+
+    let cancelled = false;
+    const reloadLocalizedFeeds = async () => {
+      try {
+        const { data: bootstrapped } = await api.post(`/feeds/bootstrap/${project.id}`);
+        if (!cancelled && Array.isArray(bootstrapped)) {
+          setFeeds(bootstrapped);
+        }
+        await api.post(`/feeds/refresh/${project.id}`);
+        const { data: rssItems } = await api.get(`/feeds/${project.id}/items`);
+        if (!cancelled) {
+          setFeedItems(rssItems || []);
+        }
+        const { data: aiItems } = await api.post(`/feeds/ai-suggestions/${project.id}/refresh`);
+        if (!cancelled) {
+          setAiFeedItems(aiItems || []);
+        }
+      } catch {
+        // silent: the normal refresh buttons remain available
+      }
+    };
+
+    reloadLocalizedFeeds();
+    return () => { cancelled = true; };
+  }, [api, i18n.language, loading, project?.id]);
 
   const openContentDetail = (c) => setSelectedContent(c);
   const handleContentUpdate = (updated) => setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
@@ -360,6 +392,10 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     setRefreshingFeeds(true);
     const tid = toast.loading(t('project.feeds.refreshLoading'));
     try {
+      const { data: bootstrapped } = await api.post(`/feeds/bootstrap/${project.id}`);
+      if (Array.isArray(bootstrapped)) {
+        setFeeds(bootstrapped);
+      }
       await api.post(`/feeds/refresh/${project.id}`);
       const response = await api.get(`/feeds/${project.id}/items`);
       setFeedItems(response.data);
