@@ -9,7 +9,7 @@ import {
 
 export default function Wizard({ setActiveView, setSelectedProject, resumeData, setWizardResumeData }) {
   const { api } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -18,6 +18,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
   const [projectName, setProjectName] = useState('');
   const [sector, setSector] = useState('');
   const [description, setDescription] = useState('');
+  const [contentLanguage, setContentLanguage] = useState((i18n.language || 'it').split('-')[0]);
   const [awareness, setAwareness] = useState(60);
   const [education, setEducation] = useState(30);
   const [monetizing, setMonetizing] = useState(10);
@@ -51,19 +52,19 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
   const [genTotal, setGenTotal] = useState(0);
 
   const steps = [
-    { label: 'Brief', icon: Sparkle },
-    { label: 'Personas', icon: Users },
-    { label: 'Tono', icon: Palette },
-    { label: 'Hook', icon: Lightning },
-    { label: 'Contenuti', icon: Sparkle },
+    { label: t('wizard.steps.brief'), icon: Sparkle },
+    { label: t('wizard.steps.personas'), icon: Users },
+    { label: t('wizard.steps.tone'), icon: Palette },
+    { label: t('wizard.steps.hooks'), icon: Lightning },
+    { label: t('wizard.steps.content'), icon: Sparkle },
   ];
 
   const presets = [
-    { id: 'professionale', label: 'Professionale', f: 8, e: 4, em: 5, h: 2, s: 4 },
-    { id: 'amichevole', label: 'Amichevole', f: 3, e: 7, em: 8, h: 6, s: 7 },
-    { id: 'ispirazionale', label: 'Ispirazionale', f: 5, e: 9, em: 7, h: 3, s: 8 },
-    { id: 'provocatorio', label: 'Provocatorio', f: 4, e: 9, em: 3, h: 7, s: 6 },
-    { id: 'educativo', label: 'Educativo', f: 7, e: 5, em: 6, h: 3, s: 5 },
+    { id: 'professionale', label: t('wizard.presets.professionale'), f: 8, e: 4, em: 5, h: 2, s: 4 },
+    { id: 'amichevole', label: t('wizard.presets.amichevole'), f: 3, e: 7, em: 8, h: 6, s: 7 },
+    { id: 'ispirazionale', label: t('wizard.presets.ispirazionale'), f: 5, e: 9, em: 7, h: 3, s: 8 },
+    { id: 'provocatorio', label: t('wizard.presets.provocatorio'), f: 4, e: 9, em: 3, h: 7, s: 6 },
+    { id: 'educativo', label: t('wizard.presets.educativo'), f: 7, e: 5, em: 6, h: 3, s: 5 },
   ];
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
     setProjectName(project.name || '');
     setSector(project.sector || '');
     setDescription(project.description || '');
+    setContentLanguage((project.language || i18n.language || 'it').split('-')[0]);
     setAwareness(project.objective_awareness ?? 60);
     setEducation(project.objective_education ?? 30);
     setMonetizing(project.objective_monetizing ?? 10);
@@ -96,7 +98,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
     const wizardStep = project.wizard_step || 0;
     setStep(Math.min(wizardStep + 1, 4));
     if (setWizardResumeData) setWizardResumeData(null);
-  }, [resumeData]);
+  }, [resumeData, i18n.language, setWizardResumeData]);
 
   const applyPreset = (p) => {
     setTovPreset(p.id);
@@ -104,11 +106,11 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
   };
 
   const createProject = async () => {
-    if (!projectName.trim() || !sector.trim()) { setError('Nome e settore sono obbligatori'); return; }
+    if (!projectName.trim() || !sector.trim()) { setError(t('wizard.errors.requiredFields')); return; }
     setLoading(true); setError('');
     try {
       const { data } = await api.post('/projects', {
-        name: projectName, sector, description, objective_awareness: awareness,
+        name: projectName, sector, description, language: contentLanguage, objective_awareness: awareness,
         objective_education: education, objective_monetizing: monetizing,
         formats, duration_weeks: durationWeeks, geo, brief_notes: briefNotes,
         custom_instructions: projectInstructions
@@ -116,7 +118,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
       setProjectId(data.id);
       setStep(1);
     } catch (e) {
-      setError(e.response?.data?.detail || 'Errore creazione progetto');
+      setError(e.response?.data?.detail || t('wizard.errors.projectCreation'));
     } finally { setLoading(false); }
   };
 
@@ -126,7 +128,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
       const { data } = await api.post('/personas/generate', { project_id: projectId });
       setPersonas(data.personas || []);
     } catch (e) {
-      setError('Errore generazione personas: ' + (e.response?.data?.detail || e.message));
+      setError(t('wizard.errors.personasGeneration', { message: e.response?.data?.detail || e.message }));
     } finally { setLoading(false); }
   };
 
@@ -135,7 +137,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
     try {
       await api.post('/personas/save', { project_id: projectId, personas });
       setStep(2);
-    } catch (e) { setError('Errore salvataggio'); }
+    } catch (e) { setError(t('wizard.errors.save')); }
     finally { setLoading(false); }
   };
 
@@ -147,7 +149,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
         humor, storytelling, custom_instructions: customInstructions, caption_length: captionLength
       });
       setStep(3);
-    } catch (e) { setError('Errore salvataggio ToV'); }
+    } catch (e) { setError(t('wizard.errors.tovSave')); }
     finally { setLoading(false); }
   };
 
@@ -157,7 +159,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
       const { data } = await api.post('/hooks/generate', { project_id: projectId });
       setHooks(data.hooks || []);
     } catch (e) {
-      setError('Errore generazione hook: ' + (e.response?.data?.detail || e.message));
+      setError(t('wizard.errors.hooksGeneration', { message: e.response?.data?.detail || e.message }));
     } finally { setLoading(false); }
   };
 
@@ -173,7 +175,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
       setSelectedProject(proj);
       setActiveView('project');
     } catch (e) {
-      setError('Errore generazione contenuti: ' + (e.response?.data?.detail || e.message));
+      setError(t('wizard.errors.contentGeneration', { message: e.response?.data?.detail || e.message }));
     } finally { setLoading(false); }
   };
 
@@ -211,43 +213,63 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
         {/* STEP 0: Brief */}
         {step === 0 && (
           <motion.div key="brief" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <h2 className="text-2xl font-bold mb-2">Brief del Progetto</h2>
-            <p className="text-[var(--text-secondary)] mb-6 text-sm">Definisci l'identit&agrave; e gli obiettivi del progetto.</p>
+            <h2 className="text-2xl font-bold mb-2">{t('wizard.brief.title')}</h2>
+            <p className="text-[var(--text-secondary)] mb-6 text-sm">{t('wizard.brief.subtitle')}</p>
             <div className="card space-y-4 mb-6">
               <div>
-                <label className="block text-sm font-medium mb-2">Nome del progetto *</label>
-                <input data-testid="wizard-project-name" className="input-dark" placeholder="Es. Strategia Gennaio 2026" value={projectName} onChange={e => setProjectName(e.target.value)} />
+                <label className="block text-sm font-medium mb-2">{t('wizard.brief.projectNameLabel')} *</label>
+                <input data-testid="wizard-project-name" className="input-dark" placeholder={t('wizard.brief.projectNamePlaceholder')} value={projectName} onChange={e => setProjectName(e.target.value)} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Settore / Niche *</label>
-                <input data-testid="wizard-sector" className="input-dark" placeholder="Es. Fotografo ritrattista, Life Coach..." value={sector} onChange={e => setSector(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <label className="block text-sm font-medium mb-2">{t('wizard.brief.sectorLabel')} *</label>
+                <input data-testid="wizard-sector" className="input-dark" placeholder={t('wizard.brief.sectorPlaceholder')} value={sector} onChange={e => setSector(e.target.value)} style={{ paddingLeft: '1rem' }} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Descrizione</label>
-                <textarea className="input-dark" rows={3} placeholder="Descrivi il tuo pubblico, il tuo stile..." value={description} onChange={e => setDescription(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <label className="block text-sm font-medium mb-2">{t('wizard.brief.descriptionLabel')}</label>
+                <textarea className="input-dark" rows={3} placeholder={t('wizard.brief.descriptionPlaceholder')} value={description} onChange={e => setDescription(e.target.value)} style={{ paddingLeft: '1rem' }} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Area geografica</label>
-                <input className="input-dark" placeholder="Es. Italia, Milano..." value={geo} onChange={e => setGeo(e.target.value)} style={{ paddingLeft: '1rem' }} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-3">Durata campagna</label>
-                <div className="flex gap-2">
-                  {[{ w: 1, l: '1 settimana' }, { w: 2, l: '2 settimane' }, { w: 4, l: '1 mese' }].map(d => (
-                    <button key={d.w} className={`preset-btn ${durationWeeks === d.w ? 'active' : ''}`} onClick={() => setDurationWeeks(d.w)}>
-                      {d.l} <span className="text-xs opacity-60 ml-1">{d.w * 7} contenuti</span>
+                <label className="block text-sm font-medium mb-3">{t('wizard.language')}</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'it', label: 'Italiano' },
+                    { id: 'en', label: 'English' },
+                    { id: 'es', label: 'Español' },
+                    { id: 'fr', label: 'Français' },
+                  ].map(lang => (
+                    <button
+                      key={lang.id}
+                      type="button"
+                      className={`preset-btn ${contentLanguage === lang.id ? 'active' : ''}`}
+                      onClick={() => setContentLanguage(lang.id)}
+                    >
+                      {lang.label}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-3">Formati contenuto</label>
+                <label className="block text-sm font-medium mb-2">{t('wizard.brief.geoLabel')}</label>
+                <input className="input-dark" placeholder={t('wizard.brief.geoPlaceholder')} value={geo} onChange={e => setGeo(e.target.value)} style={{ paddingLeft: '1rem' }} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-3">{t('wizard.brief.campaignDurationLabel')}</label>
+                <div className="flex gap-2">
+                  {[{ w: 1, l: t('wizard.brief.durations.oneWeek') }, { w: 2, l: t('wizard.brief.durations.twoWeeks') }, { w: 4, l: t('wizard.brief.durations.oneMonth') }].map(d => (
+                    <button key={d.w} className={`preset-btn ${durationWeeks === d.w ? 'active' : ''}`} onClick={() => setDurationWeeks(d.w)}>
+                      {d.l} <span className="text-xs opacity-60 ml-1">{t('wizard.brief.contentsCount', { count: d.w * 7 })}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-3">{t('wizard.brief.formatsLabel')}</label>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { id: 'reel', label: 'Reel', emoji: '🎬' },
-                    { id: 'carousel', label: 'Carousel', emoji: '🖼️' },
-                    { id: 'post', label: 'Post', emoji: '📷' },
-                    { id: 'prompted_reel', label: 'Prompted Reel', emoji: '🤖' },
+                    { id: 'reel', label: t('format.reel'), emoji: '🎬' },
+                    { id: 'carousel', label: t('format.carousel'), emoji: '🖼️' },
+                    { id: 'post', label: t('format.post'), emoji: '📷' },
+                    { id: 'prompted_reel', label: t('format.prompted_reel'), emoji: '🤖' },
                   ].map(f => (
                     <button key={f.id}
                       className={`preset-btn ${formats.includes(f.id) ? 'active' : ''}`}
@@ -256,20 +278,20 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mt-2">L'AI distribuirà gli hook tra i formati selezionati</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2">{t('wizard.brief.formatsHint')}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Note per l'AI</label>
-                <textarea className="input-dark" rows={3} placeholder="Es. Ho scritto un libro, voglio spingere quello nelle CTA; tono più autorevole; focus su consulenze premium..." value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
+                <label className="block text-sm font-medium mb-2">{t('wizard.brief.aiNotesLabel')}</label>
+                <textarea className="input-dark" rows={3} placeholder={t('wizard.brief.aiNotesPlaceholder')} value={briefNotes} onChange={e => setBriefNotes(e.target.value)} style={{ paddingLeft: '1rem' }} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Istruzioni personalizzate <span className="text-[var(--text-muted)] font-normal">(opzionale)</span></label>
-                <p className="text-xs text-[var(--text-muted)] mb-2">Carica un file con le tue linee guida brand, positioning, tono, target — verranno usate in tutte le generazioni AI (personas, hook, contenuti, ToV).</p>
+                <label className="block text-sm font-medium mb-2">{t('wizard.brief.customInstructionsLabel')} <span className="text-[var(--text-muted)] font-normal">({t('wizard.brief.optional')})</span></label>
+                <p className="text-xs text-[var(--text-muted)] mb-2">{t('wizard.brief.customInstructionsHint')}</p>
                 {projectInstructions ? (
                   <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)' }}>
                     <FileText size={16} color="var(--accent-purple)" />
                     <span className="text-sm flex-1 truncate text-[var(--accent-purple)]">{instructionsFileName}</span>
-                    <span className="text-xs text-[var(--text-muted)]">{projectInstructions.length} car.</span>
+                    <span className="text-xs text-[var(--text-muted)]">{t('wizard.brief.charactersCount', { count: projectInstructions.length })}</span>
                     <button className="p-1 hover:text-red-400 transition-colors" onClick={() => { setProjectInstructions(''); setInstructionsFileName(''); }}>
                       <X size={14} />
                     </button>
@@ -279,7 +301,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-purple)'}
                     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}>
                     <UploadSimple size={16} color="var(--text-muted)" />
-                    <span className="text-sm text-[var(--text-muted)]">{uploadingFile ? 'Analisi in corso...' : 'Carica .txt .md .html .docx .pdf'}</span>
+                    <span className="text-sm text-[var(--text-muted)]">{uploadingFile ? t('wizard.brief.fileAnalyzing') : t('wizard.brief.fileUploadCta')}</span>
                     <input type="file" className="hidden" accept=".txt,.md,.html,.htm,.docx,.pdf"
                       onChange={async e => {
                         const file = e.target.files?.[0];
@@ -291,7 +313,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                           setProjectInstructions(data.text);
                           setInstructionsFileName(file.name);
                         } catch (err) {
-                          setError('Errore lettura file: ' + (err.response?.data?.detail || err.message));
+                          setError(t('wizard.errors.fileRead', { message: err.response?.data?.detail || err.message }));
                         }
                         setUploadingFile(false);
                         e.target.value = '';
@@ -312,12 +334,12 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
         {/* STEP 1: Personas */}
         {step === 1 && (
           <motion.div key="personas" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <h2 className="text-2xl font-bold mb-2">Buyer Personas</h2>
-            <p className="text-[var(--text-secondary)] mb-6 text-sm">L'AI genera personas basate sul tuo settore.</p>
+            <h2 className="text-2xl font-bold mb-2">{t('wizard.personas.title')}</h2>
+            <p className="text-[var(--text-secondary)] mb-6 text-sm">{t('wizard.personas.subtitle')}</p>
             {personas.length === 0 ? (
               <div className="text-center py-12">
                 <button data-testid="generate-personas-btn" className="btn-gradient" onClick={generatePersonas} disabled={loading}>
-                  {loading ? 'Generazione in corso...' : 'Genera Personas con AI'} <Sparkle weight="fill" size={18} />
+                  {loading ? t('wizard.generating') : t('wizard.personas.generateCta')} <Sparkle weight="fill" size={18} />
                 </button>
               </div>
             ) : (
@@ -328,7 +350,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                       <h3 className="font-semibold text-lg mb-1">{p.role}{p.age ? `, ${p.age} anni` : ''}</h3>
                       {p.pain_points && (
                         <div className="p-3 rounded-lg text-sm mb-2" style={{ background: 'rgba(236,72,153,0.1)' }}>
-                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">Pain Points</span>
+                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">{t('wizard.personas.painPoints')}</span>
                           {(Array.isArray(p.pain_points) ? p.pain_points : [p.pain_points]).map((pp, j) => (
                             <p key={j} className="text-[var(--text-primary)] mt-1">- {pp}</p>
                           ))}
@@ -336,7 +358,7 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                       )}
                       {p.desires && (
                         <div className="p-3 rounded-lg text-sm" style={{ background: 'rgba(99,102,241,0.1)' }}>
-                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">Desideri</span>
+                          <span className="text-[var(--text-muted)] text-xs font-semibold uppercase">{t('wizard.personas.desires')}</span>
                           {(Array.isArray(p.desires) ? p.desires : [p.desires]).map((d, j) => (
                             <p key={j} className="text-[var(--text-primary)] mt-1">- {d}</p>
                           ))}
@@ -346,9 +368,9 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                   ))}
                 </div>
                 <div className="flex gap-3">
-                  <button className="btn-ghost" onClick={generatePersonas} disabled={loading}>Rigenera</button>
+                  <button className="btn-ghost" onClick={generatePersonas} disabled={loading}>{t('wizard.actions.regenerate')}</button>
                   <button data-testid="approve-personas-btn" className="btn-gradient" onClick={savePersonasAndContinue} disabled={loading}>
-                    Approva e Continua <ArrowRight weight="bold" size={18} />
+                    {t('wizard.personas.approveAndContinue')} <ArrowRight weight="bold" size={18} />
                   </button>
                 </div>
               </>
@@ -359,8 +381,8 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
         {/* STEP 2: Tone of Voice */}
         {step === 2 && (
           <motion.div key="tone" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <h2 className="text-2xl font-bold mb-2">Tono di Voce</h2>
-            <p className="text-[var(--text-secondary)] mb-6 text-sm">Definisci come vuoi comunicare.</p>
+            <h2 className="text-2xl font-bold mb-2">{t('wizard.tov.title')}</h2>
+            <p className="text-[var(--text-secondary)] mb-6 text-sm">{t('wizard.tov.subtitle')}</p>
             <div className="flex gap-2 mb-8 flex-wrap">
               {presets.map(p => (
                 <button key={p.id} className={`preset-btn ${tovPreset === p.id ? 'active' : ''}`} onClick={() => applyPreset(p)}>{p.label}</button>
@@ -368,11 +390,11 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
             </div>
             <div className="card mb-6">
               {[
-                { label: 'Formalit\u00e0', hint: 'Casual \u2194 Formale', val: formality, set: setFormality },
-                { label: 'Energia', hint: 'Quieto \u2194 Energico', val: energy, set: setEnergy },
-                { label: 'Empatia', hint: 'Neutro \u2194 Empatico', val: empathy, set: setEmpathy },
-                { label: 'Umorismo', hint: 'Serio \u2194 Divertente', val: humor, set: setHumor },
-                { label: 'Storytelling', hint: 'Diretto \u2194 Narrativo', val: storytelling, set: setStorytelling },
+                { label: t('wizard.tov.sliders.formality.label'), hint: t('wizard.tov.sliders.formality.hint'), val: formality, set: setFormality },
+                { label: t('wizard.tov.sliders.energy.label'), hint: t('wizard.tov.sliders.energy.hint'), val: energy, set: setEnergy },
+                { label: t('wizard.tov.sliders.empathy.label'), hint: t('wizard.tov.sliders.empathy.hint'), val: empathy, set: setEmpathy },
+                { label: t('wizard.tov.sliders.humor.label'), hint: t('wizard.tov.sliders.humor.hint'), val: humor, set: setHumor },
+                { label: t('wizard.tov.sliders.storytelling.label'), hint: t('wizard.tov.sliders.storytelling.hint'), val: storytelling, set: setStorytelling },
               ].map(s => (
                 <div key={s.label} className="tone-slider-row">
                   <div className="tone-slider-label">
@@ -384,13 +406,13 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
               ))}
             </div>
             <div className="card mb-6">
-              <label className="block text-sm font-medium mb-2">Istruzioni tono</label>
-              <textarea className="input-dark" rows={3} placeholder="Es. Chiaro, autorevole, umano, diretto..." value={customInstructions} onChange={e => setCustomInstructions(e.target.value)} style={{ paddingLeft: '1rem' }} />
+              <label className="block text-sm font-medium mb-2">{t('wizard.tov.instructionsLabel')}</label>
+              <textarea className="input-dark" rows={3} placeholder={t('wizard.tov.instructionsPlaceholder')} value={customInstructions} onChange={e => setCustomInstructions(e.target.value)} style={{ paddingLeft: '1rem' }} />
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-medium mb-3">Lunghezza Caption</label>
+              <label className="block text-sm font-medium mb-3">{t('wizard.tov.captionLengthLabel')}</label>
               <div className="flex gap-2">
-                {[{ id: 'short', l: 'Breve', d: 'max 60 parole' }, { id: 'medium', l: 'Media', d: '120-180 parole' }, { id: 'long', l: 'Lunga', d: '300-450 parole' }].map(c => (
+                {[{ id: 'short', l: t('wizard.tov.captionLengths.short.label'), d: t('wizard.tov.captionLengths.short.hint') }, { id: 'medium', l: t('wizard.tov.captionLengths.medium.label'), d: t('wizard.tov.captionLengths.medium.hint') }, { id: 'long', l: t('wizard.tov.captionLengths.long.label'), d: t('wizard.tov.captionLengths.long.hint') }].map(c => (
                   <button key={c.id} className={`preset-btn ${captionLength === c.id ? 'active' : ''}`} onClick={() => setCaptionLength(c.id)}>
                     {c.l} <span className="text-xs opacity-60 block">{c.d}</span>
                   </button>
@@ -398,9 +420,9 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
               </div>
             </div>
             <div className="flex gap-3">
-              <button className="btn-ghost" onClick={() => setStep(1)}><ArrowLeft size={16} /> Indietro</button>
+              <button className="btn-ghost" onClick={() => setStep(1)}><ArrowLeft size={16} /> {t('wizard.actions.back')}</button>
               <button className="btn-gradient" onClick={saveTovAndContinue} disabled={loading}>
-                {loading ? 'Salvataggio...' : 'Salva e Genera Hook'} <ArrowRight weight="bold" size={18} />
+                {loading ? t('wizard.actions.saving') : t('wizard.tov.saveAndGenerateHooks')} <ArrowRight weight="bold" size={18} />
               </button>
             </div>
           </motion.div>
@@ -409,12 +431,12 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
         {/* STEP 3: Hooks */}
         {step === 3 && (
           <motion.div key="hooks" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <h2 className="text-2xl font-bold mb-2">Hook Generati</h2>
-            <p className="text-[var(--text-secondary)] mb-6 text-sm">Hook distribuiti sulla campagna.</p>
+            <h2 className="text-2xl font-bold mb-2">{t('wizard.hooks.title')}</h2>
+            <p className="text-[var(--text-secondary)] mb-6 text-sm">{t('wizard.hooks.subtitle')}</p>
             {hooks.length === 0 ? (
               <div className="text-center py-12">
                 <button data-testid="generate-hooks-btn" className="btn-gradient" onClick={generateHooks} disabled={loading}>
-                  {loading ? 'Generazione in corso...' : 'Genera Hook con AI'} <Lightning weight="fill" size={18} />
+                  {loading ? t('wizard.generating') : t('wizard.hooks.generateCta')} <Lightning weight="fill" size={18} />
                 </button>
               </div>
             ) : (
@@ -423,23 +445,23 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
                   {hooks.map((h, i) => (
                     <motion.div key={i} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }} className="hook-item">
                       <div className="w-14 text-center">
-                        <span className="text-xs font-semibold text-[var(--text-muted)]">G{h.day_offset || i + 1}</span>
+                        <span className="text-xs font-semibold text-[var(--text-muted)]">{t('wizard.hooks.dayBadge', { day: h.day_offset || i + 1 })}</span>
                       </div>
                       <div className="flex-1"><p className="text-sm">{h.hook_text}</p></div>
                       <span className={`badge ${h.format === 'reel' ? 'pink' : h.format === 'prompted_reel' ? 'purple' : 'blue'}`}>
                         {h.format === 'reel' ? <Video size={12} /> : h.format === 'prompted_reel' ? <span>🤖</span> : <Image size={12} />}
-                        <span className="ml-1">{h.format}</span>
+                        <span className="ml-1">{h.format === 'prompted_reel' ? t('format.prompted_reel') : t(`format.${h.format}`)}</span>
                       </span>
                       <span className={`badge ${h.pillar === 'awareness' ? 'blue' : h.pillar === 'education' ? 'green' : 'orange'}`}>
-                        {h.pillar}
+                        {t(`wizard.hooks.pillars.${h.pillar}`)}
                       </span>
                     </motion.div>
                   ))}
                 </div>
                 <div className="flex gap-3">
-                  <button className="btn-ghost" onClick={generateHooks} disabled={loading}>Rigenera</button>
+                  <button className="btn-ghost" onClick={generateHooks} disabled={loading}>{t('wizard.actions.regenerate')}</button>
                   <button data-testid="approve-hooks-btn" className="btn-gradient" onClick={saveHooksAndGenerate} disabled={loading}>
-                    {loading ? 'Generazione contenuti...' : 'Approva e Genera Contenuti'} <ArrowRight weight="bold" size={18} />
+                    {loading ? t('wizard.actions.generatingContent') : t('wizard.hooks.approveAndGenerate')} <ArrowRight weight="bold" size={18} />
                   </button>
                 </div>
               </>
@@ -453,9 +475,9 @@ export default function Wizard({ setActiveView, setSelectedProject, resumeData, 
             <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-[var(--gradient-start)] to-[var(--gradient-end)] flex items-center justify-center">
               <Sparkle weight="fill" size={40} color="white" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">{loading ? 'Generazione in Corso...' : 'Progetto Completato!'}</h2>
+            <h2 className="text-2xl font-bold mb-2">{loading ? t('wizard.content.generatingTitle') : t('wizard.content.completedTitle')}</h2>
             <p className="text-[var(--text-secondary)] mb-8 text-sm">
-              {loading ? 'L\'AI sta creando i contenuti.' : `${genProgress} contenuti generati con successo.`}
+              {loading ? t('wizard.content.generatingSubtitle') : t('wizard.content.completedSubtitle', { count: genProgress })}
             </p>
             {loading && (
               <div className="max-w-md mx-auto mb-8">

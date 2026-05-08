@@ -439,7 +439,112 @@
     "tone": "Tono di voce",
     "language": "Lingua dei contenuti",
     "generating": "Generazione in corso...",
-    "complete": "Crea Progetto"
+    "complete": "Crea Progetto",
+    "steps": {
+      "brief": "Brief",
+      "personas": "Personas",
+      "tone": "Tono",
+      "hooks": "Hook",
+      "content": "Contenuti"
+    },
+    "presets": {
+      "professionale": "Professionale",
+      "amichevole": "Amichevole",
+      "ispirazionale": "Ispirazionale",
+      "provocatorio": "Provocatorio",
+      "educativo": "Educativo"
+    },
+    "actions": {
+      "back": "Indietro",
+      "saving": "Salvataggio...",
+      "regenerate": "Rigenera",
+      "generatingContent": "Generazione contenuti..."
+    },
+    "brief": {
+      "title": "Brief del Progetto",
+      "subtitle": "Definisci l'identità e gli obiettivi del progetto.",
+      "projectNameLabel": "Nome del progetto",
+      "projectNamePlaceholder": "Es. Strategia Gennaio 2026",
+      "sectorLabel": "Settore / Nicchia",
+      "sectorPlaceholder": "Es. Fotografo ritrattista, Life Coach...",
+      "descriptionLabel": "Descrizione",
+      "descriptionPlaceholder": "Descrivi il tuo pubblico, il tuo stile...",
+      "geoLabel": "Area geografica",
+      "geoPlaceholder": "Es. Italia, Milano...",
+      "campaignDurationLabel": "Durata campagna",
+      "durations": {
+        "oneWeek": "1 settimana",
+        "twoWeeks": "2 settimane",
+        "oneMonth": "1 mese"
+      },
+      "contentsCount": "{{count}} contenuti",
+      "formatsLabel": "Formati contenuto",
+      "formatsHint": "L'AI distribuirà gli hook tra i formati selezionati",
+      "aiNotesLabel": "Note per l'AI",
+      "aiNotesPlaceholder": "Es. Ho scritto un libro, voglio spingere quello nelle CTA; tono più autorevole; focus su consulenze premium...",
+      "customInstructionsLabel": "Istruzioni personalizzate",
+      "customInstructionsHint": "Carica un file con le tue linee guida brand, positioning, tono, target — verranno usate in tutte le generazioni AI (personas, hook, contenuti, ToV).",
+      "optional": "opzionale",
+      "charactersCount": "{{count}} car.",
+      "fileAnalyzing": "Analisi in corso...",
+      "fileUploadCta": "Carica .txt .md .html .docx .pdf"
+    },
+    "personas": {
+      "title": "Buyer Personas",
+      "subtitle": "L'AI genera personas basate sul tuo settore.",
+      "generateCta": "Genera Personas con AI",
+      "painPoints": "Pain Points",
+      "desires": "Desideri",
+      "approveAndContinue": "Approva e Continua"
+    },
+    "tov": {
+      "title": "Tono di Voce",
+      "subtitle": "Definisci come vuoi comunicare.",
+      "instructionsLabel": "Istruzioni tono",
+      "instructionsPlaceholder": "Es. Chiaro, autorevole, umano, diretto...",
+      "captionLengthLabel": "Lunghezza Caption",
+      "saveAndGenerateHooks": "Salva e Genera Hook",
+      "sliders": {
+        "formality": { "label": "Formalità", "hint": "Casual ↔ Formale" },
+        "energy": { "label": "Energia", "hint": "Quieto ↔ Energico" },
+        "empathy": { "label": "Empatia", "hint": "Neutro ↔ Empatico" },
+        "humor": { "label": "Umorismo", "hint": "Serio ↔ Divertente" },
+        "storytelling": { "label": "Storytelling", "hint": "Diretto ↔ Narrativo" }
+      },
+      "captionLengths": {
+        "short": { "label": "Breve", "hint": "max 60 parole" },
+        "medium": { "label": "Media", "hint": "120-180 parole" },
+        "long": { "label": "Lunga", "hint": "300-450 parole" }
+      }
+    },
+    "hooks": {
+      "title": "Hook Generati",
+      "subtitle": "Hook distribuiti sulla campagna.",
+      "generateCta": "Genera Hook con AI",
+      "approveAndGenerate": "Approva e Genera Contenuti",
+      "dayBadge": "G{{day}}",
+      "pillars": {
+        "awareness": "awareness",
+        "education": "education",
+        "monetizing": "monetizing"
+      }
+    },
+    "content": {
+      "generatingTitle": "Generazione in Corso...",
+      "generatingSubtitle": "L'AI sta creando i contenuti.",
+      "completedTitle": "Progetto Completato!",
+      "completedSubtitle": "{{count}} contenuti generati con successo."
+    },
+    "errors": {
+      "requiredFields": "Nome e settore sono obbligatori",
+      "projectCreation": "Errore creazione progetto",
+      "personasGeneration": "Errore generazione personas: {{message}}",
+      "save": "Errore salvataggio",
+      "tovSave": "Errore salvataggio ToV",
+      "hooksGeneration": "Errore generazione hook: {{message}}",
+      "contentGeneration": "Errore generazione contenuti: {{message}}",
+      "fileRead": "Errore lettura file: {{message}}"
+    }
   },
   "footer": {
     "rights": "© {{year}} Sketchario. Tutti i diritti riservati.",
