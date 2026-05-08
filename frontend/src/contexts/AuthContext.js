@@ -12,6 +12,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setTokenState] = useState(getStoredToken);
+  const [planLimits, setPlanLimits] = useState(null);
 
   const setToken = useCallback((t) => {
     if (t) localStorage.setItem('sk_token', t);
@@ -19,11 +20,21 @@ export function AuthProvider({ children }) {
     setTokenState(t);
   }, []);
 
+  const getLanguageHeader = useCallback(() => {
+    const raw =
+      localStorage.getItem('i18nextLng') ||
+      document?.documentElement?.lang ||
+      navigator?.language ||
+      'it';
+    return String(raw).toLowerCase().split('-', 1)[0] || 'it';
+  }, []);
+
   const api = useMemo(() => {
     const instance = axios.create({ baseURL: API, withCredentials: true });
     instance.interceptors.request.use((config) => {
       const t = localStorage.getItem('sk_token');
       if (t) config.headers.Authorization = `Bearer ${t}`;
+      config.headers['X-Sketchario-Language'] = getLanguageHeader();
       return config;
     });
     instance.interceptors.response.use(
@@ -48,7 +59,7 @@ export function AuthProvider({ children }) {
       }
     );
     return instance;
-  }, [setToken]);
+  }, [getLanguageHeader, setToken]);
 
   useEffect(() => {
     // Handle social login redirect (Google/Facebook OAuth callback)
@@ -73,23 +84,48 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, [api, setToken]);
 
+  const refreshPlanLimits = useCallback(async () => {
+    const t = localStorage.getItem('sk_token');
+    if (!t) {
+      setPlanLimits(null);
+      return null;
+    }
+    try {
+      const { data } = await api.get('/plan/limits');
+      setPlanLimits(data);
+      return data;
+    } catch {
+      setPlanLimits(null);
+      return null;
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (!loading) {
+      refreshPlanLimits();
+    }
+  }, [loading, refreshPlanLimits, token]);
+
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
     if (data.access_token) setToken(data.access_token);
     setUser(data.user);
+    setTimeout(() => { refreshPlanLimits(); }, 0);
     return data;
-  }, [api, setToken]);
+  }, [api, refreshPlanLimits, setToken]);
 
   const register = useCallback(async (name, email, password) => {
     const { data } = await api.post('/auth/register', { name, email, password });
     if (data.access_token) setToken(data.access_token);
     setUser(data.user);
+    setTimeout(() => { refreshPlanLimits(); }, 0);
     return data;
-  }, [api, setToken]);
+  }, [api, refreshPlanLimits, setToken]);
 
   const logout = useCallback(async () => {
     try { await api.post('/auth/logout'); } catch {}
     setUser(null);
+    setPlanLimits(null);
     setToken(null);
   }, [api, setToken]);
 
@@ -100,7 +136,7 @@ export function AuthProvider({ children }) {
   }, [api]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, api, token }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, api, token, planLimits, refreshPlanLimits }}>
       {children}
     </AuthContext.Provider>
   );

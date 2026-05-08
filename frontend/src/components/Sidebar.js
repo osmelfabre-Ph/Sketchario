@@ -69,7 +69,7 @@ function LangSwitcher({ collapsed }) {
 }
 
 export default function Sidebar({ activeView, setActiveView, isProjectView, onHelpOpen }) {
-  const { user, logout, api } = useAuth();
+  const { user, logout, api, planLimits } = useAuth();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
@@ -80,6 +80,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView, onHe
   }, [api]);
 
   const isAdmin = user?.role === 'admin';
+  const canAnalytics = Boolean(planLimits?.can_analytics);
   const w = collapsed ? 68 : 220;
 
   if (isMobile) {
@@ -140,7 +141,7 @@ export default function Sidebar({ activeView, setActiveView, isProjectView, onHe
     { id: 'calendar', icon: CalendarBlank, label: t('nav.calendar') },
     { id: 'personas', icon: Users, label: t('nav.personas') },
     { id: 'social', icon: Globe, label: t('nav.social') },
-    { id: 'analytics', icon: ChartBar, label: t('nav.analytics') },
+    ...(canAnalytics ? [{ id: 'analytics', icon: ChartBar, label: t('nav.analytics') }] : []),
   ];
 
   return (
