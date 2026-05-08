@@ -10,7 +10,8 @@ export default function RightPanelContent({
   cancellingQueueId,
   clearQueue,
   clearingQueue,
-  project
+  project,
+  canAnalytics
 }) {
   const { t } = useTranslation();
   const sortedQueueItems = [...queueItems].sort((a, b) => {
@@ -63,10 +64,12 @@ export default function RightPanelContent({
         })}
         {queueItems.length === 0 && <p className="text-[10px] text-[var(--text-muted)]">{t('project.queue.empty')}</p>}
       </div>
-      <div>
-        <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> {t('nav.analytics')}</p>
-        <Analytics project={project} compact />
-      </div>
+      {canAnalytics && (
+        <div>
+          <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1"><ChartBar size={12} /> {t('nav.analytics')}</p>
+          <Analytics project={project} compact />
+        </div>
+      )}
     </>
   );
 }

@@ -31,9 +31,10 @@ function useIsMobile() {
 }
 
 export default function ProjectView({ project, setActiveView, activeTab }) {
-  const { api } = useAuth();
+  const { api, planLimits } = useAuth();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const canAnalytics = Boolean(planLimits?.can_analytics);
   const [tab, setTab] = useState(activeTab || 'list');
   const [contents, setContents] = useState([]);
   const [personas, setPersonas] = useState([]);
@@ -101,11 +102,17 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
   useEffect(() => {
     if (activeTab === 'analytics') {
-      setShowRightPanel(true);
+      if (canAnalytics) setShowRightPanel(true);
     } else if (activeTab) {
       setTab(activeTab);
     }
-  }, [activeTab]);
+  }, [activeTab, canAnalytics]);
+
+  useEffect(() => {
+    if (!canAnalytics && showRightPanel) {
+      setShowRightPanel(false);
+    }
+  }, [canAnalytics, showRightPanel]);
 
   useEffect(() => {
     if (!project?.id) return;
@@ -421,13 +428,15 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 {tab_.label}
             </button>
             ))}
-            <button
-              data-testid="tab-analytics"
-              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${showRightPanel ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
-              onClick={() => setShowRightPanel(v => !v)}
-            >
-              {t('nav.analytics')}
-            </button>
+            {canAnalytics && (
+              <button
+                data-testid="tab-analytics"
+                className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${showRightPanel ? 'bg-[var(--bg-card)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}
+                onClick={() => setShowRightPanel(v => !v)}
+              >
+                {t('nav.analytics')}
+              </button>
+            )}
             {tab === 'list' && (
               <div className="flex items-center gap-0.5 ml-2 border-l border-[var(--border-color)] pl-2 flex-shrink-0">
                 <button
@@ -762,6 +771,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
               clearQueue={clearQueue}
               clearingQueue={clearingQueue}
               project={project}
+              canAnalytics={canAnalytics}
             />
           </div>
         </motion.div>
