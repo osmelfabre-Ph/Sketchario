@@ -455,6 +455,8 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             {tab === 'list' && viewMode === 'cards' && (
               <ContentCardsView
                 contents={contents}
+                queueItems={queueItems}
+                isMobile={isMobile}
                 openContentDetail={openContentDetail}
                 deletingContentId={deletingContentId}
                 deleteContent={deleteContent}
