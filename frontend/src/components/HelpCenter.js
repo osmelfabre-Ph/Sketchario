@@ -514,6 +514,466 @@ export const ARTICLES = [
   },
 ];
 
+const ARTICLES_EN = [
+  {
+    id: 'what-is-sketchario', categoryId: 'start',
+    title: 'What is Sketchario?',
+    desc: 'Platform overview and the main workflow.',
+    content: [
+      { type: 'para', text: 'Sketchario is an AI-powered content strategy platform that helps you plan, generate and publish social content from the initial brief all the way to publishing.' },
+      { type: 'h3', text: 'The workflow in 4 steps' },
+      { type: 'steps', items: [
+        { title: 'Create a Project', desc: 'The guided Wizard helps define brief, target audience and tone of voice, then generates the first content assets.' },
+        { title: 'Manage Content', desc: 'Review, edit and organize posts in list view or calendar view.' },
+        { title: 'Edit Each Post', desc: 'Every post has a full editor with caption, media, script and social preview.' },
+        { title: 'Publish', desc: 'Connect your social accounts and publish immediately or schedule content.' },
+      ]},
+      { type: 'h3', text: 'What you can do with Sketchario' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'AI content generation', desc: 'Generate personas, hooks, scripts, captions and hashtags with AI.' },
+        { title: 'Editorial calendar', desc: 'See all scheduled content in one monthly calendar.' },
+        { title: 'Multi-platform publishing', desc: 'Publish across social platforms from one workflow.' },
+        { title: 'Team collaboration', desc: 'Invite collaborators and work together on projects.' },
+      ]},
+      { type: 'tip', text: 'To get started quickly, create a new project from the sidebar and follow the Wizard.' },
+    ],
+  },
+  {
+    id: 'interface-overview', categoryId: 'start',
+    title: 'Sketchario interface overview',
+    desc: 'Sidebar, Dashboard, Project View and the main panels.',
+    content: [
+      { type: 'h3', text: 'Sidebar' },
+      { type: 'para', text: 'The sidebar contains the main navigation: Dashboard, New Project, Calendar, Personas, Social, Analytics, Notifications, Help, Language, Profile and Logout.' },
+      { type: 'h3', text: 'Dashboard' },
+      { type: 'para', text: 'The dashboard shows all project cards with status, generated content count, cover image and quick actions.' },
+      { type: 'h3', text: 'Project View' },
+      { type: 'para', text: 'Inside a project you can switch between content list, calendar, personas and social tabs. The right panel shows queue and analytics data.' },
+      { type: 'h3', text: 'Post Editor' },
+      { type: 'para', text: 'Opening a content item launches the full editor with three areas: editor, preview and publishing panel.' },
+      { type: 'note', text: 'On mobile, navigation is simplified into a bottom bar and more compact content layouts.' },
+    ],
+  },
+  {
+    id: 'login-register', categoryId: 'start',
+    title: 'Registration and login',
+    desc: 'How to create an account and access Sketchario.',
+    content: [
+      { type: 'h3', text: 'Create an account' },
+      { type: 'steps', items: [
+        { title: 'Open the app', desc: 'Go to the Sketchario login page in your browser.' },
+        { title: 'Choose Register', desc: 'Open the registration flow from the auth screen.' },
+        { title: 'Fill in your details', desc: 'Enter name, email and a password with at least 8 characters.' },
+        { title: 'Access the app', desc: 'Once registration is complete, you can start using the platform.' },
+      ]},
+      { type: 'h3', text: 'Forgot password' },
+      { type: 'para', text: 'Use the forgot password flow from the login screen. A reset email will be sent with a one-time reset link.' },
+      { type: 'warn', text: 'Use a secure password and do not share your credentials.' },
+    ],
+  },
+  {
+    id: 'wizard-overview', categoryId: 'wizard',
+    title: 'Create a new project',
+    desc: 'The Wizard guides you from strategy to generated content.',
+    content: [
+      { type: 'para', text: 'Every project starts with the Wizard. You can save progress and continue later from the dashboard.' },
+      { type: 'h3', text: 'The 5 Wizard steps' },
+      { type: 'steps', items: [
+        { title: 'Brief', desc: 'Define project basics, goals, formats and campaign scope.' },
+        { title: 'Personas', desc: 'Generate and refine buyer personas for the project.' },
+        { title: 'Tone of Voice', desc: 'Choose a communication style and fine-tune it with sliders.' },
+        { title: 'Hook Library', desc: 'Review AI-generated hooks and approve the ones you want to use.' },
+        { title: 'Generation', desc: 'Generate scripts, captions and supporting assets automatically.' },
+      ]},
+      { type: 'tip', text: 'Draft projects can be resumed anytime from the dashboard.' },
+    ],
+  },
+  {
+    id: 'wizard-brief', categoryId: 'wizard',
+    title: 'Step 1 — Project brief',
+    desc: 'How to fill in the brief to improve AI output quality.',
+    content: [
+      { type: 'h3', text: 'Brief fields' },
+      { type: 'bullets', items: [
+        'Project name — the campaign or initiative name.',
+        'Sector — the industry or business category.',
+        'Description — what the brand, product or service is about.',
+        'Marketing goals — awareness, education and monetizing mix.',
+        'Formats — choose Reel, Carousel or both.',
+        'Campaign duration — number of weeks for planning.',
+        'Geo target — market or location.',
+        'Brief notes — extra guidance for the AI.',
+      ]},
+      { type: 'h3', text: 'Custom AI instructions file' },
+      { type: 'para', text: 'You can upload a text or document file with custom brand instructions. The extracted text is used as context during the entire generation flow.' },
+      { type: 'note', text: 'The more specific and structured the brief is, the better the personas, hooks and content will be.' },
+    ],
+  },
+  {
+    id: 'wizard-personas', categoryId: 'wizard',
+    title: 'Step 2 — AI personas',
+    desc: 'Generate and refine buyer personas for your target audience.',
+    content: [
+      { type: 'para', text: 'Personas help Sketchario adapt tone, angle and content structure to your intended audience.' },
+      { type: 'h3', text: 'What each persona includes' },
+      { type: 'bullets', items: [
+        'Role and professional context',
+        'Age range and background',
+        'Goals and motivations',
+        'Pain points and frustrations',
+        'How the offer helps them',
+      ]},
+      { type: 'h3', text: 'Editing personas' },
+      { type: 'para', text: 'You can review and edit generated personas before continuing. Saved personas remain available in the project later.' },
+      { type: 'tip', text: 'Well-defined personas improve the quality and consistency of generated content.' },
+    ],
+  },
+  {
+    id: 'wizard-tov', categoryId: 'wizard',
+    title: 'Step 3 — Tone of Voice',
+    desc: 'Define the communication style and save reusable templates.',
+    content: [
+      { type: 'h3', text: 'Available presets' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Professional', desc: 'Formal and authoritative.' },
+        { title: 'Friendly', desc: 'Warm, accessible and informal.' },
+        { title: 'Inspirational', desc: 'Motivating and vision-driven.' },
+        { title: 'Provocative', desc: 'Direct and contrarian.' },
+        { title: 'Educational', desc: 'Structured and informative.' },
+      ]},
+      { type: 'h3', text: 'Custom sliders' },
+      { type: 'para', text: 'Adjust formality, energy, empathy, humor and storytelling to refine the selected preset.' },
+      { type: 'h3', text: 'Caption length' },
+      { type: 'para', text: 'Choose short, medium or long captions depending on your preferred content style.' },
+      { type: 'h3', text: 'ToV templates' },
+      { type: 'para', text: 'Save the current tone configuration as a reusable template for other projects.' },
+    ],
+  },
+  {
+    id: 'wizard-hooks', categoryId: 'wizard',
+    title: 'Steps 4–5 — Hook Library and generation',
+    desc: 'Approve hooks and trigger content generation.',
+    content: [
+      { type: 'h3', text: 'What a hook is' },
+      { type: 'para', text: 'A hook is the main angle or attention-grabbing opening of a content piece. Approved hooks become the basis for new content items.' },
+      { type: 'h3', text: 'Approve the best hooks' },
+      { type: 'para', text: 'Review, edit and approve only the hooks you want to use before generation starts.' },
+      { type: 'h3', text: 'Content generation' },
+      { type: 'para', text: 'The final step automatically produces scripts, captions, hashtags and supporting content structure for each approved hook.' },
+      { type: 'tip', text: 'Generation time depends on how many hooks and formats are involved.' },
+    ],
+  },
+  {
+    id: 'content-list', categoryId: 'content',
+    title: 'List view and card view',
+    desc: 'How to browse, filter and organize project content.',
+    content: [
+      { type: 'para', text: 'Project content can be displayed in compact list form or as cards, depending on what is easier for the current task.' },
+      { type: 'h3', text: 'Card view' },
+      { type: 'para', text: 'Cards show media preview, format badge, status, hook text and publishing date. Published items are highlighted visually.' },
+      { type: 'h3', text: 'Compact list view' },
+      { type: 'para', text: 'Contents are grouped by status and shown in a denser layout for easier scanning.' },
+      { type: 'h3', text: 'Format badges' },
+      { type: 'grid', cols: 3, items: [
+        { title: 'Reel', desc: 'Vertical video content.' },
+        { title: 'Carousel', desc: 'Multi-slide image content.' },
+        { title: 'Prompted Reel', desc: 'AI-oriented reel format.' },
+      ]},
+      { type: 'h3', text: 'Actions' },
+      { type: 'bullets', items: [
+        'Open any content item to edit it.',
+        'Delete content from the item controls.',
+        'Use urgency/status indicators to prioritize work.',
+      ]},
+    ],
+  },
+  {
+    id: 'content-calendar', categoryId: 'content',
+    title: 'Editorial calendar',
+    desc: 'How to use the monthly calendar for scheduled content.',
+    content: [
+      { type: 'para', text: 'The calendar view places scheduled content on the correct days so you can scan the month quickly and spot gaps or overload.' },
+      { type: 'h3', text: 'Calendar chips' },
+      { type: 'para', text: 'Scheduled items appear as colored chips. Published items are marked clearly, while formats keep their own visual identity.' },
+      { type: 'h3', text: 'Current day highlight' },
+      { type: 'para', text: 'Today is visually emphasized to help orientation when planning.' },
+      { type: 'tip', text: 'Open any content item and use the scheduling controls to place it on the calendar.' },
+      { type: 'note', text: 'The calendar respects real weekday alignment for easier editorial planning.' },
+    ],
+  },
+  {
+    id: 'content-statuses', categoryId: 'content',
+    title: 'Content statuses',
+    desc: 'Draft, scheduled, published and failed: what each state means.',
+    content: [
+      { type: 'h3', text: 'The available statuses' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Draft', desc: 'Created but not yet scheduled or published.' },
+        { title: 'Scheduled', desc: 'Assigned to a future publishing date/time.' },
+        { title: 'Published', desc: 'Successfully delivered to the selected social platforms.' },
+        { title: 'Failed', desc: 'Publishing attempted but returned an error.' },
+      ]},
+      { type: 'h3', text: 'Typical transitions' },
+      { type: 'steps', items: [
+        { title: 'Draft → Scheduled', desc: 'Set a date/time and confirm scheduling.' },
+        { title: 'Scheduled → Published', desc: 'The publish queue processes due items automatically.' },
+        { title: 'Scheduled → Draft', desc: 'Cancel scheduling to bring the content back into draft.' },
+        { title: 'Failed → Retry', desc: 'Fix the issue and publish again.' },
+      ]},
+    ],
+  },
+  {
+    id: 'editor-overview', categoryId: 'editor',
+    title: 'Post editor overview',
+    desc: 'The three-panel editor and how it is organized.',
+    content: [
+      { type: 'para', text: 'The post editor is a full-screen workspace built around editing, previewing and publishing content from one place.' },
+      { type: 'h3', text: 'Three main panels' },
+      { type: 'grid', cols: 3, items: [
+        { title: 'Editor', desc: 'Hook, caption, media and structured content fields.' },
+        { title: 'Preview', desc: 'A live preview of how the content may appear on social.' },
+        { title: 'Publishing', desc: 'Scheduling, queue and social selection controls.' },
+      ]},
+      { type: 'h3', text: 'Status bar' },
+      { type: 'para', text: 'The bottom area shows current status, save state and the main publishing actions.' },
+      { type: 'h3', text: 'Closing the editor' },
+      { type: 'para', text: 'Use the close button or return action to go back to the project. Changes are saved as you work.' },
+      { type: 'tip', text: 'After scheduling a content item, the editor returns you to the project automatically.' },
+    ],
+  },
+  {
+    id: 'editor-caption', categoryId: 'editor',
+    title: 'Rich text captions',
+    desc: 'How to format captions with the integrated rich text editor.',
+    content: [
+      { type: 'para', text: 'The caption field supports rich text while editing, making long-form writing easier to structure visually.' },
+      { type: 'h3', text: 'Formatting toolbar' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Bold', desc: 'Highlight key words and emphasis.' },
+        { title: 'Italic', desc: 'Useful for nuance and emphasis.' },
+        { title: 'Underline', desc: 'Visual emphasis while drafting.' },
+        { title: 'Bullet list', desc: 'Create clean structured lists.' },
+      ]},
+      { type: 'h3', text: 'How captions are used' },
+      { type: 'para', text: 'On social export, captions are converted to plain text with preserved line breaks and readable list formatting.' },
+      { type: 'warn', text: 'Social platforms do not receive HTML markup directly. Formatting in the editor is mainly for drafting clarity.' },
+    ],
+  },
+  {
+    id: 'editor-media', categoryId: 'editor',
+    title: 'Media, uploads and AI images',
+    desc: 'Upload files, generate images, import from Drive or Canva.',
+    content: [
+      { type: 'h3', text: 'Direct upload' },
+      { type: 'para', text: 'Upload images or videos directly into the media section of a post.' },
+      { type: 'h3', text: 'AI image generation' },
+      { type: 'para', text: 'Use the AI image action to generate visuals and attach them to a content item.' },
+      { type: 'h3', text: 'Import from Google Drive' },
+      { type: 'para', text: 'If Google Drive is connected, you can import files directly into the current post.' },
+      { type: 'h3', text: 'Import from Canva' },
+      { type: 'para', text: 'Open a Canva design and bring exported assets back into Sketchario.' },
+      { type: 'h3', text: 'Project media library' },
+      { type: 'para', text: 'Reuse media already uploaded elsewhere in the same project.' },
+      { type: 'note', text: 'Carousels can use multiple images, one for each slide or panel.' },
+    ],
+  },
+  {
+    id: 'editor-script', categoryId: 'editor',
+    title: 'Scripts and visual direction',
+    desc: 'Opening hook, avatar script and production notes for reels.',
+    content: [
+      { type: 'h3', text: 'Opening hook' },
+      { type: 'para', text: 'The first line or action that captures attention in the first seconds of a reel.' },
+      { type: 'h3', text: 'Avatar script' },
+      { type: 'para', text: 'The complete spoken script for a creator or AI avatar.' },
+      { type: 'h3', text: 'Visual direction' },
+      { type: 'para', text: 'Production guidance such as framing, pacing, motion and on-screen text.' },
+      { type: 'tip', text: 'You can regenerate specific sections without rewriting the whole content item.' },
+    ],
+  },
+  {
+    id: 'publish-connect', categoryId: 'publish',
+    title: 'Connecting social platforms',
+    desc: 'How to connect Instagram, Facebook, LinkedIn, TikTok, Pinterest and Google Drive.',
+    content: [
+      { type: 'para', text: 'Before publishing, connect the social platforms you want to use from the Social tab inside the project.' },
+      { type: 'h3', text: 'Supported connections' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Instagram', desc: 'OAuth connection for business/creator workflows.' },
+        { title: 'Facebook', desc: 'OAuth connection for pages.' },
+        { title: 'LinkedIn', desc: 'OAuth connection for profile or page posting.' },
+        { title: 'TikTok', desc: 'OAuth connection for TikTok publishing.' },
+        { title: 'Pinterest', desc: 'OAuth connection for board posting.' },
+        { title: 'Google Drive', desc: 'OAuth connection for media import.' },
+      ]},
+      { type: 'h3', text: 'How to connect' },
+      { type: 'steps', items: [
+        { title: 'Open the Social tab', desc: 'Go to the project and open Social.' },
+        { title: 'Choose a platform', desc: 'Click the connect button for the platform you want.' },
+        { title: 'Authorize Sketchario', desc: 'Complete the OAuth popup and grant access.' },
+        { title: 'Confirm connection', desc: 'The platform will appear as connected inside the project.' },
+      ]},
+      { type: 'warn', text: 'If a token expires or permissions change, reconnect the account to refresh access.' },
+    ],
+  },
+  {
+    id: 'publish-schedule', categoryId: 'publish',
+    title: 'Scheduling a post',
+    desc: 'How to set date, time and destination platforms.',
+    content: [
+      { type: 'steps', items: [
+        { title: 'Open the content editor', desc: 'Start from a content item inside the project.' },
+        { title: 'Select the socials', desc: 'Choose one or more connected platforms.' },
+        { title: 'Open scheduling', desc: 'Use the scheduling action in the publishing panel.' },
+        { title: 'Choose date and time', desc: 'Set the desired publication day and time.' },
+        { title: 'Confirm', desc: 'Once confirmed, the content becomes scheduled.' },
+      ]},
+      { type: 'h3', text: 'Time handling' },
+      { type: 'para', text: 'The app uses your local browser time for selection, then stores queue timing in UTC internally.' },
+      { type: 'h3', text: 'Modify or cancel a schedule' },
+      { type: 'para', text: 'Reopen the content and adjust or cancel the scheduled publication from the publishing panel.' },
+      { type: 'tip', text: 'At least one social profile must be selected before scheduling is available.' },
+    ],
+  },
+  {
+    id: 'publish-queue', categoryId: 'publish',
+    title: 'Publish queue',
+    desc: 'How automatic publishing works and how to monitor it.',
+    content: [
+      { type: 'para', text: 'Scheduled posts are processed by the backend queue. Due items are checked and sent automatically.' },
+      { type: 'h3', text: 'Queue & Analytics panel' },
+      { type: 'para', text: 'The right panel shows the latest queue items together with their status and any error messages.' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Queued', desc: 'Waiting for the scheduled time.' },
+        { title: 'Published', desc: 'Delivered successfully.' },
+        { title: 'Failed', desc: 'Publishing returned an error.' },
+        { title: 'Cancelled', desc: 'Removed from the queue manually.' },
+      ]},
+      { type: 'h3', text: 'If something fails' },
+      { type: 'bullets', items: [
+        'Read the error message shown in the queue.',
+        'Reconnect the platform if the issue is token-related.',
+        'Check platform permissions if access is denied.',
+        'Open the content again and retry after fixing the cause.',
+      ]},
+      { type: 'note', text: 'Published content is highlighted differently across cards, lists and calendar views.' },
+    ],
+  },
+  {
+    id: 'integration-drive', categoryId: 'integrations',
+    title: 'Google Drive',
+    desc: 'Import images and documents directly from Drive.',
+    content: [
+      { type: 'h3', text: 'Connect Drive' },
+      { type: 'para', text: 'Connect Google Drive from the project integrations area to enable media import.' },
+      { type: 'h3', text: 'Importing a file' },
+      { type: 'steps', items: [
+        { title: 'Open the editor', desc: 'Go to the content item you want to enrich.' },
+        { title: 'Click the Drive action', desc: 'Open the file picker.' },
+        { title: 'Select a file', desc: 'Choose the media from Drive.' },
+        { title: 'Import completed', desc: 'The file is added to the current post.' },
+      ]},
+      { type: 'warn', text: 'If Drive access expires, reconnect the integration.' },
+    ],
+  },
+  {
+    id: 'integration-canva', categoryId: 'integrations',
+    title: 'Canva',
+    desc: 'Create or edit a design in Canva and bring it back into the post.',
+    content: [
+      { type: 'para', text: 'The Canva integration lets you open a design flow from Sketchario, work in Canva and then import the exported assets back into the post.' },
+      { type: 'h3', text: 'Typical flow' },
+      { type: 'steps', items: [
+        { title: 'Open Canva', desc: 'Launch Canva from the content editor.' },
+        { title: 'Work on the design', desc: 'Use Canva normally in the browser.' },
+        { title: 'Return to Sketchario', desc: 'Complete the handoff back into the app.' },
+        { title: 'Assets imported', desc: 'Exported visuals are attached to the post.' },
+      ]},
+      { type: 'warn', text: 'If the Canva session expires, simply restart the integration flow.' },
+    ],
+  },
+  {
+    id: 'integration-feeds', categoryId: 'integrations',
+    title: 'RSS feeds and AI suggestions',
+    desc: 'Use industry news and AI ideas to inspire new content.',
+    content: [
+      { type: 'para', text: 'Projects can surface external inspiration from sector-specific feeds and AI-generated suggestions.' },
+      { type: 'h3', text: 'News feed' },
+      { type: 'para', text: 'Relevant articles can be opened, pinned and used as inspiration for new posts.' },
+      { type: 'h3', text: 'AI suggestions' },
+      { type: 'para', text: 'The AI periodically suggests topic angles aligned with your project context and tone.' },
+      { type: 'h3', text: 'Pin and refresh' },
+      { type: 'bullets', items: [
+        'Pin important ideas to revisit them later.',
+        'Refresh feeds for newer items.',
+        'Regenerate AI suggestions when you need fresh angles.',
+      ]},
+    ],
+  },
+  {
+    id: 'account-profile', categoryId: 'account',
+    title: 'Profile and account settings',
+    desc: 'Update name, sector and password, or delete the account.',
+    content: [
+      { type: 'para', text: 'The profile area lets you manage your personal account details and security settings.' },
+      { type: 'h3', text: 'Profile fields' },
+      { type: 'bullets', items: [
+        'Name — editable.',
+        'Email — used for login.',
+        'Sector — used to personalize some project context.',
+      ]},
+      { type: 'h3', text: 'Password change' },
+      { type: 'para', text: 'Provide your current password, then set a new one with at least 8 characters.' },
+      { type: 'h3', text: 'Delete account' },
+      { type: 'para', text: 'Account deletion permanently removes projects, content and related data after confirmation.' },
+      { type: 'warn', text: 'Account deletion is irreversible.' },
+    ],
+  },
+  {
+    id: 'account-plans', categoryId: 'account',
+    title: 'Plans and upgrades',
+    desc: 'Understand the available plans and how upgrades work.',
+    content: [
+      { type: 'h3', text: 'Plan overview' },
+      { type: 'grid', cols: 3, items: [
+        { title: 'Free', desc: 'Basic limits for testing the product.' },
+        { title: 'Creator', desc: 'Expanded projects, content and workflow features.' },
+        { title: 'Strategist', desc: 'Advanced publishing, team and admin capabilities.' },
+      ]},
+      { type: 'h3', text: 'How to upgrade' },
+      { type: 'steps', items: [
+        { title: 'Open billing', desc: 'Go to the billing or upgrade area.' },
+        { title: 'Choose a plan', desc: 'Compare plans and select the one you want.' },
+        { title: 'Complete checkout', desc: 'Stripe handles the secure payment flow.' },
+        { title: 'Return to the app', desc: 'The plan updates automatically after success.' },
+      ]},
+      { type: 'note', text: 'The current plan is highlighted in the billing interface.' },
+    ],
+  },
+  {
+    id: 'account-team', categoryId: 'account',
+    title: 'Team and collaborators',
+    desc: 'Invite members, assign roles and manage collaboration.',
+    content: [
+      { type: 'para', text: 'Projects can include collaborators with different permissions depending on their role.' },
+      { type: 'h3', text: 'Available roles' },
+      { type: 'grid', cols: 2, items: [
+        { title: 'Owner', desc: 'Full control over the project.' },
+        { title: 'Editor', desc: 'Can create, edit and publish content.' },
+        { title: 'Viewer', desc: 'Can view content without editing rights.' },
+      ]},
+      { type: 'h3', text: 'How to invite someone' },
+      { type: 'steps', items: [
+        { title: 'Open the team panel', desc: 'Go to the collaboration area inside the project.' },
+        { title: 'Enter the email', desc: 'Type the collaborator email address.' },
+        { title: 'Select the role', desc: 'Choose the appropriate permission level.' },
+        { title: 'Send the invitation', desc: 'The invited user can then accept it from their account.' },
+      ]},
+      { type: 'tip', text: 'For the smoothest collaboration, make sure the invited person already has a Sketchario account.' },
+    ],
+  },
+];
+
 // ─── BLOCCHI RENDER ──────────────────────────────────────────
 function Block({ b }) {
   if (b.type === 'para')
@@ -577,10 +1037,14 @@ function Block({ b }) {
 
 // ─── COMPONENTE PRINCIPALE ───────────────────────────────────
 export default function HelpCenter({ onClose }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [catId, setCatId]       = useState(null);
   const [articleId, setArticleId] = useState(null);
   const [search, setSearch]     = useState('');
+  const helpArticles = useMemo(() => {
+    const lang = (i18n.language || 'it').toLowerCase();
+    return lang.startsWith('it') ? ARTICLES : ARTICLES_EN;
+  }, [i18n.language]);
 
   const tCats = useMemo(() => CATEGORIES.map(c => ({
     ...c,
@@ -591,7 +1055,7 @@ export default function HelpCenter({ onClose }) {
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
-    return ARTICLES.filter(a =>
+    return helpArticles.filter(a =>
       a.title.toLowerCase().includes(q) ||
       a.desc.toLowerCase().includes(q) ||
       a.content.some(b =>
@@ -599,11 +1063,11 @@ export default function HelpCenter({ onClose }) {
         b.items?.some(i => (typeof i === 'string' ? i : (i.title || '') + ' ' + (i.desc || '')).toLowerCase().includes(q))
       )
     );
-  }, [search]);
+  }, [search, helpArticles]);
 
   const currentCat     = tCats.find(c => c.id === catId);
-  const currentArticle = ARTICLES.find(a => a.id === articleId);
-  const catArticles    = ARTICLES.filter(a => a.categoryId === catId);
+  const currentArticle = helpArticles.find(a => a.id === articleId);
+  const catArticles    = helpArticles.filter(a => a.categoryId === catId);
 
   const goHome = () => { setCatId(null); setArticleId(null); setSearch(''); };
 
@@ -701,7 +1165,7 @@ export default function HelpCenter({ onClose }) {
                     </div>
                     <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{cat.title}</p>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{cat.desc}</p>
-                    <p style={{ fontSize: '0.75rem', color: cat.color, marginTop: '0.5rem' }}>{t('help.articles', { count: ARTICLES.filter(a => a.categoryId === cat.id).length })}</p>
+                    <p style={{ fontSize: '0.75rem', color: cat.color, marginTop: '0.5rem' }}>{t('help.articles', { count: helpArticles.filter(a => a.categoryId === cat.id).length })}</p>
                   </button>
                 ))}
               </div>
