@@ -353,10 +353,6 @@
     "carouselGenerated": "{{count}} slides visuales generadas",
     "carouselGenerationError": "Error al generar carousel: {{message}}",
     "generateCarouselAction": "Generar carousel",
-    "adminCarouselTemplateActive": "Template admin activo",
-    "adminCarouselTemplateHint": "Este carousel usara el template luxury personalizado del perfil admin durante la generacion.",
-    "adminCarouselTemplateLocked": "Para el perfil admin este estudio usa un solo template fijo: OpenAI, 8 slides y direccion de arte editorial luxury.",
-    "adminCarouselTemplateName": "Osmel Luxury",
     "slideN": "Slide {{count}}",
     "carouselStyle": {
       "elegant": { "label": "Elegante", "title": "Limpio y premium", "hint": "Editorial refinado" },
@@ -443,7 +439,112 @@
     "tone": "Tono de voz",
     "language": "Idioma del contenido",
     "generating": "Generando...",
-    "complete": "Crear Proyecto"
+    "complete": "Crear Proyecto",
+    "steps": {
+      "brief": "Brief",
+      "personas": "Personas",
+      "tone": "Tono",
+      "hooks": "Hooks",
+      "content": "Contenidos"
+    },
+    "presets": {
+      "professionale": "Profesional",
+      "amichevole": "Amigable",
+      "ispirazionale": "Inspiracional",
+      "provocatorio": "Provocador",
+      "educativo": "Educativo"
+    },
+    "actions": {
+      "back": "Atrás",
+      "saving": "Guardando...",
+      "regenerate": "Regenerar",
+      "generatingContent": "Generando contenidos..."
+    },
+    "brief": {
+      "title": "Brief del Proyecto",
+      "subtitle": "Define la identidad y los objetivos del proyecto.",
+      "projectNameLabel": "Nombre del proyecto",
+      "projectNamePlaceholder": "Ej. Estrategia Enero 2026",
+      "sectorLabel": "Sector / Nicho",
+      "sectorPlaceholder": "Ej. Fotógrafo de retrato, Life Coach...",
+      "descriptionLabel": "Descripción",
+      "descriptionPlaceholder": "Describe tu público, tu estilo...",
+      "geoLabel": "Área geográfica",
+      "geoPlaceholder": "Ej. Italia, Milán...",
+      "campaignDurationLabel": "Duración de la campaña",
+      "durations": {
+        "oneWeek": "1 semana",
+        "twoWeeks": "2 semanas",
+        "oneMonth": "1 mes"
+      },
+      "contentsCount": "{{count}} contenidos",
+      "formatsLabel": "Formatos de contenido",
+      "formatsHint": "La IA distribuirá los hooks entre los formatos seleccionados",
+      "aiNotesLabel": "Notas para la IA",
+      "aiNotesPlaceholder": "Ej. He escrito un libro y quiero empujarlo en las CTA; tono más autoritario; foco en consultorías premium...",
+      "customInstructionsLabel": "Instrucciones personalizadas",
+      "customInstructionsHint": "Sube un archivo con directrices de marca, posicionamiento, tono y target: se usará en todas las generaciones AI (personas, hooks, contenidos, ToV).",
+      "optional": "opcional",
+      "charactersCount": "{{count}} car.",
+      "fileAnalyzing": "Analizando...",
+      "fileUploadCta": "Sube .txt .md .html .docx .pdf"
+    },
+    "personas": {
+      "title": "Buyer Personas",
+      "subtitle": "La IA genera personas basadas en tu nicho.",
+      "generateCta": "Generar Personas con IA",
+      "painPoints": "Pain Points",
+      "desires": "Deseos",
+      "approveAndContinue": "Aprobar y Continuar"
+    },
+    "tov": {
+      "title": "Tono de Voz",
+      "subtitle": "Define cómo quieres comunicar.",
+      "instructionsLabel": "Instrucciones de tono",
+      "instructionsPlaceholder": "Ej. Claro, autoritario, humano, directo...",
+      "captionLengthLabel": "Longitud de la caption",
+      "saveAndGenerateHooks": "Guardar y Generar Hooks",
+      "sliders": {
+        "formality": { "label": "Formalidad", "hint": "Casual ↔ Formal" },
+        "energy": { "label": "Energía", "hint": "Tranquilo ↔ Energético" },
+        "empathy": { "label": "Empatía", "hint": "Neutro ↔ Empático" },
+        "humor": { "label": "Humor", "hint": "Serio ↔ Divertido" },
+        "storytelling": { "label": "Storytelling", "hint": "Directo ↔ Narrativo" }
+      },
+      "captionLengths": {
+        "short": { "label": "Corta", "hint": "máx 60 palabras" },
+        "medium": { "label": "Media", "hint": "120-180 palabras" },
+        "long": { "label": "Larga", "hint": "300-450 palabras" }
+      }
+    },
+    "hooks": {
+      "title": "Hooks Generados",
+      "subtitle": "Hooks distribuidos en la campaña.",
+      "generateCta": "Generar Hooks con IA",
+      "approveAndGenerate": "Aprobar y Generar Contenidos",
+      "dayBadge": "D{{day}}",
+      "pillars": {
+        "awareness": "awareness",
+        "education": "education",
+        "monetizing": "monetizing"
+      }
+    },
+    "content": {
+      "generatingTitle": "Generación en Curso...",
+      "generatingSubtitle": "La IA está creando los contenidos.",
+      "completedTitle": "¡Proyecto Completado!",
+      "completedSubtitle": "{{count}} contenidos generados con éxito."
+    },
+    "errors": {
+      "requiredFields": "Nombre del proyecto y sector son obligatorios",
+      "projectCreation": "Error al crear el proyecto",
+      "personasGeneration": "Error al generar personas: {{message}}",
+      "save": "Error al guardar",
+      "tovSave": "Error al guardar el tono de voz",
+      "hooksGeneration": "Error al generar hooks: {{message}}",
+      "contentGeneration": "Error al generar contenidos: {{message}}",
+      "fileRead": "Error al leer el archivo: {{message}}"
+    }
   },
   "footer": {
     "rights": "© {{year}} Sketchario. Todos los derechos reservados.",
