@@ -34,14 +34,22 @@ export default function RightPanelContent({
         {sortedQueueItems.slice(0, 12).map(item => {
           const platformInfo = PLATFORM_ICONS[item.platform] || { Icon: Globe, color: '#fff' };
           const isFailed = item.status === 'failed';
+          const isRetrying = item.status === 'queued' && !!item.error_message;
           return (
-            <div key={item.id} className="py-1.5 px-2 rounded mb-1" style={{ background: isFailed ? 'rgba(239,68,68,0.08)' : 'var(--bg-card)', border: isFailed ? '1px solid rgba(239,68,68,0.3)' : '1px solid transparent' }}>
+            <div
+              key={item.id}
+              className="py-1.5 px-2 rounded mb-1"
+              style={{
+                background: isFailed ? 'rgba(239,68,68,0.08)' : isRetrying ? 'rgba(245,158,11,0.08)' : 'var(--bg-card)',
+                border: isFailed ? '1px solid rgba(239,68,68,0.3)' : isRetrying ? '1px solid rgba(245,158,11,0.22)' : '1px solid transparent'
+              }}
+            >
               <div className="flex items-center gap-2">
                 <platformInfo.Icon weight="fill" size={12} color={platformInfo.color} />
                 <p className="text-[10px] flex-1 truncate">{contents.find(c => c.id === item.content_id)?.hook_text?.slice(0, 30) || '...'}</p>
-                <span className={`text-[8px] font-semibold ${item.status === 'queued' ? 'text-[var(--accent-blue)]' : item.status === 'published' ? 'text-[var(--accent-green)]' : isFailed ? 'text-red-400' : 'text-[var(--accent-orange)]'}`}>
+                <span className={`text-[8px] font-semibold ${item.status === 'queued' ? (isRetrying ? 'text-[var(--accent-orange)]' : 'text-[var(--accent-blue)]') : item.status === 'published' ? 'text-[var(--accent-green)]' : isFailed ? 'text-red-400' : 'text-[var(--accent-orange)]'}`}>
                   {item.status === 'queued'
-                    ? t('project.queue.status.queued')
+                    ? (isRetrying ? 'retrying' : t('project.queue.status.queued'))
                     : item.status === 'failed'
                       ? t('project.queue.status.failed')
                       : item.status === 'published'
@@ -56,6 +64,9 @@ export default function RightPanelContent({
                   </button>
                 )}
               </div>
+              {isRetrying && !isFailed && (
+                <p className="text-[9px] mt-0.5 text-[var(--accent-orange)] leading-tight">{item.error_message.slice(0, 140)}</p>
+              )}
               {isFailed && item.error_message && (
                 <p className="text-[9px] mt-0.5 text-red-400 leading-tight">{item.error_message.slice(0, 120)}</p>
               )}

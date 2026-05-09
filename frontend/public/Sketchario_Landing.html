@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <title>Sketchario — Crea contenuti social 10x più veloce</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <!-- Start cookieyes banner -->
+  <script id="cookieyes" type="text/javascript" src="https://cdn-cookieyes.com/client_data/1f844e6164ee96a8a6dafee93fbfd78a/script.js"></script>
+  <!-- End cookieyes banner -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0d1420; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -123,6 +126,210 @@ document.addEventListener('DOMContentLoaded', async function() {
     const resourceScript = '<script>window.__resources = ' +
       JSON.stringify(resourceMap).split('</' + 'script>').join('<\\/' + 'script>') +
       ';</' + 'script>';
+    const landingEnhancerScript = `<script>
+      (function () {
+        const legalPages = {
+          privacy: '/legal/privacy-policy.html',
+          terms: '/legal/termini-e-condizioni.html',
+          cookie: '/legal/cookie-policy.html',
+        };
+
+        function getLang() {
+          const htmlLang = (document.documentElement.getAttribute('lang') || '').trim().slice(0, 2).toLowerCase();
+          if (htmlLang) return htmlLang;
+          return String(navigator.language || 'it').slice(0, 2).toLowerCase();
+        }
+
+        function withLegalQuery(url) {
+          const finalUrl = new URL(url, window.location.origin);
+          finalUrl.searchParams.set('embed', '1');
+          finalUrl.searchParams.set('lang', getLang());
+          return finalUrl.toString();
+        }
+
+        function ensureCookieBanner() {
+          if (document.getElementById('cookieyes')) return;
+          const script = document.createElement('script');
+          script.id = 'cookieyes';
+          script.type = 'text/javascript';
+          script.src = 'https://cdn-cookieyes.com/client_data/1f844e6164ee96a8a6dafee93fbfd78a/script.js';
+          document.head.appendChild(script);
+        }
+
+        function ensureOverlay() {
+          let overlay = document.getElementById('sk-legal-overlay');
+          if (overlay) return overlay;
+
+          overlay = document.createElement('div');
+          overlay.id = 'sk-legal-overlay';
+          overlay.innerHTML = \`
+            <div class="sk-legal-backdrop" data-close-overlay></div>
+            <div class="sk-legal-panel" role="dialog" aria-modal="true" aria-labelledby="sk-legal-overlay-title">
+              <div class="sk-legal-toolbar">
+                <strong id="sk-legal-overlay-title">Sketchario Legal</strong>
+                <button type="button" data-close-overlay aria-label="Close legal overlay">Close</button>
+              </div>
+              <iframe title="Sketchario Legal" loading="lazy"></iframe>
+            </div>
+          \`;
+
+          const style = document.createElement('style');
+          style.textContent = \`
+            #sk-legal-overlay{
+              position:fixed; inset:0; display:none; z-index:99999;
+            }
+            #sk-legal-overlay.is-open{ display:block; }
+            #sk-legal-overlay .sk-legal-backdrop{
+              position:absolute; inset:0;
+              background:rgba(3,7,18,.76);
+              backdrop-filter:blur(8px);
+            }
+            #sk-legal-overlay .sk-legal-panel{
+              position:relative;
+              width:min(1120px, calc(100vw - 28px));
+              height:min(88vh, 980px);
+              margin:6vh auto 0;
+              background:#08111f;
+              border:1px solid rgba(255,255,255,.12);
+              border-radius:24px;
+              overflow:hidden;
+              box-shadow:0 30px 90px rgba(0,0,0,.5);
+            }
+            #sk-legal-overlay .sk-legal-toolbar{
+              display:flex; align-items:center; justify-content:space-between; gap:16px;
+              height:58px; padding:0 18px;
+              border-bottom:1px solid rgba(255,255,255,.1);
+              background:linear-gradient(90deg, rgba(99,102,241,.14), rgba(236,72,153,.1));
+              color:rgba(255,255,255,.94);
+              font:700 14px/1.2 Inter, system-ui, sans-serif;
+              letter-spacing:.06em; text-transform:uppercase;
+            }
+            #sk-legal-overlay .sk-legal-toolbar button{
+              min-width:38px; height:38px; padding:0 12px;
+              border-radius:999px; border:1px solid rgba(255,255,255,.14);
+              background:rgba(255,255,255,.06); color:#fff; cursor:pointer;
+              font:600 12px/1 Inter, system-ui, sans-serif;
+            }
+            #sk-legal-overlay iframe{
+              width:100%; height:calc(100% - 58px); border:0; background:#08111f;
+            }
+            #sk-legal-footer{
+              position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+              display:flex; align-items:center; gap:10px; z-index:9998;
+              padding:10px 14px; border-radius:999px;
+              background:rgba(8,17,31,.86); border:1px solid rgba(255,255,255,.1);
+              box-shadow:0 20px 60px rgba(0,0,0,.35); backdrop-filter:blur(10px);
+            }
+            #sk-legal-footer a{
+              color:rgba(255,255,255,.82); text-decoration:none;
+              font:600 12px/1.2 Inter, system-ui, sans-serif;
+            }
+            #sk-legal-footer a:hover{ color:#fff; }
+            @media (max-width: 768px){
+              #sk-legal-overlay .sk-legal-panel{
+                width:100vw; height:100vh; margin:0; border-radius:0; border:none;
+              }
+              #sk-legal-footer{
+                width:calc(100vw - 24px); justify-content:space-between; gap:8px; bottom:12px;
+              }
+            }
+          \`;
+          document.head.appendChild(style);
+          document.body.appendChild(overlay);
+
+          overlay.addEventListener('click', function (event) {
+            if (event.target && event.target.hasAttribute('data-close-overlay')) {
+              overlay.classList.remove('is-open');
+              document.body.style.overflow = '';
+            }
+          });
+
+          window.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && overlay.classList.contains('is-open')) {
+              overlay.classList.remove('is-open');
+              document.body.style.overflow = '';
+            }
+          });
+
+          return overlay;
+        }
+
+        function openOverlay(type, label) {
+          const overlay = ensureOverlay();
+          const iframe = overlay.querySelector('iframe');
+          const title = overlay.querySelector('#sk-legal-overlay-title');
+          iframe.src = withLegalQuery(legalPages[type]);
+          title.textContent = label || 'Sketchario Legal';
+          overlay.classList.add('is-open');
+          document.body.style.overflow = 'hidden';
+        }
+
+        function detectLegalType(el) {
+          const href = (el.getAttribute('href') || '').toLowerCase();
+          const text = (el.textContent || '').toLowerCase().trim();
+          if (href.includes('privacy-policy') || /privacy/.test(text)) return ['privacy', 'Privacy Policy'];
+          if (href.includes('cookie-policy') || /cookie/.test(text)) return ['cookie', 'Cookie Policy'];
+          if (href.includes('termini-e-condizioni') || /terms|termini|conditions/.test(text)) return ['terms', 'Terms & Conditions'];
+          return null;
+        }
+
+        function bindLegalTriggers() {
+          let boundCount = 0;
+          document.querySelectorAll('a, button, [role="button"]').forEach((el) => {
+            if (el.dataset.skLegalBound === '1') return;
+            const match = detectLegalType(el);
+            if (!match) return;
+            const [type, label] = match;
+            el.dataset.skLegalBound = '1';
+            el.setAttribute('href', legalPages[type]);
+            el.addEventListener('click', function (event) {
+              event.preventDefault();
+              openOverlay(type, label);
+            });
+            boundCount += 1;
+          });
+          return boundCount;
+        }
+
+        function ensureFallbackFooter() {
+          if (document.getElementById('sk-legal-footer')) return;
+          const footer = document.createElement('div');
+          footer.id = 'sk-legal-footer';
+          footer.innerHTML = \`
+            <a href="\${legalPages.terms}" data-legal-type="terms">Terms</a>
+            <a href="\${legalPages.privacy}" data-legal-type="privacy">Privacy</a>
+            <a href="\${legalPages.cookie}" data-legal-type="cookie">Cookies</a>
+          \`;
+          footer.querySelectorAll('a').forEach((link) => {
+            const type = link.dataset.legalType;
+            link.addEventListener('click', function (event) {
+              event.preventDefault();
+              const label = type === 'terms' ? 'Terms & Conditions' : type === 'privacy' ? 'Privacy Policy' : 'Cookie Policy';
+              openOverlay(type, label);
+            });
+          });
+          document.body.appendChild(footer);
+        }
+
+        function boot() {
+          ensureCookieBanner();
+          let attempts = 0;
+          const loop = () => {
+            const boundCount = bindLegalTriggers();
+            if (boundCount < 3) ensureFallbackFooter();
+            attempts += 1;
+            if (attempts < 24) window.setTimeout(loop, 500);
+          };
+          loop();
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', boot, { once: true });
+        } else {
+          boot();
+        }
+      })();
+      <\/script>`;
     // Inject after <head> so the DOCTYPE stays first; prepending the script
     // would push the parser into quirks mode. DOMParser always emits a <head>
     // (synthesizing one if the source HTML omitted it) but may carry
@@ -131,7 +338,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const headOpen = template.match(/<head[^>]*>/i);
     if (headOpen) {
       const i = headOpen.index + headOpen[0].length;
-      template = template.slice(0, i) + resourceScript + template.slice(i);
+      template = template.slice(0, i) + resourceScript + landingEnhancerScript + template.slice(i);
     }
 
     // Parse the template and swap the root element. Scripts inserted via

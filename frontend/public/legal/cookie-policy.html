@@ -5,99 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cookie Policy — Sketchario</title>
   <meta name="description" content="Cookie Policy di Sketchario aggiornata al 10 aprile 2026." />
-
-  <style>
-    :root{
-      --text: rgba(255,255,255,.92);
-      --muted: rgba(255,255,255,.72);
-      --shadow: 0 18px 60px rgba(0,0,0,.45);
-      --radius: 18px;
-      --max: 980px;
-      --bg: #070A12;
-    }
-    @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&display=swap');
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
-    body{
-      margin:0;
-      font-family:"Barlow", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      color:var(--text);
-      background:
-        radial-gradient(900px 500px at 15% -10%, rgba(124,58,237,.25), transparent 55%),
-        radial-gradient(900px 500px at 85% 0%, rgba(34,211,238,.18), transparent 55%),
-        linear-gradient(180deg, #050712 0%, var(--bg) 55%, #050712 100%);
-      padding: 26px 16px;
-    }
-    .wrap{ width: min(var(--max), 100%); margin: 0 auto; }
-    .card{
-      background: rgba(255,255,255,.05);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 22px;
-    }
-    .top-link{
-      color: rgba(255,255,255,.78);
-      text-decoration:none;
-      font-weight: 800;
-      display:inline-flex;
-      gap: 8px;
-      align-items:center;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(255,255,255,.04);
-      margin-bottom: 14px;
-      white-space: nowrap;
-    }
-    h1{
-      margin: 6px 0 6px;
-      font-weight: 950;
-      letter-spacing: -.4px;
-      font-size: 30px;
-    }
-    .sub{
-      margin: 0 0 18px;
-      color: var(--muted);
-      font-weight: 650;
-      line-height:1.7;
-      font-size: 14px;
-    }
-    h2{
-      margin: 18px 0 8px;
-      font-size: 16px;
-      font-weight: 950;
-      letter-spacing: -.1px;
-    }
-    p, li{
-      color: var(--muted);
-      line-height:1.85;
-      font-weight: 620;
-      font-size: 14px;
-      margin: 8px 0;
-    }
-    ul{ padding-left: 18px; }
-    a.inline{
-      color: rgba(255,255,255,.92);
-      text-decoration: underline;
-      text-decoration-color: rgba(255,255,255,.35);
-      font-weight: 800;
-    }
-    .small{
-      font-size: 12px;
-      color: rgba(255,255,255,.62);
-      margin-top: 14px;
-      line-height:1.7;
-    }
-    @media (max-width: 720px){
-      body{ padding: 18px 10px; }
-      .card{ padding: 18px; }
-      h1{ font-size: 26px; }
-    }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="legal-theme.css" />
 </head>
 <body>
-  <div class="wrap" id="cookie-root"></div>
+  <div class="shell" id="cookie-root"></div>
+  <script src="legal-frame.js"></script>
 
   <script>
     (function () {
@@ -356,23 +271,6 @@
         }
       };
 
-      function detectLanguage() {
-        const params = new URLSearchParams(window.location.search);
-        const forced = (params.get('lang') || '').toLowerCase();
-        if (translations[forced]) return forced;
-
-        const langs = Array.isArray(navigator.languages) && navigator.languages.length
-          ? navigator.languages
-          : [navigator.language || 'it'];
-
-        for (const lang of langs) {
-          const short = String(lang || '').toLowerCase().slice(0, 2);
-          if (translations[short]) return short;
-        }
-
-        return 'it';
-      }
-
       function renderList(items) {
         if (!items || !items.length) return '';
         return `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
@@ -383,16 +281,78 @@
         return items.map((item) => `<p>${item}</p>`).join('');
       }
 
+      function sectionId(index) {
+        return `cookie-section-${index + 1}`;
+      }
+
       function renderSections(sections) {
-        return sections.map((section) => `
-          <h2>${section.title}</h2>
-          ${renderParagraphs(section.paragraphs)}
-          ${renderList(section.list)}
+        return sections.map((section, index) => `
+          <section class="section" id="${sectionId(index)}">
+            <h2>${section.title}</h2>
+            ${renderParagraphs(section.paragraphs)}
+            ${renderList(section.list)}
+          </section>
         `).join('');
       }
 
       function renderPage(lang) {
         const copy = translations[lang] || translations.it;
+        const chrome = {
+          it: {
+            brandSmall: 'Cookie policy',
+            eyebrow: 'Cookie policy',
+            heroTitle: 'Consenso chiaro, stessa esperienza Sketchario.',
+            lastUpdatedLabel: 'Aggiornato',
+            updatedValue: '10 aprile 2026',
+            scopeLabel: 'Ambito',
+            scopeValue: 'Landing + applicazione',
+            contactLabel: 'Contatto',
+            tocTitle: 'Indice'
+          },
+          en: {
+            brandSmall: 'Cookie policy',
+            eyebrow: 'Cookie policy',
+            heroTitle: 'Clear consent, same Sketchario experience.',
+            lastUpdatedLabel: 'Updated',
+            updatedValue: 'April 10, 2026',
+            scopeLabel: 'Scope',
+            scopeValue: 'Landing + application',
+            contactLabel: 'Contact',
+            tocTitle: 'Contents'
+          },
+          fr: {
+            brandSmall: 'Politique de cookies',
+            eyebrow: 'Politique de cookies',
+            heroTitle: 'Consentement clair, même expérience Sketchario.',
+            lastUpdatedLabel: 'Mis à jour',
+            updatedValue: '10 avril 2026',
+            scopeLabel: 'Portée',
+            scopeValue: 'Landing + application',
+            contactLabel: 'Contact',
+            tocTitle: 'Sommaire'
+          },
+          es: {
+            brandSmall: 'Política de cookies',
+            eyebrow: 'Política de cookies',
+            heroTitle: 'Consentimiento claro, misma experiencia Sketchario.',
+            lastUpdatedLabel: 'Actualizado',
+            updatedValue: '10 de abril de 2026',
+            scopeLabel: 'Ámbito',
+            scopeValue: 'Landing + aplicación',
+            contactLabel: 'Contacto',
+            tocTitle: 'Índice'
+          }
+        }[lang] || {
+          brandSmall: 'Cookie policy',
+          eyebrow: 'Cookie policy',
+          heroTitle: 'Clear consent, same Sketchario experience.',
+          lastUpdatedLabel: 'Updated',
+          updatedValue: 'April 10, 2026',
+          scopeLabel: 'Scope',
+          scopeValue: 'Landing + application',
+          contactLabel: 'Contact',
+          tocTitle: 'Contents'
+        };
         document.documentElement.lang = lang;
         document.title = copy.title;
 
@@ -400,35 +360,58 @@
         if (metaDescription) metaDescription.setAttribute('content', copy.description);
 
         document.getElementById('cookie-root').innerHTML = `
-          <a class="top-link" href="/" data-back-link>${copy.back}</a>
-
-          <div class="card">
-            <h1>${copy.h1}</h1>
-            <p class="sub">${copy.sub}</p>
-            ${renderSections(copy.sections)}
-            <div class="small">${copy.footer}</div>
+          <div class="topbar">
+            <div class="brand">
+              <div class="brand-mark">
+                <img src="/assets/logo-sketchario.jpg" alt="Sketchario">
+              </div>
+              <div class="brand-copy">
+                <strong>SKETCHARIO</strong>
+                <small>${chrome.brandSmall}</small>
+              </div>
+            </div>
+            <a class="back-btn" href="/" data-back-link>${copy.back}</a>
           </div>
-        `;
 
-        const backLink = document.querySelector('[data-back-link]');
-        if (backLink) {
-          backLink.addEventListener('click', function (event) {
-            const fallback = backLink.getAttribute('href') || '../index.html';
-            event.preventDefault();
-            if (window.history.length > 1) {
-              window.history.back();
-              return;
-            }
-            if (document.referrer) {
-              window.location.href = document.referrer;
-              return;
-            }
-            window.location.href = fallback;
-          });
-        }
+          <section class="hero">
+            <span class="eyebrow">${chrome.eyebrow}</span>
+            <h1>${copy.h1}</h1>
+            <p class="lead">${copy.sub}</p>
+            <div class="hero-meta">
+              <div class="meta-box">
+                <span class="meta-label">${chrome.lastUpdatedLabel}</span>
+                <span class="meta-value">${chrome.updatedValue}</span>
+              </div>
+              <div class="meta-box">
+                <span class="meta-label">${chrome.scopeLabel}</span>
+                <span class="meta-value">${chrome.scopeValue}</span>
+              </div>
+              <div class="meta-box">
+                <span class="meta-label">${chrome.contactLabel}</span>
+                <span class="meta-value"><a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a></span>
+              </div>
+            </div>
+          </section>
+
+          <div class="grid">
+            <aside class="toc">
+              <h2>${chrome.tocTitle}</h2>
+              ${copy.sections.map((section, index) => `<a href="#${sectionId(index)}">${section.title}</a>`).join('')}
+            </aside>
+
+            <main class="content">
+              ${renderSections(copy.sections)}
+            </main>
+          </div>
+
+          <p class="footer-note">${copy.footer}</p>
+        `;
+        window.SketcharioLegal.applyEmbedMode();
+        window.SketcharioLegal.rewriteInlineLinks(document.getElementById('cookie-root'), lang);
+        window.SketcharioLegal.wireBackLink(document.querySelector('[data-back-link]'), '/');
       }
 
-      renderPage(detectLanguage());
+      renderPage(window.SketcharioLegal.detectLanguage(translations));
     })();
   </script>
 </body>

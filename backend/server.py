@@ -62,6 +62,16 @@ GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v24.0")
 PUBLISH_QUEUE_LOOP_SECONDS = max(10, int(os.environ.get("PUBLISH_QUEUE_LOOP_SECONDS", "30")))
 PUBLISH_QUEUE_STALE_MINUTES = max(5, int(os.environ.get("PUBLISH_QUEUE_STALE_MINUTES", "12")))
 PUBLISH_QUEUE_HEARTBEAT_SECONDS = max(5, int(os.environ.get("PUBLISH_QUEUE_HEARTBEAT_SECONDS", "15")))
+PUBLISH_QUEUE_RETRY_LIMIT = max(1, int(os.environ.get("PUBLISH_QUEUE_RETRY_LIMIT", "5")))
+PUBLISH_QUEUE_RETRY_BASE_SECONDS = max(30, int(os.environ.get("PUBLISH_QUEUE_RETRY_BASE_SECONDS", "90")))
+PUBLISH_QUEUE_RETRY_MAX_SECONDS = max(PUBLISH_QUEUE_RETRY_BASE_SECONDS, int(os.environ.get("PUBLISH_QUEUE_RETRY_MAX_SECONDS", "900")))
+
+
+class RetryablePublishError(Exception):
+    def __init__(self, message: str, *, stage: str = "publishing", retry_after_seconds: Optional[int] = None):
+        super().__init__(message)
+        self.stage = stage
+        self.retry_after_seconds = retry_after_seconds or PUBLISH_QUEUE_RETRY_BASE_SECONDS
 
 # ── SMTP EMAIL ───────────────────────────────────────
 async def send_email_smtp(to: str, subject: str, html_body: str):
@@ -2417,13 +2427,13 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
         while datetime.now(timezone.utc) < deadline:
             status_r = await c.get(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{container_id}",
-                params={"fields": "status_code,status,error_message,status_message"},
+                params={"fields": "status_code,status,status_message,message"},
                 headers={"Authorization": f"Bearer {token}"},
             )
             if status_r.status_code == 200:
                 data = status_r.json()
                 last_status = (data.get("status_code") or data.get("status") or "").upper()
-                last_message = data.get("status_message") or data.get("error_message") or ""
+                last_message = data.get("status_message") or data.get("message") or ""
 
                 if last_status in {"FINISHED", "PUBLISHED"}:
                     return
@@ -2458,10 +2468,23 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
                 await asyncio.sleep(3)
                 continue
 
-            raise ValueError(f"Instagram container status error HTTP {status_r.status_code}: {status_r.text[:300]}")
+            raise RetryablePublishError(
+                f"Instagram container status error HTTP {status_r.status_code}: {status_r.text[:300]}",
+                stage="instagram_container_status",
+                retry_after_seconds=90,
+            )
 
     if last_status:
-        raise ValueError(f"Instagram media ancora in elaborazione ({last_status}). Riprova tra poco.{f' Dettaglio: {last_message}' if last_message else ''}")
+        raise RetryablePublishError(
+            f"Instagram media ancora in elaborazione ({last_status}).{f' Dettaglio: {last_message}' if last_message else ''}",
+            stage="instagram_container_ready",
+            retry_after_seconds=120,
+        )
+    raise RetryablePublishError(
+        "Timeout nel controllo dello stato del container Instagram.",
+        stage="instagram_container_status",
+        retry_after_seconds=90,
+    )
 
 
 async def _publish_instagram_container_with_retry(
@@ -2496,7 +2519,11 @@ async def _publish_instagram_container_with_retry(
 
         raise ValueError(f"IG publish error: {last_message}")
 
-    raise ValueError(f"IG publish error: Media ID is not available. Meta non ha ancora completato l'elaborazione del media.")
+    raise RetryablePublishError(
+        "IG publish error: Media ID is not available. Meta non ha ancora completato l'elaborazione del media.",
+        stage="instagram_publish",
+        retry_after_seconds=120,
+    )
 
 async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -3737,6 +3764,57 @@ def _duplicate_publish_message(platform: str, existing_item: dict) -> str:
         f"{platform or 'social'}{when}."
     )[:1000]
 
+
+def _queue_retry_delay_seconds(item: dict, requested_delay: Optional[int] = None) -> int:
+    retry_count = max(0, int(item.get("retry_count") or 0))
+    base = requested_delay or PUBLISH_QUEUE_RETRY_BASE_SECONDS
+    scaled = int(base * (2 ** retry_count))
+    return max(PUBLISH_QUEUE_RETRY_BASE_SECONDS, min(PUBLISH_QUEUE_RETRY_MAX_SECONDS, scaled))
+
+
+async def _schedule_retryable_publish(item: dict, processing_token: str, error: RetryablePublishError) -> bool:
+    claim_active = await _publish_queue_claim_is_active(item["id"], processing_token)
+    if not claim_active:
+        return False
+
+    next_retry_count = max(0, int(item.get("retry_count") or 0)) + 1
+    if next_retry_count > PUBLISH_QUEUE_RETRY_LIMIT:
+        return False
+
+    delay_seconds = _queue_retry_delay_seconds(item, error.retry_after_seconds)
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+    stage_label = {
+        "instagram_container_ready": "attesa elaborazione media Instagram",
+        "instagram_publish": "pubblicazione Instagram",
+        "instagram_container_status": "verifica stato container Instagram",
+    }.get(error.stage, "publish")
+    error_text = (
+        f"{str(error)[:700]} Riprovo automaticamente alle {retry_at.strftime('%H:%M:%S UTC')} "
+        f"(tentativo {next_retry_count}/{PUBLISH_QUEUE_RETRY_LIMIT}, fase: {stage_label})."
+    )[:1000]
+
+    await db.publish_queue.update_one(
+        {"id": item["id"], "status": "processing", "processing_token": processing_token},
+        {
+            "$set": {
+                "status": "queued",
+                "scheduled_at": retry_at.isoformat(),
+                "retry_count": next_retry_count,
+                "last_error_message": str(error)[:1000],
+                "last_error_at": datetime.now(timezone.utc).isoformat(),
+                "last_retry_at": retry_at.isoformat(),
+                "publish_stage": error.stage,
+                "error_message": error_text,
+            },
+            "$unset": {
+                "processing_started_at": "",
+                "processing_heartbeat_at": "",
+                "processing_token": "",
+            },
+        }
+    )
+    return True
+
 @api.post("/publish/schedule")
 async def schedule_publish(inp: PublishSchedule, request: Request):
     user = await get_current_user(request)
@@ -3783,6 +3861,7 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
             "profile_name": profile.get("profile_name", ""), "user_id": user["_id"],
             "status": "queued", "scheduled_at": item_scheduled_at, "first_comment": inp.first_comment,
             "error_message": "", "published_at": "", "created_at": now_iso,
+            "retry_count": 0, "publish_stage": "",
         }
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
@@ -3928,11 +4007,16 @@ async def _run_publish_queue_once():
             publish_result = await db.publish_queue.update_one(
                 {"id": item["id"], "status": "processing", "processing_token": processing_token},
                 {
-                    "$set": {"status": "published", "published_at": now_iso, "post_id": post_id},
+                    "$set": {"status": "published", "published_at": now_iso, "post_id": post_id, "error_message": ""},
                     "$unset": {
                         "processing_started_at": "",
                         "processing_heartbeat_at": "",
                         "processing_token": "",
+                        "retry_count": "",
+                        "last_error_message": "",
+                        "last_error_at": "",
+                        "last_retry_at": "",
+                        "publish_stage": "",
                     }
                 }
             )
@@ -3982,6 +4066,21 @@ async def _run_publish_queue_once():
                     status="blocked",
                     warning=error_text,
                 )
+            if isinstance(e, RetryablePublishError) and item["platform"] == "instagram":
+                retry_scheduled = await _schedule_retryable_publish(item, processing_token, e)
+                if retry_scheduled:
+                    logger.warning(
+                        "Queue retry scheduled [%s] platform=%s stage=%s retry_count=%s",
+                        item["id"],
+                        item.get("platform", ""),
+                        e.stage,
+                        int(item.get("retry_count") or 0) + 1,
+                    )
+                    await db.contents.update_one(
+                        {"id": item["content_id"]},
+                        {"$set": {"status": "scheduled"}}
+                    )
+                    continue
             claim_active = await _publish_queue_claim_is_active(item["id"], processing_token)
             if claim_active:
                 await db.publish_queue.update_one(
