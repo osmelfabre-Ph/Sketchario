@@ -2427,7 +2427,9 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
         while datetime.now(timezone.utc) < deadline:
             status_r = await c.get(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{container_id}",
-                params={"fields": "status_code,status,status_message,message"},
+                # Meta does not expose error_message on this node consistently; requesting
+                # only stable fields avoids false 400s during container polling.
+                params={"fields": "status_code,status,status_message"},
                 headers={"Authorization": f"Bearer {token}"},
             )
             if status_r.status_code == 200:
@@ -3764,7 +3766,6 @@ def _duplicate_publish_message(platform: str, existing_item: dict) -> str:
         f"{platform or 'social'}{when}."
     )[:1000]
 
-
 def _queue_retry_delay_seconds(item: dict, requested_delay: Optional[int] = None) -> int:
     retry_count = max(0, int(item.get("retry_count") or 0))
     base = requested_delay or PUBLISH_QUEUE_RETRY_BASE_SECONDS
@@ -3814,7 +3815,6 @@ async def _schedule_retryable_publish(item: dict, processing_token: str, error: 
         }
     )
     return True
-
 @api.post("/publish/schedule")
 async def schedule_publish(inp: PublishSchedule, request: Request):
     user = await get_current_user(request)
@@ -4725,6 +4725,9 @@ async def check_plan_limit(user: dict, resource: str, project_id: str = None):
     elif resource == "export_csv":
         if not limits["can_export_csv"]:
             raise HTTPException(403, "L'export CSV richiede il piano Creator o superiore.")
+    elif resource == "analytics":
+        if not limits["can_analytics"]:
+            raise HTTPException(403, "Gli analytics avanzati sono disponibili solo per il piano Strategist o superiore.")
     return limits
 
 @api.get("/plan/limits")
@@ -5282,6 +5285,7 @@ async def get_release_notes_with_read(request: Request):
 @api.get("/analytics/{project_id}")
 async def get_analytics(project_id: str, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "analytics")
     contents = await db.contents.find({"project_id": project_id}, {"_id": 0}).to_list(500)
     total = len(contents)
     by_format = {}
@@ -5317,6 +5321,7 @@ async def get_analytics(project_id: str, request: Request):
 @api.get("/analytics/global/summary")
 async def global_analytics(request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "analytics")
     projects = await db.projects.count_documents({"user_id": user["_id"]})
     contents = await db.contents.count_documents({})
     published = await db.publish_queue.count_documents({"user_id": user["_id"], "status": "published"})
@@ -5387,6 +5392,7 @@ async def _fetch_linkedin_metrics(token: str, post_urn: str) -> dict:
 @api.post("/analytics/{project_id}/sync")
 async def sync_analytics(project_id: str, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "analytics")
     published = await db.publish_queue.find(
         {"project_id": project_id, "status": "published", "post_id": {"$exists": True, "$ne": ""}},
         {"_id": 0}
@@ -5434,7 +5440,8 @@ async def sync_analytics(project_id: str, request: Request):
 
 @api.get("/analytics/{project_id}/post-metrics")
 async def get_post_metrics(project_id: str, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await check_plan_limit(user, "analytics")
     metrics = await db.content_metrics.find({"project_id": project_id}, {"_id": 0}).to_list(500)
     result = []
     for m in metrics:
@@ -5449,7 +5456,8 @@ async def get_post_metrics(project_id: str, request: Request):
 
 @api.get("/analytics/{project_id}/ai-insights")
 async def get_ai_insights(project_id: str, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await check_plan_limit(user, "analytics")
     metrics_docs = await db.content_metrics.find({"project_id": project_id}, {"_id": 0}).to_list(200)
     contents = await db.contents.find({"project_id": project_id},
         {"_id": 0, "id": 1, "hook_text": 1, "format": 1, "pillar": 1}).to_list(200)
