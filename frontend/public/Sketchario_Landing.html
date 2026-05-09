@@ -311,12 +311,21 @@ document.addEventListener('DOMContentLoaded', async function() {
           document.body.appendChild(footer);
         }
 
+        function removeFallbackFooter() {
+          const footer = document.getElementById('sk-legal-footer');
+          if (footer) footer.remove();
+        }
+
         function boot() {
           ensureCookieBanner();
           let attempts = 0;
           const loop = () => {
             const boundCount = bindLegalTriggers();
-            if (boundCount < 3) ensureFallbackFooter();
+            if (boundCount >= 3) {
+              removeFallbackFooter();
+            } else if (attempts >= 23 && boundCount === 0) {
+              ensureFallbackFooter();
+            }
             attempts += 1;
             if (attempts < 24) window.setTimeout(loop, 500);
           };
