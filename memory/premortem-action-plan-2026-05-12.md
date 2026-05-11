@@ -97,6 +97,16 @@ APP_URL=https://app.sketchario.app
 MARKETING_URL=https://www.sketchario.app
 ```
 
+If using Cloudflare R2 instead of a Railway volume:
+
+```env
+R2_BUCKET=sketchario-media
+R2_ENDPOINT=https://e73216012680fafd45a29269a36e5929.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_PUBLIC_BASE_URL=https://media.sketchario.app
+```
+
 Optional:
 
 ```env

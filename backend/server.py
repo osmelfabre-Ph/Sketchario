@@ -10,6 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, html as html_lib
+import boto3
 from contextlib import asynccontextmanager
 from urllib.parse import quote, urlencode
 from starlette.responses import HTMLResponse
@@ -84,6 +85,70 @@ class RetryablePublishError(Exception):
         super().__init__(message)
         self.stage = stage
         self.retry_after_seconds = retry_after_seconds or PUBLISH_QUEUE_RETRY_BASE_SECONDS
+
+def _r2_enabled() -> bool:
+    return all(
+        os.environ.get(key, "").strip()
+        for key in ("R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PUBLIC_BASE_URL")
+    )
+
+def _r2_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name=os.environ.get("R2_REGION", "auto"),
+    )
+
+def _guess_content_type(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif",
+        "mp4": "video/mp4",
+        "webm": "video/webm",
+        "mov": "video/quicktime",
+    }.get(ext, "application/octet-stream")
+
+def _public_media_url(filename: str) -> str:
+    if _r2_enabled():
+        return f"{os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')}/{quote(filename)}"
+    return f"/api/media/file/{filename}"
+
+async def _store_media_bytes(filename: str, payload: bytes, *, content_type: Optional[str] = None) -> str:
+    if _r2_enabled():
+        client = _r2_client()
+        bucket = os.environ["R2_BUCKET"]
+        await asyncio.to_thread(
+            client.put_object,
+            Bucket=bucket,
+            Key=filename,
+            Body=payload,
+            ContentType=content_type or _guess_content_type(filename),
+        )
+        return _public_media_url(filename)
+    fpath = UPLOAD_DIR / filename
+    with open(fpath, "wb") as f:
+        f.write(payload)
+    return _public_media_url(filename)
+
+async def _delete_media_asset(filename: str) -> None:
+    if not filename:
+        return
+    if _r2_enabled():
+        try:
+            client = _r2_client()
+            await asyncio.to_thread(client.delete_object, Bucket=os.environ["R2_BUCKET"], Key=filename)
+        except Exception as e:
+            logger.warning(f"R2 delete warning [{filename}]: {e}")
+        return
+    fpath = UPLOAD_DIR / filename
+    if fpath.exists():
+        fpath.unlink()
 
 # ── EMAIL ────────────────────────────────────────────
 async def send_email_smtp(
@@ -861,16 +926,12 @@ async def upload_project_cover(project_id: str, request: Request, file: UploadFi
     if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
         raise HTTPException(400, "Formato non supportato. Usa jpg, png, webp o gif.")
     fname = f"cover_{project_id}_{uuid.uuid4().hex[:8]}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    cover_url = f"/api/media/file/{fname}"
+    payload = await file.read()
+    cover_url = await _store_media_bytes(fname, payload)
     old = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if old and old.get("cover_url"):
         old_fname = old["cover_url"].split("/")[-1]
-        old_fpath = UPLOAD_DIR / old_fname
-        if old_fpath.exists():
-            old_fpath.unlink()
+        await _delete_media_asset(old_fname)
     await db.projects.update_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"$set": {"cover_url": cover_url}})
     return {"cover_url": cover_url}
 
@@ -880,9 +941,7 @@ async def remove_project_cover(project_id: str, request: Request):
     p = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if p and p.get("cover_url"):
         fname = p["cover_url"].split("/")[-1]
-        fpath = UPLOAD_DIR / fname
-        if fpath.exists():
-            fpath.unlink()
+        await _delete_media_asset(fname)
     await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"cover_url": ""}})
     return {"ok": True}
 
@@ -3110,14 +3169,16 @@ async def _prepare_instagram_image_url(media_doc: dict, app_url: str) -> str:
                 image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
 
             safe_name = f"igsafe_{uuid.uuid4().hex}.jpg"
-            safe_path = UPLOAD_DIR / safe_name
-            image.save(safe_path, format="JPEG", quality=92, optimize=True)
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG", quality=92, optimize=True)
+            safe_bytes = buffer.getvalue()
     except Exception as e:
         raise ValueError(
             f"Immagine non convertibile per Instagram: {media_doc.get('original_name') or media_doc.get('filename') or media_url}. {str(e)[:120]}"
         ) from e
 
-    return f"{app_url}/api/media/file/{safe_name}"
+    stored_url = await _store_media_bytes(safe_name, safe_bytes, content_type="image/jpeg")
+    return f"{app_url}{stored_url}" if stored_url.startswith("/") else stored_url
 
 async def _publish_instagram(
     token: str,
@@ -4333,11 +4394,9 @@ async def upload_media(content_id: str, request: Request, file: UploadFile = Fil
     if ext not in allowed:
         raise HTTPException(400, f"Formato non supportato. Usa: {', '.join(allowed)}")
     fname = f"{uuid.uuid4().hex}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    media_url = f"/api/media/file/{fname}"
-    media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": file.filename, "url": media_url, "type": "image" if ext in {"jpg","jpeg","png","webp","gif"} else "video", "size": fpath.stat().st_size, "created_at": datetime.now(timezone.utc).isoformat()}
+    payload = await file.read()
+    media_url = await _store_media_bytes(fname, payload)
+    media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": file.filename, "url": media_url, "type": "image" if ext in {"jpg","jpeg","png","webp","gif"} else "video", "size": len(payload), "created_at": datetime.now(timezone.utc).isoformat()}
     await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
     return media_doc
 
@@ -4349,9 +4408,7 @@ async def delete_media(content_id: str, media_id: str, request: Request):
         media_list = content.get("media", [])
         for m in media_list:
             if m.get("id") == media_id:
-                fpath = UPLOAD_DIR / m.get("filename", "")
-                if fpath.exists():
-                    fpath.unlink()
+                await _delete_media_asset(m.get("filename", ""))
                 break
         await db.contents.update_one({"id": content_id}, {"$pull": {"media": {"id": media_id}}})
     return {"ok": True}
@@ -4489,14 +4546,12 @@ async def _generate_image_bytes(
 
 async def _save_generated_media(content_id: str, image_bytes: bytes, ext: str, source_label: str, original_name: str, extra: Optional[dict] = None) -> dict:
     fname = f"{source_label.lower().replace(' ', '_').replace('/', '_')}_{uuid.uuid4().hex}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f:
-        f.write(image_bytes)
+    media_url = await _store_media_bytes(fname, image_bytes)
     media_doc = {
         "id": str(uuid.uuid4()),
         "filename": fname,
         "original_name": original_name,
-        "url": f"/api/media/file/{fname}",
+        "url": media_url,
         "type": "image",
         "source": source_label,
         "size": len(image_bytes),
@@ -5124,10 +5179,7 @@ async def canva_export_download(content_id: str, request: Request):
             if resp.status_code != 200:
                 continue
             fname = f"canva_{uuid.uuid4().hex}.png"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             media_doc = {
                 "id": str(uuid.uuid4()),
                 "filename": fname,
@@ -5175,10 +5227,7 @@ async def canva_import(request: Request):
             if resp.status_code != 200:
                 raise HTTPException(400, "Impossibile scaricare l'immagine da Canva")
             fname = f"canva_{uuid.uuid4().hex}.png"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": "Canva Export", "url": media_url, "type": "image", "source": "canva", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
             await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
             return media_doc
@@ -5400,10 +5449,7 @@ async def import_from_drive(inp: DriveImportInput, request: Request):
             elif "mp4" in ct: ext = "mp4"
             elif "video" in ct: ext = "mp4"
             fname = f"drive_{uuid.uuid4().hex}.{ext}"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
             display_name = inp.file_name or "Google Drive Import"
             media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": display_name, "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
@@ -5466,16 +5512,13 @@ async def render_video(inp: RenderVideoInput, request: Request):
             if r.status_code != 200:
                 raise HTTPException(500, f"Renderer error: {r.text[:300]}")
             out_name = r.headers.get("x-filename") or f"render_{inp.content_id}_{uuid.uuid4().hex[:8]}.mp4"
-            fpath = UPLOAD_DIR / out_name
-            with open(fpath, "wb") as f:
-                f.write(r.content)
+            media_url = await _store_media_bytes(out_name, r.content)
     except httpx.TimeoutException:
         raise HTTPException(504, "Timeout rendering video (>3 min). Riprova con uno script più corto.")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, f"Errore renderer: {str(e)}")
-    media_url = f"/api/media/file/{out_name}"
     media_doc = {
         "id": str(uuid.uuid4()),
         "filename": out_name,
@@ -5925,10 +5968,7 @@ async def import_from_cloud(inp: CloudImportInput, request: Request):
             elif "gif" in ct: ext = "gif"
             elif "mp4" in ct or "video" in ct: ext = "mp4"
             fname = f"{inp.source}_{uuid.uuid4().hex}.{ext}"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
             media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"{inp.source.title()} Import", "url": media_url, "type": ftype, "source": inp.source, "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
             await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
