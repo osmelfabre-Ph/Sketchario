@@ -26,6 +26,13 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from PIL import Image, ImageOps
 
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+except Exception:  # pragma: no cover - optional dependency
+    sentry_sdk = None
+    FastApiIntegration = None
+
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -45,6 +52,8 @@ async def _run_publish_queue():
             await _run_publish_queue_once()
         except Exception as e:
             logger.error(f"Queue worker loop error: {e}")
+            if sentry_sdk:
+                sentry_sdk.capture_exception(e)
         await asyncio.sleep(PUBLISH_QUEUE_LOOP_SECONDS)
 
 @asynccontextmanager
@@ -52,8 +61,11 @@ async def lifespan(app_instance):
     asyncio.create_task(_run_publish_queue())
     yield
 
+UPLOAD_DIR = Path(os.environ.get("UPLOADS_DIR", "/app/uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 app = FastAPI(lifespan=lifespan)
-app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
+app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
@@ -253,6 +265,14 @@ GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIA
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+if sentry_sdk and os.environ.get("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ.get("SENTRY_DSN"),
+        environment=os.environ.get("APP_ENV", os.environ.get("RAILWAY_ENVIRONMENT", "production")),
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+        integrations=[FastApiIntegration()],
+    )
+
 # ── Helpers ──────────────────────────────────────────
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -285,6 +305,7 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(status_code=401, detail="User not found")
         user["_id"] = str(user["_id"])
         user.pop("password_hash", None)
+        asyncio.create_task(_touch_user_activity(user.copy()))
         return user
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -482,7 +503,45 @@ def _media_public_url() -> str:
     return os.environ.get("MEDIA_PUBLIC_BASE_URL", _backend_url()).rstrip("/")
 
 def _frontend_base() -> str:
-    return os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
+    return (
+        os.environ.get("APP_URL", "")
+        or os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip()
+    ).rstrip("/")
+
+def _is_platform_enabled(platform: str) -> bool:
+    if platform == "pinterest":
+        return os.environ.get("ENABLE_PINTEREST", "false").strip().lower() in {"1", "true", "yes", "on"}
+    return True
+
+async def _touch_user_activity(user: dict):
+    try:
+        user_id = user.get("_id")
+        if not user_id:
+            return
+        now = datetime.now(timezone.utc)
+        last_active = _parse_dt(user.get("last_active_at", ""))
+        if last_active >= now - timedelta(minutes=30):
+            return
+
+        now_iso = now.isoformat()
+        day_key = now.strftime("%Y-%m-%d")
+        month_key = now.strftime("%Y-%m")
+        await db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"last_active_at": now_iso, "last_active_day": day_key, "last_active_month": month_key}}
+        )
+        await db.activity_daily.update_one(
+            {"user_id": user_id, "day": day_key},
+            {"$set": {"last_seen_at": now_iso}, "$setOnInsert": {"created_at": now_iso}},
+            upsert=True,
+        )
+        await db.activity_monthly.update_one(
+            {"user_id": user_id, "month": month_key},
+            {"$set": {"last_seen_at": now_iso}, "$setOnInsert": {"created_at": now_iso}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"Activity tracking error: {e}")
 
 async def _social_login_user(email: str, name: str, provider: str) -> str:
     """Find or create user from social login, return JWT."""
@@ -3286,6 +3345,8 @@ async def list_platforms(request: Request):
     await get_current_user(request)
     platforms = []
     for key, cfg in SOCIAL_PLATFORMS.items():
+        if not _is_platform_enabled(key):
+            continue
         client_id = os.environ.get(cfg["client_id_env"], "")
         platforms.append({
             "id": key,
@@ -3302,6 +3363,8 @@ async def get_social_oauth_config(request: Request):
     callback_url = _oauth_callback_url()
     items = []
     for key, cfg in SOCIAL_PLATFORMS.items():
+        if not _is_platform_enabled(key):
+            continue
         items.append({
             "id": key,
             "name": cfg["name"],
@@ -3321,6 +3384,8 @@ async def social_oauth_start(platform: str, request: Request):
     cfg = SOCIAL_PLATFORMS.get(platform)
     if not cfg:
         raise HTTPException(400, "Piattaforma non supportata")
+    if not _is_platform_enabled(platform):
+        raise HTTPException(403, f"{cfg['name']} è temporaneamente disabilitato.")
     client_id = os.environ.get(cfg["client_id_env"], "")
     if not client_id:
         raise HTTPException(400, f"Credenziali {platform} non configurate")
@@ -4135,6 +4200,11 @@ async def _run_publish_queue_once():
         except Exception as e:
             logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
             error_text = str(e)[:1000]
+            if sentry_sdk and item.get("platform") == "instagram":
+                sentry_sdk.capture_message(
+                    f"Instagram publish failed [{item['id']}] stage={item.get('publish_stage') or 'publishing'} error={error_text}",
+                    level="error",
+                )
             if item["platform"] == "pinterest":
                 warning = (
                     "Pinterest ha rifiutato il token di pubblicazione. "
@@ -4255,9 +4325,6 @@ async def mark_published(content_id: str, request: Request):
     return {"ok": True}
 
 # ── MEDIA UPLOAD ──────────────────────────────────────
-UPLOAD_DIR = Path("/app/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 @api.post("/media/upload/{content_id}")
 async def upload_media(content_id: str, request: Request, file: UploadFile = File(...)):
     user = await get_current_user(request)
@@ -4662,6 +4729,18 @@ async def delete_release_note(note_id: str, request: Request):
         raise HTTPException(403, "Accesso negato")
     await db.release_notes.delete_one({"id": note_id})
     return {"ok": True}
+
+@api.get("/admin/usage/summary")
+async def admin_usage_summary(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    now = datetime.now(timezone.utc)
+    day_floor = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    month_floor = (now - timedelta(days=30)).strftime("%Y-%m")
+    dau = await db.activity_daily.count_documents({"day": {"$gte": day_floor}})
+    mau = await db.activity_monthly.count_documents({"month": {"$gte": month_floor}})
+    return {"dau": dau, "mau": mau, "generated_at": now.isoformat()}
 
 # ── STRIPE BILLING ────────────────────────────────────
 PLANS = {
@@ -5194,7 +5273,7 @@ async def forgot_password(inp: ForgotPasswordInput):
         "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    frontend_url = os.environ.get("FRONTEND_URL", "")
+    frontend_url = _frontend_base()
     reset_link = f"{frontend_url}?reset_token={token}"
     logger.info(f"Password reset link for {email}: {reset_link}")
     html = f"""
@@ -5276,6 +5355,19 @@ async def public_contact(inp: PublicContactInput):
     if not sent:
         raise HTTPException(502, "Invio email non riuscito")
     return {"ok": True}
+
+@api.get("/public/health/email")
+async def public_email_health():
+    email_provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower()
+    resend_ready = bool(os.environ.get("RESEND_API_KEY"))
+    smtp_ready = bool(os.environ.get("SMTP_USER")) and bool(os.environ.get("SMTP_PASSWORD"))
+    effective_provider = "resend" if email_provider == "resend" or resend_ready else "smtp" if smtp_ready else "none"
+    return {
+        "ok": effective_provider != "none",
+        "provider": effective_provider,
+        "resend_ready": resend_ready,
+        "smtp_ready": smtp_ready,
+    }
 
 # ── GOOGLE DRIVE IMPORT ───────────────────────────────
 class DriveImportInput(BaseModel):
@@ -5918,6 +6010,8 @@ def _collect_cors_origins() -> List[str]:
     for value in raw_values:
         for origin in str(value or "").split(","):
             cleaned = origin.strip().rstrip("/")
+            if "*" in cleaned:
+                raise RuntimeError(f"CORS origin non valido: {cleaned}")
             if cleaned and cleaned not in origins:
                 origins.append(cleaned)
     return origins
@@ -5953,6 +6047,10 @@ async def startup():
     await db.payment_transactions.create_index("session_id")
     await db.tov_library.create_index("user_id")
     await db.password_reset_tokens.create_index("token")
+    await db.activity_daily.create_index([("user_id", 1), ("day", 1)], unique=True)
+    await db.activity_monthly.create_index([("user_id", 1), ("month", 1)], unique=True)
+    if os.environ.get("UPLOADS_DIR", "").strip() == "":
+        logger.warning("UPLOADS_DIR non configurato: i media restano su filesystem locale del container.")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.release_note_reads.create_index([("user_id", 1), ("note_id", 1)])
     await db.onboarding.create_index("user_id", unique=True)
