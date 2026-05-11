@@ -132,6 +132,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           privacy: '/legal/privacy-policy.html',
           terms: '/legal/termini-e-condizioni.html',
           cookie: '/legal/cookie-policy.html',
+          contact: '/contact.html',
         };
 
         function getLang() {
@@ -259,7 +260,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           const iframe = overlay.querySelector('iframe');
           const title = overlay.querySelector('#sk-legal-overlay-title');
           iframe.src = withLegalQuery(legalPages[type]);
-          title.textContent = label || 'Sketchario Legal';
+          title.textContent = label || (type === 'contact' ? 'Sketchario Contacts' : 'Sketchario Legal');
           overlay.classList.add('is-open');
           document.body.style.overflow = 'hidden';
         }
@@ -267,6 +268,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         function detectLegalType(el) {
           const href = (el.getAttribute('href') || '').toLowerCase();
           const text = (el.textContent || '').toLowerCase().trim();
+          if (href.includes('contact.html') || /contatti|contact/.test(text)) return ['contact', 'Contacts'];
           if (href.includes('privacy-policy') || /privacy/.test(text)) return ['privacy', 'Privacy Policy'];
           if (href.includes('cookie-policy') || /cookie/.test(text)) return ['cookie', 'Cookie Policy'];
           if (href.includes('termini-e-condizioni') || /terms|termini|conditions/.test(text)) return ['terms', 'Terms & Conditions'];

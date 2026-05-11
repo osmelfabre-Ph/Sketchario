@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contatti — Sketchario</title>
+  <meta name="description" content="Contatta il team Sketchario per supporto tecnico o informazioni commerciali." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/legal/legal-theme.css" />
+</head>
+<body>
+  <div class="shell" id="contact-root"></div>
+  <script src="/legal/legal-frame.js"></script>
+  <script>
+    (function () {
+      const API_URL = 'https://api.sketchario.app/api/public/contact';
+      const translations = {
+        it: {
+          title: 'Contatti — Sketchario',
+          description: 'Contatta il team Sketchario per supporto tecnico o informazioni commerciali.',
+          brandSmall: 'Contatti',
+          backToSite: '← Torna indietro',
+          eyebrow: 'Contatti',
+          heroTitle: 'Parla con il team giusto, senza perdere tempo.',
+          lead: 'Usa questo form per richieste informative o tecniche. Le richieste commerciali arrivano a info@sketchario.app, quelle di supporto tecnico a helpdesk@sketchario.app.',
+          updatedDate: 'Risposta media entro 1 giorno lavorativo',
+          supportLabel: 'Supporto',
+          contactLabel: 'Canali',
+          detailsLabel: 'Instradamento',
+          supportValue: 'Form unico, smistamento automatico',
+          contactValue: 'info@sketchario.app • helpdesk@sketchario.app',
+          detailsValue: 'Informative → info / Tecniche → helpdesk',
+          formTitle: 'Scrivici',
+          formLead: 'Compila i campi qui sotto. Ti risponderemo dalla casella più adatta in base al tipo di richiesta.',
+          sidebarTitle: 'Come gestiamo le richieste',
+          sidebarCopy: 'Le richieste vengono instradate automaticamente al team giusto. Riceverai risposta dall’indirizzo corretto, ma puoi sempre scrivere direttamente alle caselle pubblicate qui sotto.',
+          infoBoxTitle: 'Richieste informative',
+          infoBoxCopy: 'Piani, prezzi, partnership, onboarding, domande sul prodotto.',
+          techBoxTitle: 'Richieste tecniche',
+          techBoxCopy: 'Bug, accessi, pubblicazione social, integrazioni, supporto operativo.',
+          nameLabel: 'Nome e cognome',
+          namePlaceholder: 'Il tuo nome',
+          emailLabel: 'Email',
+          emailPlaceholder: 'nome@azienda.com',
+          companyLabel: 'Azienda o brand',
+          companyPlaceholder: 'Opzionale',
+          typeLabel: 'Tipo di richiesta',
+          typePlaceholder: 'Seleziona un tipo',
+          typeInfo: 'Informativa / commerciale',
+          typeTech: 'Tecnica / supporto',
+          messageLabel: 'Messaggio',
+          messagePlaceholder: 'Spiegaci in modo chiaro cosa ti serve...',
+          honeypotLabel: 'Lascia vuoto questo campo',
+          submit: 'Invia richiesta',
+          sending: 'Invio in corso...',
+          success: 'Messaggio inviato. Ti risponderemo al più presto.',
+          errorGeneric: 'Invio non riuscito. Riprova tra un attimo.',
+          errorRequired: 'Compila tutti i campi obbligatori.',
+          footerNote: 'Pagina universale di contatto Sketchario, pensata per funzionare sia come pagina standalone sia in overlay dalla landing.'
+        },
+        en: {
+          title: 'Contact — Sketchario',
+          description: 'Contact the Sketchario team for technical support or product information.',
+          brandSmall: 'Contact',
+          backToSite: '← Back',
+          eyebrow: 'Contact',
+          heroTitle: 'Reach the right team without wasting time.',
+          lead: 'Use this form for commercial or technical questions. Informational requests go to info@sketchario.app, while technical support goes to helpdesk@sketchario.app.',
+          updatedDate: 'Average reply within 1 business day',
+          supportLabel: 'Support',
+          contactLabel: 'Channels',
+          detailsLabel: 'Routing',
+          supportValue: 'Single form, automatic routing',
+          contactValue: 'info@sketchario.app • helpdesk@sketchario.app',
+          detailsValue: 'Informational → info / Technical → helpdesk',
+          formTitle: 'Write to us',
+          formLead: 'Fill in the form below. We will reply from the most appropriate mailbox based on your request type.',
+          sidebarTitle: 'How requests are handled',
+          sidebarCopy: 'Requests are automatically routed to the right team. You will receive a reply from the correct address, but you can also write directly to the public mailboxes listed below.',
+          infoBoxTitle: 'Informational requests',
+          infoBoxCopy: 'Plans, pricing, partnerships, onboarding, product questions.',
+          techBoxTitle: 'Technical requests',
+          techBoxCopy: 'Bugs, access, social publishing, integrations, operational support.',
+          nameLabel: 'Full name',
+          namePlaceholder: 'Your name',
+          emailLabel: 'Email',
+          emailPlaceholder: 'name@company.com',
+          companyLabel: 'Company or brand',
+          companyPlaceholder: 'Optional',
+          typeLabel: 'Request type',
+          typePlaceholder: 'Select a type',
+          typeInfo: 'Informational / commercial',
+          typeTech: 'Technical / support',
+          messageLabel: 'Message',
+          messagePlaceholder: 'Tell us clearly what you need...',
+          honeypotLabel: 'Leave this field empty',
+          submit: 'Send request',
+          sending: 'Sending...',
+          success: 'Message sent. We will reply as soon as possible.',
+          errorGeneric: 'Message not sent. Please try again in a moment.',
+          errorRequired: 'Please fill in all required fields.',
+          footerNote: 'Universal Sketchario contact page designed to work both as a standalone page and as an overlay from the landing.'
+        }
+      };
+
+      const lang = window.SketcharioLegal.detectLanguage(translations);
+      const t = translations[lang] || translations.it;
+      window.SketcharioLegal.applyEmbedMode();
+
+      document.title = t.title;
+      const metaDescription = document.querySelector('meta[name="description"]');
+      if (metaDescription) metaDescription.setAttribute('content', t.description);
+
+      const root = document.getElementById('contact-root');
+      root.innerHTML = `
+        <div class="topbar">
+          <div class="brand">
+            <div class="brand-mark"><img src="/logo192.png" alt="Sketchario logo" /></div>
+            <div class="brand-copy">
+              <strong>Sketchario</strong>
+              <small>${t.brandSmall}</small>
+            </div>
+          </div>
+          <a class="back-btn" href="/" data-back-link>${t.backToSite}</a>
+        </div>
+
+        <section class="hero">
+          <span class="eyebrow">${t.eyebrow}</span>
+          <h1>${t.heroTitle}</h1>
+          <p class="lead">${t.lead}</p>
+          <div class="hero-meta">
+            <div class="meta-box">
+              <span class="meta-label">${t.supportLabel}</span>
+              <span class="meta-value">${t.supportValue}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">${t.contactLabel}</span>
+              <span class="meta-value">${t.contactValue}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">${t.detailsLabel}</span>
+              <span class="meta-value">${t.detailsValue}</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="contact-split">
+          <section class="simple-card">
+            <span class="eyebrow">${t.formTitle}</span>
+            <h1>${t.formTitle}</h1>
+            <p class="lead">${t.formLead}</p>
+            <form id="contact-form" novalidate>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="contact-name">${t.nameLabel}</label>
+                  <input id="contact-name" name="name" type="text" placeholder="${t.namePlaceholder}" required />
+                </div>
+                <div class="field">
+                  <label for="contact-email">${t.emailLabel}</label>
+                  <input id="contact-email" name="email" type="email" placeholder="${t.emailPlaceholder}" required />
+                </div>
+                <div class="field">
+                  <label for="contact-company">${t.companyLabel}</label>
+                  <input id="contact-company" name="company" type="text" placeholder="${t.companyPlaceholder}" />
+                </div>
+                <div class="field">
+                  <label for="contact-type">${t.typeLabel}</label>
+                  <select id="contact-type" name="contact_type" required>
+                    <option value="informative">${t.typeInfo}</option>
+                    <option value="technical">${t.typeTech}</option>
+                  </select>
+                </div>
+                <div class="field full">
+                  <label for="contact-message">${t.messageLabel}</label>
+                  <textarea id="contact-message" name="message" placeholder="${t.messagePlaceholder}" required></textarea>
+                </div>
+                <div class="field is-hidden" aria-hidden="true">
+                  <label for="contact-website">${t.honeypotLabel}</label>
+                  <input id="contact-website" name="website" type="text" autocomplete="off" tabindex="-1" />
+                </div>
+              </div>
+              <div class="cta-row">
+                <button class="btn-primary" type="submit" id="contact-submit">${t.submit}</button>
+                <div class="status-badge" id="contact-status">${t.updatedDate}</div>
+              </div>
+            </form>
+          </section>
+
+          <aside class="simple-card">
+            <span class="eyebrow">${t.sidebarTitle}</span>
+            <h1>${t.sidebarTitle}</h1>
+            <p class="lead">${t.sidebarCopy}</p>
+            <div class="contact-card">
+              <strong>${t.infoBoxTitle}</strong>
+              <p>${t.infoBoxCopy}</p>
+              <p><a class="inline" href="mailto:info@sketchario.app">info@sketchario.app</a></p>
+            </div>
+            <div class="contact-card">
+              <strong>${t.techBoxTitle}</strong>
+              <p>${t.techBoxCopy}</p>
+              <p><a class="inline" href="mailto:helpdesk@sketchario.app">helpdesk@sketchario.app</a></p>
+            </div>
+          </aside>
+        </div>
+
+        <p class="footer-note">${t.footerNote}</p>
+      `;
+
+      window.SketcharioLegal.wireBackLink(document.querySelector('[data-back-link]'), '/');
+      window.SketcharioLegal.rewriteInlineLinks(root, lang);
+
+      const form = document.getElementById('contact-form');
+      const submit = document.getElementById('contact-submit');
+      const status = document.getElementById('contact-status');
+
+      function setStatus(message, tone) {
+        status.textContent = message;
+        status.className = `status-badge${tone ? ` ${tone}` : ''}`;
+      }
+
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const payload = {
+          name: form.name.value.trim(),
+          email: form.email.value.trim(),
+          company: form.company.value.trim(),
+          contact_type: form.contact_type.value,
+          message: form.message.value.trim(),
+          website: form.website.value.trim()
+        };
+
+        if (!payload.name || !payload.email || !payload.message) {
+          setStatus(t.errorRequired, 'error');
+          return;
+        }
+
+        submit.disabled = true;
+        submit.textContent = t.sending;
+        setStatus(t.sending);
+
+        try {
+          const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) {
+            throw new Error('request_failed');
+          }
+          form.reset();
+          setStatus(t.success, 'success');
+        } catch (err) {
+          setStatus(t.errorGeneric, 'error');
+        } finally {
+          submit.disabled = false;
+          submit.textContent = t.submit;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

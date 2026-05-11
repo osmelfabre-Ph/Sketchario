@@ -44,7 +44,7 @@
   }
 
   function rewriteInlineLinks(root, lang) {
-    (root || document).querySelectorAll('a[href$=".html"], a[href*="privacy-policy"], a[href*="cookie-policy"], a[href*="termini-e-condizioni"]').forEach((link) => {
+    (root || document).querySelectorAll('a[href$=".html"], a[href*="privacy-policy"], a[href*="cookie-policy"], a[href*="termini-e-condizioni"], a[href*="contact.html"]').forEach((link) => {
       const href = link.getAttribute('href');
       if (!href || href.startsWith('mailto:') || href.startsWith('http')) return;
       link.setAttribute('href', withLegalParams(href, lang));

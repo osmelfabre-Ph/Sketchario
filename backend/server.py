@@ -73,13 +73,22 @@ class RetryablePublishError(Exception):
         self.stage = stage
         self.retry_after_seconds = retry_after_seconds or PUBLISH_QUEUE_RETRY_BASE_SECONDS
 
-# ── SMTP EMAIL ───────────────────────────────────────
-async def send_email_smtp(to: str, subject: str, html_body: str):
+# ── EMAIL ────────────────────────────────────────────
+async def send_email_smtp(
+    to: str,
+    subject: str,
+    html_body: str,
+    *,
+    reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
+    from_name: Optional[str] = None,
+):
     smtp_host = os.environ.get("SMTP_HOST", "smtps.aruba.it")
     smtp_port = int(os.environ.get("SMTP_PORT", "465"))
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASSWORD", "")
-    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    smtp_from = from_email or os.environ.get("SMTP_FROM", smtp_user)
+    smtp_from_name = from_name or os.environ.get("EMAIL_FROM_NAME", "Sketchario")
     smtp_security = os.environ.get("SMTP_SECURITY", "ssl").strip().lower()
     smtp_timeout = int(os.environ.get("SMTP_TIMEOUT", "20"))
     if not smtp_user or not smtp_pass:
@@ -88,8 +97,10 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"Sketchario <{smtp_from}>"
+        msg["From"] = f"{smtp_from_name} <{smtp_from}>"
         msg["To"] = to
+        if reply_to:
+            msg["Reply-To"] = reply_to
         msg.attach(MIMEText(html_body, "html"))
         logger.info(f"Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
         if smtp_security == "starttls":
@@ -112,6 +123,82 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     except Exception as e:
         logger.error(f"SMTP email error: {e}")
         return False
+
+async def send_email_resend(
+    to: str,
+    subject: str,
+    html_body: str,
+    *,
+    reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
+    from_name: Optional[str] = None,
+):
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("Resend not configured, email not sent")
+        return False
+
+    sender_email = from_email or os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER") or "helpdesk@sketchario.app"
+    sender_name = from_name or os.environ.get("EMAIL_FROM_NAME", "Sketchario")
+    payload = {
+        "from": f"{sender_name} <{sender_email}>",
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+
+    try:
+        logger.info(f"Sending email via Resend API to {to}")
+        async with httpx.AsyncClient(timeout=30) as hc:
+            resp = await hc.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if resp.status_code >= 400:
+            logger.error(f"Resend API error [{resp.status_code}]: {resp.text}")
+            return False
+        logger.info(f"Resend API email sent to {to}")
+        return True
+    except Exception as e:
+        logger.error(f"Resend email error: {e}")
+        return False
+
+async def send_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    *,
+    reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
+    from_name: Optional[str] = None,
+):
+    provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower()
+    if provider == "resend" or os.environ.get("RESEND_API_KEY"):
+        ok = await send_email_resend(
+            to,
+            subject,
+            html_body,
+            reply_to=reply_to,
+            from_email=from_email,
+            from_name=from_name,
+        )
+        if ok:
+            return True
+        logger.warning("Resend send failed, falling back to SMTP")
+    return await send_email_smtp(
+        to,
+        subject,
+        html_body,
+        reply_to=reply_to,
+        from_email=from_email,
+        from_name=from_name,
+    )
 
 # ── GLOBAL PROMPTING ─────────────────────────────────
 GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIAL (da rispettare sempre, senza eccezioni):
@@ -5087,6 +5174,14 @@ class ResetPasswordInput(BaseModel):
     token: str
     new_password: str
 
+class PublicContactInput(BaseModel):
+    name: str
+    email: str
+    contact_type: str = "informative"
+    message: str
+    company: Optional[str] = ""
+    website: Optional[str] = ""
+
 @api.post("/auth/forgot-password")
 async def forgot_password(inp: ForgotPasswordInput):
     email = inp.email.strip().lower()
@@ -5112,7 +5207,7 @@ async def forgot_password(inp: ForgotPasswordInput):
         <hr style="border:1px solid #1a2540;margin:20px 0;">
         <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
     </div>"""
-    email_sent = await send_email_smtp(email, "Sketchario - Reset Password", html)
+    email_sent = await send_email(email, "Sketchario - Reset Password", html)
     return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset.", "email_sent": email_sent}
 
 @api.post("/auth/reset-password")
@@ -5127,6 +5222,60 @@ async def reset_password(inp: ResetPasswordInput):
     await db.users.update_one({"email": token_doc["email"]}, {"$set": {"password_hash": hash_password(inp.new_password)}})
     await db.password_reset_tokens.update_one({"token": inp.token}, {"$set": {"used": True}})
     return {"ok": True, "message": "Password aggiornata con successo"}
+
+@api.post("/public/contact")
+async def public_contact(inp: PublicContactInput):
+    name = inp.name.strip()
+    email = inp.email.strip().lower()
+    contact_type = (inp.contact_type or "informative").strip().lower()
+    company = (inp.company or "").strip()
+    message = inp.message.strip()
+    honeypot = (inp.website or "").strip()
+
+    if honeypot:
+        return {"ok": True}
+
+    if len(name) < 2 or len(name) > 120:
+        raise HTTPException(400, "Nome non valido")
+    if "@" not in email or len(email) > 200:
+        raise HTTPException(400, "Email non valida")
+    if len(message) < 10 or len(message) > 5000:
+        raise HTTPException(400, "Messaggio non valido")
+
+    is_technical = contact_type == "technical"
+    destination = os.environ.get(
+        "CONTACT_SUPPORT_EMAIL" if is_technical else "CONTACT_INFO_EMAIL",
+        "helpdesk@sketchario.app" if is_technical else "info@sketchario.app",
+    )
+    subject_prefix = "Richiesta tecnica" if is_technical else "Richiesta informazioni"
+    safe_name = html_lib.escape(name)
+    safe_email = html_lib.escape(email)
+    safe_company = html_lib.escape(company) if company else "Non indicata"
+    safe_message = html_lib.escape(message).replace("\n", "<br>")
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:32px;background:#0f1629;color:#fff;border-radius:16px;">
+        <h2 style="margin:0 0 10px;color:#c4b5fd;">Nuovo contatto dal sito Sketchario</h2>
+        <p style="margin:0 0 22px;color:#cbd5e1;">È arrivata una nuova richiesta dal form contatti di www.sketchario.app.</p>
+        <table style="width:100%;border-collapse:collapse;background:#111b31;border:1px solid #223154;border-radius:12px;overflow:hidden;">
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;width:160px;">Tipo</td><td style="padding:12px 14px;border-bottom:1px solid #223154;">{subject_prefix}</td></tr>
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;">Nome</td><td style="padding:12px 14px;border-bottom:1px solid #223154;">{safe_name}</td></tr>
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;">Email</td><td style="padding:12px 14px;border-bottom:1px solid #223154;"><a href="mailto:{safe_email}" style="color:#fff;">{safe_email}</a></td></tr>
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;">Azienda</td><td style="padding:12px 14px;border-bottom:1px solid #223154;">{safe_company}</td></tr>
+            <tr><td style="padding:12px 14px;color:#94a3b8;vertical-align:top;">Messaggio</td><td style="padding:12px 14px;">{safe_message}</td></tr>
+        </table>
+    </div>"""
+
+    sent = await send_email(
+        destination,
+        f"Sketchario · {subject_prefix} da {name}",
+        html,
+        reply_to=email,
+        from_name="Sketchario Contacts",
+    )
+    if not sent:
+        raise HTTPException(502, "Invio email non riuscito")
+    return {"ok": True}
 
 # ── GOOGLE DRIVE IMPORT ───────────────────────────────
 class DriveImportInput(BaseModel):
@@ -5755,7 +5904,25 @@ async def root():
 
 app.include_router(api)
 
-_cors_origins = [o.strip() for o in os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",") if o.strip()]
+def _collect_cors_origins() -> List[str]:
+    raw_values = [
+        os.environ.get("FRONTEND_URL", ""),
+        os.environ.get("APP_URL", ""),
+        os.environ.get("MARKETING_URL", ""),
+        "http://localhost:3000",
+        "https://www.sketchario.app",
+        "https://app.sketchario.app",
+        "https://sketchario.app",
+    ]
+    origins: List[str] = []
+    for value in raw_values:
+        for origin in str(value or "").split(","):
+            cleaned = origin.strip().rstrip("/")
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+    return origins
+
+_cors_origins = _collect_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
