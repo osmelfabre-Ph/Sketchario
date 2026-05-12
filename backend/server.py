@@ -2632,15 +2632,15 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
         while datetime.now(timezone.utc) < deadline:
             status_r = await c.get(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{container_id}",
-                # Meta does not expose error_message on this node consistently; requesting
-                # only stable fields avoids false 400s during container polling.
-                params={"fields": "status_code,status,status_message"},
+                # Meta is inconsistent on this node: fields like error_message and
+                # status_message can trigger false 400s. Request only stable fields.
+                params={"fields": "status_code,status"},
                 headers={"Authorization": f"Bearer {token}"},
             )
             if status_r.status_code == 200:
                 data = status_r.json()
                 last_status = (data.get("status_code") or data.get("status") or "").upper()
-                last_message = data.get("status_message") or data.get("message") or ""
+                last_message = data.get("message") or ""
 
                 if last_status in {"FINISHED", "PUBLISHED"}:
                     return
