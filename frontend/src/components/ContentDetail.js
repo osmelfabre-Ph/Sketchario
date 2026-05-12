@@ -426,8 +426,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [optimizingPrompt, setOptimizingPrompt] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState(null);
   const [calViewDate, setCalViewDate] = useState(null);
-  const [fluxStyle, setFluxStyle] = useState('fotorealistico');
-  const [fluxComposition, setFluxComposition] = useState('wide');
   const [imageModel, setImageModel] = useState('openai');
   const [showCarouselStudio, setShowCarouselStudio] = useState(false);
   const [carouselStylePreset, setCarouselStylePreset] = useState('elegant');
@@ -537,12 +535,6 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setCarouselStylePreset('admin_template');
     }
   }, [user, carouselStylePreset]);
-
-  useEffect(() => {
-    if (user?.role === 'admin' && imageModel === 'flux') {
-      setImageModel('openai');
-    }
-  }, [user, imageModel]);
 
   // ── CANVA ─────────────────────────────────────────────
   const openCanvaEditor = async () => {
@@ -1134,10 +1126,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
         )}
         <div className="flex gap-1 items-center" style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
           <button className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-colors" title={t('editor.generateImage')} onClick={() => {
-            setInputModal({ title: t('editor.imagePromptTitle'), placeholder: t('editor.imagePromptPlaceholder'), value: editVisualDirection || editScript || '', multiline: true, isFlux: true,
+            setInputModal({ title: t('editor.imagePromptTitle'), placeholder: t('editor.imagePromptPlaceholder'), value: editVisualDirection || editScript || '', multiline: true, isImagePrompt: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
-                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: imageModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success(t('editor.imageGenerated')); } catch(e) { toast.error(t('editor.imageGenerationError', { message: e.response?.data?.detail || e.message })); }
+                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: 'openai' }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success(t('editor.imageGenerated')); } catch(e) { toast.error(t('editor.imageGenerationError', { message: e.response?.data?.detail || e.message })); }
                 setGeneratingImage(false);
               },
 
@@ -1362,7 +1354,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setInputModal(null)}>
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
           <h3 className="font-semibold text-base mb-3">{inputModal.title}</h3>
-          {inputModal.isFlux && (
+          {inputModal.isImagePrompt && (
             <button
               className="btn-ghost text-xs py-1 px-2 mb-2 w-full"
               disabled={optimizingPrompt}
@@ -1375,6 +1367,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
                   const { data } = await api.post('/media/optimize-prompt', {
                     visual_direction: current,
                     script: editScript || '',
+                    caption: richTextToPlainText(editCaption) || '',
+                    hook_text: content.hook_text || '',
+                    content_format: content.format || '',
                     project_id: project.id,
                   });
                   el.value = data.prompt;
@@ -1395,60 +1390,13 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 id="input-modal-field"
                 style={{ paddingLeft: '0.75rem' }} />
           }
-          {inputModal.isFlux && (
-            <div className="mb-4">
-              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
-              <div className="flex gap-2 mb-3">
-                <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
-                <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
-                <button className={`preset-btn flex-1 text-xs py-1 ${imageModel === 'openai' ? 'active' : ''}`} onClick={() => setImageModel('openai')}>◎ OpenAI</button>
-              </div>
-              <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.style')}</p>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {[
-                  { id: 'fotorealistico', label: `📷 ${t('editor.imageStylePhotorealistic')}` },
-                  { id: 'pittorico', label: `🎨 ${t('editor.imageStylePainterly')}` },
-                  { id: 'cartoon', label: `🖼️ ${t('editor.imageStyleCartoon')}` },
-                  { id: 'ink', label: `✒️ ${t('editor.imageStyleInk')}` },
-                ].map(s => (
-                  <button key={s.id} className={`preset-btn text-xs py-1 px-2 ${fluxStyle === s.id ? 'active' : ''}`}
-                    onClick={() => setFluxStyle(s.id)}>{s.label}</button>
-                ))}
-              </div>
-              {fluxStyle === 'fotorealistico' && (
-                <>
-                  <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.composition')}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { id: 'wide', label: `🌄 ${t('editor.imageCompositionWide')}` },
-                      { id: 'full', label: `🧍 ${t('editor.imageCompositionFull')}` },
-                      { id: 'medium', label: `👤 ${t('editor.imageCompositionMedium')}` },
-                      { id: 'closeup', label: `🎭 ${t('editor.imageCompositionCloseup')}` },
-                      { id: 'macro', label: `🔬 ${t('editor.imageCompositionMacro')}` },
-                    ].map(c => (
-                      <button key={c.id} className={`preset-btn text-xs py-1 px-2 ${fluxComposition === c.id ? 'active' : ''}`}
-                        onClick={() => setFluxComposition(c.id)}>{c.label}</button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
           <div className="flex gap-2">
             <button className="btn-ghost flex-1" onClick={() => setInputModal(null)}>{t('common.cancel')}</button>
             <button className="btn-gradient flex-1" onClick={() => {
               const soggetto = document.getElementById('input-modal-field').value.trim();
               if (!soggetto) return;
-              const compositionMap = { wide: 'Wide shot', full: 'Full body', medium: 'Medium shot / Waist-up', closeup: 'Close-up / Portrait', macro: 'Macro' };
-              const stylePrompts = {
-                fotorealistico: `A professional high-fidelity photograph of ${soggetto}. Composition: ${compositionMap[fluxComposition] || 'Wide shot'}. Lighting: natural light with accurate global illumination and realistic ray-traced reflections. Camera: shot on full-frame sensor, sharp focus, deep dynamic range. Technical: 8k UHD, highly detailed textures, masterpiece, color graded for a cinematic look, no digital noise, no artificial sharpening. Authentic atmosphere, hyper-realistic details.`,
-                pittorico: `${soggetto}. Fine art oil painting, expressive visible brushstrokes, rich impasto texture, chiaroscuro dramatic lighting inspired by Caravaggio, canvas texture, masterpiece, no photorealism.`,
-                cartoon: `${soggetto}. Professional 2D vector illustration, clean flat design, bold outlines, solid colors, modern cel-shaded animation style, high contrast, sharp edges.`,
-                ink: `${soggetto}. Professional ink pen drawing, clean black ink lines, stippling and crosshatch linework for depth, high contrast, elegant hand-drawn style, white background.`,
-              };
-              const finalVal = inputModal.isFlux ? stylePrompts[fluxStyle] : soggetto;
               setInputModal(null);
-              inputModal.onConfirm(finalVal);
+              inputModal.onConfirm(soggetto);
             }}>{t('editor.generateAction')}</button>
           </div>
         </motion.div>

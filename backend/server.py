@@ -4582,10 +4582,13 @@ async def media_library(project_id: str, request: Request):
             all_media.append(m)
     return all_media
 
-# ── IMAGE GENERATION (FLUX / Gemini Imagen) ───────────
+# ── IMAGE GENERATION ───────────────────────────────────
 class OptimizePromptInput(BaseModel):
     visual_direction: str
     script: str = ""
+    caption: str = ""
+    hook_text: str = ""
+    content_format: str = ""
     project_id: str
 
 @api.post("/media/optimize-prompt")
@@ -4593,12 +4596,33 @@ async def optimize_image_prompt(inp: OptimizePromptInput, request: Request):
     await get_current_user(request)
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     sector = project.get('sector', '') if project else ''
-    system = "You are an expert image generation prompt engineer. Convert scene direction notes into a precise, vivid scene description for FLUX/Stable Diffusion. Be concrete and specific. Reply ONLY with the scene description (no style/technical qualifiers — just the scene), no explanations."
-    prompt = f"""Scene direction: {inp.visual_direction}
-Content script (for context): {inp.script[:400] if inp.script else 'not available'}
+    description = project.get('description', '') if project else ''
+    brief_notes = project.get('brief_notes', '') if project else ''
+    system = (
+        "You are an expert OpenAI image prompt engineer for premium social media visuals. "
+        "Rewrite rough creative notes into a single strong prompt for OpenAI image generation. "
+        "Be visually concrete, relevant to the content theme, and commercially useful. "
+        "Do not output explanations, bullets, JSON, or labels. Reply ONLY with the final prompt."
+    )
+    prompt = f"""User draft prompt: {inp.visual_direction}
+Post format: {inp.content_format or 'social post'}
+Hook/title: {inp.hook_text[:220] if inp.hook_text else 'not available'}
+Caption context: {inp.caption[:500] if inp.caption else 'not available'}
+Script context: {inp.script[:500] if inp.script else 'not available'}
 Sector: {sector}
+Project description: {description[:300] if description else 'not available'}
+Brand/brief notes: {brief_notes[:300] if brief_notes else 'not available'}
 
-Write a precise scene description specifying: the exact subject (who they are, approximate age, exact clothing/appearance), their precise action/posture/gesture, the exact setting (where, lighting, background elements, time of day), their facial expression/emotion, and the recommended camera composition (Wide shot / Full body / Medium shot / Close-up / Macro). Make it vivid and unambiguous. Include the composition type naturally in the description."""
+Rewrite the draft into one strong OpenAI image prompt that:
+- follows the user's original concept closely
+- matches the topic and audience of the post
+- avoids generic stock-photo vibes
+- does NOT default to a feminine beauty/fashion portrait unless explicitly requested
+- does NOT invent a person if a person is not needed
+- specifies subject, setting, lighting, mood, styling, composition, and visual priority clearly
+- avoids any text rendered inside the image, UI, watermark, collage, or fake typography
+
+Return only the final prompt text."""
     try:
         result = await call_ai(system, prompt)
         return {"prompt": result.strip()}
