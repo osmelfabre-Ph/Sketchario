@@ -368,8 +368,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
     );
     const activeItems = items.filter(q => q.status === 'queued' || q.status === 'processing');
     const publishedItems = items.filter(q => q.status === 'published');
-    const retryableItems = items.filter(q => q.status !== 'published');
     const publishedSocialIds = [...new Set(publishedItems.map(q => q.social_profile_id).filter(Boolean))];
+    const retryableItems = items.filter(
+      q => q.status !== 'published' && !publishedSocialIds.includes(q.social_profile_id)
+    );
     const retryableSocialIds = [...new Set(retryableItems.map(q => q.social_profile_id).filter(Boolean))];
     const socialSourceItems = activeItems.length > 0
       ? activeItems
