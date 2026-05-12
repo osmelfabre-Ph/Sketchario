@@ -575,7 +575,7 @@ def _frontend_base() -> str:
 
 def _is_platform_enabled(platform: str) -> bool:
     if platform == "pinterest":
-        return os.environ.get("ENABLE_PINTEREST", "false").strip().lower() in {"1", "true", "yes", "on"}
+        return os.environ.get("ENABLE_PINTEREST", "true").strip().lower() in {"1", "true", "yes", "on"}
     return True
 
 async def _touch_user_activity(user: dict):
