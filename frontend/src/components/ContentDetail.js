@@ -531,10 +531,16 @@ export default function ContentDetail({ content: initialContent, project, onClos
   }, [showSchedule]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (user?.role === 'admin' && carouselStylePreset === 'elegant') {
+    if (isAdminCarouselTemplateActive && carouselStylePreset !== 'admin_template') {
       setCarouselStylePreset('admin_template');
     }
-  }, [user, carouselStylePreset]);
+  }, [isAdminCarouselTemplateActive, carouselStylePreset]);
+
+  useEffect(() => {
+    if (isAdminCarouselTemplateActive && imageModel !== 'openai') {
+      setImageModel('openai');
+    }
+  }, [isAdminCarouselTemplateActive, imageModel]);
 
   // ── CANVA ─────────────────────────────────────────────
   const openCanvaEditor = async () => {
@@ -1494,7 +1500,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                   content_id: content.id,
                   project_id: project.id,
                   model: isAdminCarouselTemplateActive ? 'openai' : imageModel,
-                  style: isAdminCarouselTemplateActive ? 'osmel_luxury' : carouselStylePreset,
+                  style: isAdminCarouselTemplateActive ? 'admin_template' : carouselStylePreset,
                   slides_count: isAdminCarouselTemplateActive ? adminCarouselSlidesCount : carouselSlidesCount,
                 });
                 const newItems = data?.items || [];

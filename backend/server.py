@@ -5311,7 +5311,11 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
         if not slides:
             raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
 
-        style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
+        if user.get("role") == "admin":
+            style_id = "admin_template"
+            inp.model = "openai"
+        else:
+            style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
         total_slides = max(4, min(int(inp.slides_count or 6), min(len(slides), 7)))
         selected_slides = slides[:total_slides]
         project_hint = " | ".join(filter(None, [
