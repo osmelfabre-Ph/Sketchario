@@ -4609,7 +4609,7 @@ class DalleGenerateInput(BaseModel):
     content_id: str
     prompt: str
     project_id: str
-    model: str = "flux"
+    model: str = "openai"
 
 class CarouselSlidesGenerateInput(BaseModel):
     content_id: str
@@ -4650,6 +4650,7 @@ CAROUSEL_VISUAL_STYLES = {
 }
 
 CAROUSEL_CANVAS_SIZE = (1080, 1350)
+OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1.5")
 
 def _load_font_with_fallback(candidates: list[str], size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for candidate in candidates:
@@ -4711,6 +4712,59 @@ def _normalize_carousel_canvas(image: Image.Image) -> Image.Image:
     if image.mode != "RGB":
         image = image.convert("RGB")
     return ImageOps.fit(image, CAROUSEL_CANVAS_SIZE, method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+
+def _compact_prompt_context(value: str, max_len: int = 220) -> str:
+    text = re.sub(r"\s+", " ", _strip_html(coerce_str(value or ""))).strip()
+    if len(text) <= max_len:
+        return text
+    cut = text[: max_len - 1].rsplit(" ", 1)[0].strip()
+    return f"{cut or text[: max_len - 1]}…"
+
+def _build_contextual_single_image_prompt(
+    base_prompt: str,
+    content: Optional[dict],
+    project: Optional[dict],
+) -> str:
+    format_label = coerce_str((content or {}).get("format", "")).strip() or "social post"
+    title = _compact_prompt_context((content or {}).get("title", "") or (content or {}).get("hook_text", ""), 140)
+    visual_direction = _compact_prompt_context((content or {}).get("visual_direction", ""), 220)
+    caption = _compact_prompt_context((content or {}).get("caption", ""), 220)
+    script = _compact_prompt_context((content or {}).get("script", ""), 220)
+    project_sector = _compact_prompt_context((project or {}).get("sector", ""), 120)
+    project_description = _compact_prompt_context((project or {}).get("description", ""), 220)
+    brief_notes = _compact_prompt_context((project or {}).get("brief_notes", ""), 220)
+
+    context_lines = []
+    if project_sector:
+        context_lines.append(f"- Sector/brand area: {project_sector}")
+    if project_description:
+        context_lines.append(f"- Project description: {project_description}")
+    if brief_notes:
+        context_lines.append(f"- Brand/brief notes: {brief_notes}")
+    if title:
+        context_lines.append(f"- Content title or hook: {title}")
+    if visual_direction:
+        context_lines.append(f"- Visual direction: {visual_direction}")
+    if caption:
+        context_lines.append(f"- Caption context: {caption}")
+    if script:
+        context_lines.append(f"- Script context: {script}")
+
+    context_block = "\n".join(context_lines)
+    return (
+        "Create a polished, relevant image for a social media post.\n"
+        f"Primary creative direction from the user:\n{coerce_str(base_prompt).strip()}\n\n"
+        f"Post format: {format_label}\n"
+        f"Context:\n{context_block or '- No extra context provided'}\n\n"
+        "Strict requirements:\n"
+        "- Follow the user's concept exactly and keep the image tightly aligned with the post topic and audience.\n"
+        "- Do not default to a generic feminine beauty, fashion, or influencer portrait unless the prompt explicitly asks for that.\n"
+        "- If the prompt does not explicitly require a person, do not invent one.\n"
+        "- If a human subject is appropriate, infer the most likely subject from the context and match age, gender presentation, mood, styling, and setting to the post theme.\n"
+        "- Avoid stock-photo clichés and avoid random decorative props unrelated to the post.\n"
+        "- No garbled text, no fake typography, no watermarks, no UI, no collage.\n"
+        "- Prefer one strong concept with clear hierarchy and high visual relevance over generic aesthetic filler."
+    )
 
 def _apply_admin_carousel_overlay(
     raw_bytes: bytes,
@@ -4812,7 +4866,7 @@ async def _generate_image_bytes(
         client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
         resp = await asyncio.wait_for(
             client.images.generate(
-                model="gpt-image-1",
+                model=OPENAI_IMAGE_MODEL,
                 prompt=prompt,
                 size=size,
                 quality=quality,
@@ -4820,7 +4874,7 @@ async def _generate_image_bytes(
             timeout=120,
         )
         image_b64 = resp.data[0].b64_json
-        return base64.b64decode(image_b64), "png", "OpenAI GPT Image"
+        return base64.b64decode(image_b64), "png", f"OpenAI {OPENAI_IMAGE_MODEL}"
     if model == "gemini":
         gemini_key = os.environ.get("GEMINI_API_KEY", "")
         if not gemini_key:
@@ -4883,25 +4937,24 @@ def _build_carousel_slide_prompt(
     project_hint: str,
 ) -> str:
     if style_id == "admin_template":
-        phase_instruction = "This is the cover slide of the set. Build a powerful hero composition with dominant editorial negative space for the title." if index == 1 else (
-            "This is the final slide of the set. Compose it like a premium closing CTA page with clean space for a strong concluding message."
+        phase_instruction = "This is the cover slide of the set. Build a powerful hero composition with dominant editorial negative space for the title overlay and strong visual authority." if index == 1 else (
+            "This is the final slide of the set. Compose it like a refined luxury closing page with elegant negative space for a CTA overlay and a premium product-focus area."
             if index == total_slides else
             "This is a middle slide of the set. Compose it like an elegant editorial teaching slide with portrait support and structured text space."
         )
         return (
-            "Create a luxury editorial Instagram carousel slide background in Italian, intended for a final 4:5 vertical canvas.\n"
-            "Style: refined, minimal, premium, cinematic, monochromatic black-and-white portrait aesthetic with very dark charcoal-black background and soft gray gradients. "
-            "Elegant luxury design inspired by fine art portrait branding. Quiet authority, timeless, intimate, high-end.\n"
-            "Visual style: use one different male portrait subject per slide, never repeating the same subject. "
-            "The subject must feel elegant, masculine, introspective, photographed in a low-key fine art portrait style, dramatic but soft studio lighting, dark tailored clothing or black knitwear or suit, calm pose.\n"
+            "Create a luxury editorial Instagram carousel slide in Italian, intended for a final 4:5 vertical canvas.\n"
+            "Style: refined, minimal, premium, cinematic, monochromatic black-and-white portrait aesthetic with very dark charcoal-black background and soft gray gradients. Elegant luxury design. Use a high-end editorial layout inspired by fine art portrait branding. The overall feeling must be timeless, psychological, intimate, high-end, with quiet authority.\n"
+            "Visual style: use one different male portrait subject per slide, never repeating the same subject. The subject should look elegant, masculine, introspective, photographed in a low-key fine art portrait style, with dramatic but soft studio lighting, dark tailored clothing or black knitwear or suit, calm pose, no exaggerated expression. The subject should feel like a real portrait photographed by a luxury portrait photographer.\n"
+            "Branding style: deep black and charcoal tones, subtle white-to-gray tonal transitions, occasional muted warm gold accents, very clean luxury composition, lots of negative space, balanced editorial framing.\n"
             f"Context: {project_hint or 'luxury portrait creator brand'}.\n"
             f"Slide {index} of {total_slides}. {phase_instruction}\n"
+            f"Overlay text that will be placed later:\n{slide_text}\n\n"
             "Important requirements:\n"
-            "- create one single finished slide background, not a collage, not a mockup sheet\n"
-            "- preserve the same visual identity across the whole set\n"
-            "- deep black and charcoal tones, subtle muted gold accents, fine art portrait editorial mood\n"
+            "- create one single finished slide background, not a collage, not a mockup sheet, not multiple slides in one image\n"
+            "- preserve this visual identity consistently across the set\n"
             "- reserve a large clean area for typography overlay\n"
-            "- do NOT render any readable words, fake letters, numbers, signatures, logos or button labels\n"
+            "- do NOT render any readable words, fake letters, numbers, signatures, logos or button labels inside the image itself\n"
             "- do NOT include watermarks, UI chrome, devices or multiple panels\n"
         )
     style_block = CAROUSEL_VISUAL_STYLES[style_id]["prompt"]
@@ -4967,14 +5020,24 @@ async def _generate_carousel_slide_media(
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
     await get_current_user(request)
     try:
-        image_bytes, ext, source_label = await _generate_image_bytes(inp.prompt, inp.model, size="1024x1536" if inp.model == "openai" else "1024x1536")
+        content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
+        project = None
+        if inp.project_id:
+            try:
+                project = await db.projects.find_one({"_id": ObjectId(inp.project_id)}, {"_id": 0})
+            except Exception:
+                project = await db.projects.find_one({"id": inp.project_id}, {"_id": 0})
+        final_prompt = inp.prompt
+        if inp.model == "openai":
+            final_prompt = _build_contextual_single_image_prompt(inp.prompt, content, project)
+        image_bytes, ext, source_label = await _generate_image_bytes(final_prompt, inp.model, size="1024x1536")
         media_doc = await _save_generated_media(
             inp.content_id,
             image_bytes,
             ext,
             source_label,
             f"{source_label}: {inp.prompt[:50]}",
-            {"source_model": inp.model}
+            {"source_model": inp.model, "source_prompt": inp.prompt}
         )
         return media_doc
     except HTTPException:
@@ -5057,6 +5120,58 @@ class ReleaseNoteInput(BaseModel):
     title: str
     body: str
     version: Optional[str] = ""
+
+def _is_subscriber_plan(plan: str) -> bool:
+    return str(plan or "").lower() not in {"", "free"}
+
+async def _effective_user_plan(user_doc: dict) -> tuple[str, bool]:
+    if user_doc.get("role") == "admin" or user_doc.get("email", "") in ADMIN_EMAILS:
+        return "admin", False
+    plan = user_doc.get("plan", "free")
+    pu = await db.power_users.find_one({"email": user_doc.get("email", ""), "active": True}, {"_id": 0, "plan": 1})
+    if pu and pu.get("plan"):
+        return pu.get("plan", plan), True
+    return plan, False
+
+@api.get("/admin/users")
+async def list_admin_users(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+
+    users = await db.users.find({}, {"password_hash": 0}).sort("created_at", -1).to_list(500)
+    rows = []
+    total_subscribers = 0
+    for doc in users:
+        if "_id" in doc and not isinstance(doc["_id"], str):
+            doc["_id"] = str(doc["_id"])
+        effective_plan, power_user_override = await _effective_user_plan(doc)
+        is_subscriber = _is_subscriber_plan(effective_plan)
+        if is_subscriber:
+            total_subscribers += 1
+        rows.append({
+            "id": doc.get("_id") or doc.get("id"),
+            "email": doc.get("email", ""),
+            "name": doc.get("name", ""),
+            "role": doc.get("role", "user"),
+            "registered_plan": doc.get("plan", "free"),
+            "effective_plan": effective_plan,
+            "is_subscriber": is_subscriber,
+            "power_user_override": power_user_override,
+            "created_at": doc.get("created_at"),
+            "plan_activated_at": doc.get("plan_activated_at"),
+            "last_active_at": doc.get("last_active_at"),
+            "social_login": doc.get("social_login", ""),
+        })
+
+    return {
+        "summary": {
+            "total_users": len(rows),
+            "subscriber_users": total_subscribers,
+            "free_users": len(rows) - total_subscribers,
+        },
+        "users": rows,
+    }
 
 @api.get("/admin/power-users")
 async def list_power_users(request: Request):

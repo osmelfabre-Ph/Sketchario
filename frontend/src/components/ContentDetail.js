@@ -428,7 +428,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [calViewDate, setCalViewDate] = useState(null);
   const [fluxStyle, setFluxStyle] = useState('fotorealistico');
   const [fluxComposition, setFluxComposition] = useState('wide');
-  const [imageModel, setImageModel] = useState('flux');
+  const [imageModel, setImageModel] = useState('openai');
   const [showCarouselStudio, setShowCarouselStudio] = useState(false);
   const [carouselStylePreset, setCarouselStylePreset] = useState('elegant');
   const [carouselSlidesCount, setCarouselSlidesCount] = useState(Math.min(8, Math.max(4, (initialContent.slides || []).length || 6)));
@@ -537,6 +537,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setCarouselStylePreset('admin_template');
     }
   }, [user, carouselStylePreset]);
+
+  useEffect(() => {
+    if (user?.role === 'admin' && imageModel === 'flux') {
+      setImageModel('openai');
+    }
+  }, [user, imageModel]);
 
   // ── CANVA ─────────────────────────────────────────────
   const openCanvaEditor = async () => {

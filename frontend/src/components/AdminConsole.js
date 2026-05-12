@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  ShieldCheck, Plus, Trash, ToggleLeft, ToggleRight, Megaphone, PencilSimple, X
+  ShieldCheck, Plus, Trash, ToggleLeft, ToggleRight, Megaphone, Users
 } from '@phosphor-icons/react';
 
 export default function AdminConsole() {
   const { api, user } = useAuth();
   const [powerUsers, setPowerUsers] = useState([]);
   const [releaseNotes, setReleaseNotes] = useState([]);
+  const [usersSummary, setUsersSummary] = useState({ total_users: 0, subscriber_users: 0, free_users: 0 });
+  const [usersList, setUsersList] = useState([]);
   const [puEmail, setPuEmail] = useState('');
   const [puPlan, setPuPlan] = useState('strategist');
   const [puDays, setPuDays] = useState(30);
@@ -20,6 +22,10 @@ export default function AdminConsole() {
 
   useEffect(() => {
     Promise.all([
+      api.get('/admin/users').then(r => {
+        setUsersSummary(r.data?.summary || { total_users: 0, subscriber_users: 0, free_users: 0 });
+        setUsersList(r.data?.users || []);
+      }).catch(() => {}),
       api.get('/admin/power-users').then(r => setPowerUsers(r.data)).catch(() => {}),
       api.get('/release-notes').then(r => setReleaseNotes(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
@@ -56,12 +62,58 @@ export default function AdminConsole() {
     setReleaseNotes(prev => prev.filter(n => n.id !== id));
   };
 
+  const formatDate = (value) => {
+    if (!value) return '—';
+    try { return new Date(value).toLocaleDateString('it-IT'); } catch { return '—'; }
+  };
+
   if (user?.role !== 'admin') return <p className="text-center text-[var(--text-muted)] py-12">Accesso riservato agli amministratori.</p>;
 
   return (
     <div className="max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold gradient-text mb-2" data-testid="admin-title">Admin Console</h1>
-      <p className="text-[var(--text-secondary)] mb-8 text-sm">Gestisci power users e note di rilascio.</p>
+      <p className="text-[var(--text-secondary)] mb-8 text-sm">Gestisci utenti, sottoscrittori, power users e note di rilascio.</p>
+
+      {/* Registered Users */}
+      <div className="card mb-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2"><Users size={20} /> Utenti registrati</h3>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="p-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+            <p className="text-xs text-[var(--text-muted)]">Totale utenti</p>
+            <p className="text-2xl font-bold">{usersSummary.total_users}</p>
+          </div>
+          <div className="p-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+            <p className="text-xs text-[var(--text-muted)]">Sottoscrittori</p>
+            <p className="text-2xl font-bold">{usersSummary.subscriber_users}</p>
+          </div>
+          <div className="p-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+            <p className="text-xs text-[var(--text-muted)]">Free</p>
+            <p className="text-2xl font-bold">{usersSummary.free_users}</p>
+          </div>
+        </div>
+        {usersList.length > 0 ? (
+          <div className="space-y-2">
+            {usersList.map(u => (
+              <div key={u.id} className="hook-item">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{u.name || 'Senza nome'} <span className="text-[var(--text-muted)] font-normal">· {u.email}</span></p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Piano: {u.effective_plan}
+                    {u.power_user_override ? ' (power user)' : ''}
+                    {' | '}Registrato: {formatDate(u.created_at)}
+                    {' | '}Attivato: {formatDate(u.plan_activated_at)}
+                  </p>
+                </div>
+                <span className={`badge ${u.is_subscriber ? 'green' : 'orange'}`}>
+                  {u.is_subscriber ? 'Sottoscrittore' : 'Free'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-muted)]">Nessun utente trovato.</p>
+        )}
+      </div>
 
       {/* Power Users */}
       <div className="card mb-6">
