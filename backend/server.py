@@ -17,6 +17,7 @@ from starlette.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
+from zoneinfo import ZoneInfo
 import bcrypt
 import jwt as pyjwt
 import feedparser
@@ -276,6 +277,123 @@ async def send_email(
         from_email=from_email,
         from_name=from_name,
     )
+
+
+APP_TIMEZONE = os.environ.get("APP_TIMEZONE", "Europe/Rome").strip() or "Europe/Rome"
+
+
+def _app_timezone():
+    try:
+        return ZoneInfo(APP_TIMEZONE)
+    except Exception:
+        return timezone.utc
+
+
+def _platform_label(platform: str) -> str:
+    labels = {
+        "instagram": "Instagram",
+        "facebook": "Facebook",
+        "linkedin": "LinkedIn",
+        "pinterest": "Pinterest",
+        "tiktok": "TikTok",
+    }
+    return labels.get((platform or "").strip().lower(), (platform or "Social").title())
+
+
+def _format_local_datetime(dt_value: str) -> str:
+    try:
+        dt = datetime.fromisoformat(str(dt_value).replace("Z", "+00:00"))
+    except Exception:
+        return str(dt_value or "")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local_dt = dt.astimezone(_app_timezone())
+    return local_dt.strftime("%d/%m/%Y alle %H:%M")
+
+
+def _notification_title(content: dict) -> str:
+    return (
+        (content.get("title") or "").strip()
+        or (content.get("hook_text") or "").strip()
+        or "Contenuto Sketchario"
+    )
+
+
+def _notification_excerpt(content: dict, max_len: int = 180) -> str:
+    source = _strip_html(content.get("caption") or content.get("script") or content.get("hook_text") or "")
+    source = re.sub(r"\s+", " ", source).strip()
+    if len(source) <= max_len:
+        return source
+    cut = source[: max_len - 1].rsplit(" ", 1)[0].strip()
+    return f"{cut or source[: max_len - 1]}…"
+
+
+def _notification_social_list(items: List[dict]) -> str:
+    seen = []
+    for item in items:
+        label = _platform_label(item.get("platform", ""))
+        if label not in seen:
+            seen.append(label)
+    return ", ".join(seen)
+
+
+def _schedule_lines(items: List[dict]) -> str:
+    lines = []
+    for item in items:
+        lines.append(
+            f"<li><strong>{html_lib.escape(_platform_label(item.get('platform', '')))}</strong>: "
+            f"{html_lib.escape(_format_local_datetime(item.get('scheduled_at', '')))}</li>"
+        )
+    return "".join(lines)
+
+
+async def _send_publish_schedule_email(user: dict, project: dict, content: dict, items: List[dict]) -> bool:
+    email = (user or {}).get("email", "").strip().lower()
+    if not email or not items:
+        return False
+    title = html_lib.escape(_notification_title(content))
+    excerpt = html_lib.escape(_notification_excerpt(content) or "Nessun estratto disponibile.")
+    socials = html_lib.escape(_notification_social_list(items))
+    project_name = html_lib.escape((project or {}).get("name", "Sketchario"))
+    subject = f"Sketchario · Programmazione contenuto ({socials})"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:30px;background:#0f1629;color:#fff;border-radius:12px;">
+        <h2 style="color:#a5b4fc;margin-top:0;">Contenuto programmato</h2>
+        <p>Il tuo contenuto è stato inserito nel calendario di <strong>{project_name}</strong>.</p>
+        <p><strong>Titolo:</strong> {title}</p>
+        <p><strong>Estratto caption:</strong> {excerpt}</p>
+        <p><strong>Social selezionati:</strong> {socials}</p>
+        <p><strong>Date e orari programmati:</strong></p>
+        <ul style="padding-left:18px;line-height:1.6;">{_schedule_lines(items)}</ul>
+        <hr style="border:1px solid #1a2540;margin:20px 0;">
+        <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
+    </div>"""
+    return await send_email(email, subject, html)
+
+
+async def _send_publish_completed_email(user: dict, project: dict, content: dict, items: List[dict]) -> bool:
+    email = (user or {}).get("email", "").strip().lower()
+    if not email or not items:
+        return False
+    title = html_lib.escape(_notification_title(content))
+    excerpt = html_lib.escape(_notification_excerpt(content) or "Nessun estratto disponibile.")
+    socials = html_lib.escape(_notification_social_list(items))
+    project_name = html_lib.escape((project or {}).get("name", "Sketchario"))
+    published_times = [item.get("published_at", "") for item in items if item.get("published_at")]
+    published_when = _format_local_datetime(max(published_times)) if published_times else _format_local_datetime(datetime.now(timezone.utc).isoformat())
+    subject = f"Sketchario · Contenuto pubblicato ({socials})"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:30px;background:#0f1629;color:#fff;border-radius:12px;">
+        <h2 style="color:#4ade80;margin-top:0;">Contenuto pubblicato</h2>
+        <p>Il tuo contenuto del progetto <strong>{project_name}</strong> è stato pubblicato con successo.</p>
+        <p><strong>Titolo:</strong> {title}</p>
+        <p><strong>Estratto caption:</strong> {excerpt}</p>
+        <p><strong>Orario di pubblicazione:</strong> {html_lib.escape(published_when)}</p>
+        <p><strong>Social pubblicati:</strong> {socials}</p>
+        <hr style="border:1px solid #1a2540;margin:20px 0;">
+        <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
+    </div>"""
+    return await send_email(email, subject, html)
 
 # ── GLOBAL PROMPTING ─────────────────────────────────
 GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIAL (da rispettare sempre, senza eccezioni):
@@ -3979,6 +4097,36 @@ def _duplicate_publish_message(platform: str, existing_item: dict) -> str:
         f"{platform or 'social'}{when}."
     )[:1000]
 
+
+async def _maybe_send_batch_publish_email(item: dict, content: dict):
+    batch_id = item.get("batch_id", "")
+    if not batch_id:
+        return
+    batch_items = await db.publish_queue.find({"batch_id": batch_id}, {"_id": 0}).to_list(100)
+    if not batch_items:
+        return
+    if any(row.get("status") in {"queued", "processing"} for row in batch_items):
+        return
+    if any(row.get("batch_publish_notified_at") for row in batch_items):
+        return
+    published_items = [row for row in batch_items if row.get("status") == "published"]
+    if not published_items:
+        return
+    try:
+        user = await db.users.find_one({"_id": ObjectId(item["user_id"])}, {"_id": 0, "email": 1, "name": 1})
+    except Exception:
+        user = None
+    try:
+        project = await db.projects.find_one({"_id": ObjectId(item["project_id"])}, {"_id": 0, "name": 1})
+    except Exception:
+        project = None
+    sent = await _send_publish_completed_email(user or {}, project or {}, content or {}, published_items)
+    if sent:
+        await db.publish_queue.update_many(
+            {"batch_id": batch_id, "batch_publish_notified_at": {"$exists": False}},
+            {"$set": {"batch_publish_notified_at": datetime.now(timezone.utc).isoformat()}},
+        )
+
 def _queue_retry_delay_seconds(item: dict, requested_delay: Optional[int] = None) -> int:
     retry_count = max(0, int(item.get("retry_count") or 0))
     base = requested_delay or PUBLISH_QUEUE_RETRY_BASE_SECONDS
@@ -4035,7 +4183,12 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
     content = await db.contents.find_one({"id": inp.content_id, "project_id": inp.project_id})
     if not content:
         raise HTTPException(404, "Contenuto non trovato")
+    try:
+        project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]}, {"_id": 0, "name": 1})
+    except Exception:
+        project = None
     now_iso = datetime.now(timezone.utc).isoformat()
+    batch_id = str(uuid.uuid4())
     # Build per-profile schedule map
     if inp.social_schedules:
         schedule_map = {ss["social_profile_id"]: ss["scheduled_at"] for ss in inp.social_schedules}
@@ -4074,7 +4227,7 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
             "profile_name": profile.get("profile_name", ""), "user_id": user["_id"],
             "status": "queued", "scheduled_at": item_scheduled_at, "first_comment": inp.first_comment,
             "error_message": "", "published_at": "", "created_at": now_iso,
-            "retry_count": 0, "publish_stage": "",
+            "retry_count": 0, "publish_stage": "", "batch_id": batch_id,
         }
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
@@ -4085,6 +4238,9 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
 
     new_status = "scheduled"
     await db.contents.update_one({"id": inp.content_id}, {"$set": {"status": new_status}})
+
+    if not should_trigger_now:
+        asyncio.create_task(_send_publish_schedule_email(user, project or {}, content, items))
 
     if should_trigger_now:
         asyncio.create_task(_run_publish_queue_once())
@@ -4258,6 +4414,7 @@ async def _run_publish_queue_once():
             if remaining == 0:
                 await db.contents.update_one(
                     {"id": item["content_id"]}, {"$set": {"status": "published"}})
+            await _maybe_send_batch_publish_email(item, content)
         except Exception as e:
             logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
             error_text = str(e)[:1000]
