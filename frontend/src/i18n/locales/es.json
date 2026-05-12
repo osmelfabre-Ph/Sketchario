@@ -357,6 +357,7 @@
     "generateCarouselAction": "Generar carousel",
     "slideN": "Slide {{count}}",
     "carouselStyle": {
+      "admin_template": { "label": "Metodo Osmel", "title": "Luxury portrait", "hint": "Template editorial personalizado" },
       "elegant": { "label": "Elegante", "title": "Limpio y premium", "hint": "Editorial refinado" },
       "minimal": { "label": "Minimal", "title": "Esencial y aireado", "hint": "Orden y respiro" },
       "bold": { "label": "Bold", "title": "Impacto y contraste", "hint": "Poster enérgico" },

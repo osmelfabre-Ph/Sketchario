@@ -16,6 +16,7 @@ import Underline from '@tiptap/extension-underline';
 import { richTextToPlainText, normalizeRichTextForEditor, resolveAssetUrl } from '../lib/utils';
 
 const CAROUSEL_STYLE_PRESETS = [
+  { id: 'admin_template', tone: 'linear-gradient(135deg, #050608 0%, #262626 100%)', accent: '#f5f3ef' },
   { id: 'elegant', tone: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', accent: '#334155' },
   { id: 'minimal', tone: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)', accent: '#0f172a' },
   { id: 'bold', tone: 'linear-gradient(135deg, #0f172a 0%, #7c3aed 100%)', accent: '#ffffff' },
@@ -530,6 +531,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setSocialTimes(times);
     }
   }, [showSchedule]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (user?.role === 'admin' && carouselStylePreset === 'elegant') {
+      setCarouselStylePreset('admin_template');
+    }
+  }, [user, carouselStylePreset]);
 
   // ── CANVA ─────────────────────────────────────────────
   const openCanvaEditor = async () => {
