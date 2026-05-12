@@ -731,7 +731,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setContentQueueItems(queuedItems);
       const updated = { ...content, status: 'scheduled' };
       setContent(updated); onUpdate?.(updated);
+      setShowSchedule(false);
+      setCustomPerSocial(false);
       toast.success(t('editor.publishStarted'), { id: tid });
+      onClose?.();
     } catch (e) { toast.error(t('editor.publishError', { message: e.response?.data?.detail || e.message }), { id: tid }); }
     setPublishing(false);
   };
