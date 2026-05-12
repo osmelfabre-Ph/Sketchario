@@ -5,6 +5,18 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+export function resolveAssetUrl(url = '', backendUrl = process.env.REACT_APP_BACKEND_URL || '') {
+  const source = String(url || '').trim();
+  if (!source) return '';
+  if (/^(https?:)?\/\//i.test(source) || source.startsWith('data:') || source.startsWith('blob:')) {
+    return source;
+  }
+  if (!backendUrl) return source;
+  const base = String(backendUrl).replace(/\/+$/, '');
+  const path = source.startsWith('/') ? source : `/${source}`;
+  return `${base}${path}`;
+}
+
 function escapeHtml(value = '') {
   return String(value)
     .replace(/&/g, '&amp;')

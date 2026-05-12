@@ -13,7 +13,7 @@ import {
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
-import { richTextToPlainText, normalizeRichTextForEditor } from '../lib/utils';
+import { richTextToPlainText, normalizeRichTextForEditor, resolveAssetUrl } from '../lib/utils';
 
 const CAROUSEL_STYLE_PRESETS = [
   { id: 'elegant', tone: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', accent: '#334155' },
@@ -143,7 +143,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t })
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{ width: 160, height: 284, borderRadius: 16, overflow: 'hidden', position: 'relative', background: '#000', border: '2px solid #333', flexShrink: 0 }}>
           {firstImg
-            ? <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={resolveAssetUrl(firstImg.url, backendUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg,#1a1535,#2d1f5e)' }} />}
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 55%)' }} />
           {/* Right actions */}
@@ -181,7 +181,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t })
       <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', color: '#111', fontFamily: 'system-ui,sans-serif' }}>
         <div style={{ position: 'relative', aspectRatio: '2/3', background: '#f0f0f0' }}>
           {firstImg
-            ? <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={resolveAssetUrl(firstImg.url, backendUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <PinterestLogo size={32} color="#ccc" />
               </div>}
@@ -220,7 +220,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t })
         </div>
         {firstImg && (
           <div style={{ aspectRatio: '1.91/1', overflow: 'hidden' }}>
-            <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={resolveAssetUrl(firstImg.url, backendUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
         )}
         <div style={{ padding: '6px 12px', borderTop: '1px solid #eee' }}>
@@ -255,7 +255,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t })
         </div>
         {firstImg && (
           <div style={{ aspectRatio: '1.91/1', overflow: 'hidden' }}>
-            <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={resolveAssetUrl(firstImg.url, backendUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
         )}
         <div style={{ padding: '4px 12px', borderTop: '1px solid #ddd' }}>
@@ -283,7 +283,7 @@ function SocialMockup({ prof, format, caption, hashtags, media, backendUrl, t })
       </div>
       <div style={{ aspectRatio: '1/1', background: '#f3f4f6', overflow: 'hidden' }}>
         {firstImg
-          ? <img src={`${backendUrl}${firstImg.url}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ? <img src={resolveAssetUrl(firstImg.url, backendUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <InstagramLogo size={28} color="#dbdbdb" />
             </div>}
@@ -952,7 +952,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             {content.media.map(m => (
               <div key={m.id} className="relative group w-14 h-14 md:w-16 md:h-16">
                 {m.type === 'image' ? (
-                  <img src={`${process.env.REACT_APP_BACKEND_URL}${m.url}`} alt="" className="w-full h-full object-cover rounded-lg" />
+                  <img src={resolveAssetUrl(m.url)} alt="" className="w-full h-full object-cover rounded-lg" />
                 ) : (
                   <div className="w-full h-full rounded-lg bg-[var(--bg-secondary)] flex items-center justify-center"><Video size={20} /></div>
                 )}
@@ -1218,7 +1218,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 {libraryItems.map(item => (
                   <div key={item.id} className="relative group aspect-square rounded-lg overflow-hidden cursor-pointer" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }} onClick={() => addFromLibrary(item)}>
                     {item.type === 'image' ? (
-                      <img src={`${process.env.REACT_APP_BACKEND_URL}${item.url}`} alt={item.original_name} className="w-full h-full object-cover" />
+                      <img src={resolveAssetUrl(item.url)} alt={item.original_name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-1">
                         <Video size={24} color="var(--text-muted)" />
@@ -1459,7 +1459,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <CaretLeft size={28} weight="bold" />
             </button>
           )}
-          <img src={`${process.env.REACT_APP_BACKEND_URL}${cur.url}`} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()} />
+          <img src={resolveAssetUrl(cur.url)} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()} />
           {imgMedia.length > 1 && (
             <>
               <button className="absolute right-4 top-1/2 -translate-y-1/2 btn-ghost p-2 z-10" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i + 1) % imgMedia.length); }}>

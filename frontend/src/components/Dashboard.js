@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { resolveAssetUrl } from '../lib/utils';
 import {
   Plus, Eye, PencilSimple, Trash, Lightning, ChartLineUp, Target, Clock, Article, Archive, ImageSquare, Check, X
 } from '@phosphor-icons/react';
@@ -155,7 +156,7 @@ export default function Dashboard({ setActiveView, setSelectedProject, setWizard
                 {/* Cover Image */}
                 {project.cover_url ? (
                   <div className="relative -mx-6 -mt-6 mb-4 h-32 rounded-t-[0.9rem] overflow-hidden">
-                    <img src={`${process.env.REACT_APP_BACKEND_URL}${project.cover_url}`} alt="" className="w-full h-full object-cover" />
+                    <img src={resolveAssetUrl(project.cover_url)} alt="" className="w-full h-full object-cover" />
                     <label className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center cursor-pointer hover:bg-black/70 transition-colors">
                       <ImageSquare size={14} color="white" />
                       <input type="file" accept="image/*" className="hidden" onChange={async (e) => {

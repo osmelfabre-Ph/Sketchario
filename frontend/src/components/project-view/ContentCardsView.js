@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash, Video, Image } from '@phosphor-icons/react';
-import { richTextToPlainText } from '../../lib/utils';
+import { richTextToPlainText, resolveAssetUrl } from '../../lib/utils';
 import { PLATFORM_ICONS } from './constants';
 
 export default function ContentCardsView({
@@ -97,7 +97,7 @@ export default function ContentCardsView({
             >
               {c.media && c.media[0] && c.media[0].type === 'image' ? (
                 <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-3 h-28 md:h-36 rounded-t-[0.9rem] overflow-hidden">
-                  <img src={`${process.env.REACT_APP_BACKEND_URL}${c.media[0].url}`} alt="" className="w-full h-full object-cover" />
+                  <img src={resolveAssetUrl(c.media[0].url)} alt="" className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div
