@@ -4732,6 +4732,158 @@ def _fit_wrapped_text(
         best = (font, lines, total_height)
     return best if best is not None else (_load_font_with_fallback(font_candidates, min_size), [text], max_height)
 
+def _paragraphize_slide_text(text: str) -> list[str]:
+    raw = coerce_str(text or "").replace("\r", "\n")
+    parts = [p.strip() for p in re.split(r"\n{2,}", raw) if p.strip()]
+    if parts:
+        return parts
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", raw) if s.strip()]
+    if len(sentences) >= 3:
+        return sentences
+    return [raw.strip()] if raw.strip() else []
+
+def _classify_admin_slide_mode(slide_text: str, index: int, total_slides: int) -> str:
+    if index == 1:
+        return "cover"
+    normalized = _strip_html(coerce_str(slide_text or "")).lower()
+    if (
+        index == total_slides
+        or any(
+            keyword in normalized
+            for keyword in [
+                "libro",
+                "disponibile",
+                "acquista",
+                "metodo osmel fabre",
+                "ritratto consapevole",
+            ]
+        )
+    ):
+        return "book_cta"
+    paragraphs = _paragraphize_slide_text(slide_text)
+    sentence_count = len([s for s in re.split(r"(?<=[.!?])\s+", normalized) if s.strip()])
+    word_count = len(normalized.split())
+    if len(paragraphs) >= 3 or sentence_count >= 4 or word_count >= 28:
+        return "text"
+    return "image"
+
+def _draw_admin_ornaments(draw: ImageDraw.ImageDraw, width: int, height: int, index: int, total_slides: int, gold, serif_font):
+    number_text = f"{index}/{total_slides}" if total_slides > 1 else f"{index:02d}"
+    draw.text((58, 42), number_text, font=serif_font, fill=gold)
+    draw.line([(100, 118), (width - 104, 118)], fill=gold, width=2)
+    draw.text((width - 88, 62), "✦", font=serif_font, fill=gold, anchor="mm")
+    draw.line([(100, height - 112), (width - 104, height - 112)], fill=gold, width=2)
+    draw.text((width // 2, height - 112), "✦", font=serif_font, fill=gold, anchor="mm")
+
+def _draw_text_block(draw: ImageDraw.ImageDraw, lines: list[str], font, x: int, y: int, fill, line_gap: int = 10) -> int:
+    current_y = y
+    for line in lines:
+        bbox = draw.textbbox((x, current_y), line, font=font)
+        draw.text((x, current_y), line, font=font, fill=fill)
+        current_y += (bbox[3] - bbox[1]) + line_gap
+    return current_y
+
+def _render_admin_text_slide(slide_text: str, index: int, total_slides: int) -> bytes:
+    image = Image.new("RGB", CAROUSEL_CANVAS_SIZE, (6, 6, 6))
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+
+    white = (244, 240, 233)
+    gold = (196, 154, 77)
+    serif_candidates = [
+        "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+        "/System/Library/Fonts/Supplemental/Georgia.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+    ]
+    sans_candidates = [
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/SFNS.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    ]
+    ornament_font = _load_font_with_fallback(serif_candidates, 28)
+    title_font = _load_font_with_fallback(serif_candidates, 72)
+    body_font = _load_font_with_fallback(sans_candidates, 34)
+    callout_font = _load_font_with_fallback(serif_candidates, 44)
+    signature_font = _load_font_with_fallback(serif_candidates, 24)
+
+    _draw_admin_ornaments(draw, width, height, index, total_slides, gold, ornament_font)
+
+    paragraphs = _paragraphize_slide_text(slide_text)
+    title = paragraphs[0] if paragraphs else ""
+    callout = ""
+    body_parts = paragraphs[1:] if len(paragraphs) > 1 else []
+    if body_parts and len(body_parts[-1]) <= 90:
+        callout = body_parts.pop()
+    elif title and len(title) <= 90 and len(paragraphs) > 1:
+        callout = paragraphs[-1]
+
+    title_font, title_lines, _ = _fit_wrapped_text(
+        image,
+        title,
+        serif_candidates,
+        max_width=width - 200,
+        max_height=340,
+        start_size=72,
+        min_size=42,
+        line_spacing=10,
+    )
+    current_y = 210
+    current_y = _draw_text_block(draw, title_lines, title_font, 100, current_y, white, 8)
+    current_y += 22
+
+    for idx_p, paragraph in enumerate(body_parts[:3]):
+        font, lines, _ = _fit_wrapped_text(
+            image,
+            paragraph,
+            sans_candidates,
+            max_width=width - 220,
+            max_height=220,
+            start_size=36,
+            min_size=28,
+            line_spacing=8,
+        )
+        current_y = _draw_text_block(draw, lines, font, 100, current_y, gold if idx_p == 0 else white, 8)
+        current_y += 28
+
+    if callout:
+        box_x = 218
+        box_w = width - 436
+        box_y = min(height - 340, current_y + 10)
+        box_h = 132
+        draw.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], outline=gold, width=2)
+        c_font, c_lines, _ = _fit_wrapped_text(
+            image,
+            callout,
+            serif_candidates,
+            max_width=box_w - 80,
+            max_height=box_h - 36,
+            start_size=46,
+            min_size=30,
+            line_spacing=8,
+        )
+        total_h = 0
+        line_metrics = []
+        for line in c_lines:
+            bbox = draw.textbbox((0, 0), line, font=c_font)
+            line_h = bbox[3] - bbox[1]
+            line_metrics.append(line_h)
+            total_h += line_h
+        total_h += max(0, len(c_lines) - 1) * 8
+        cy = box_y + (box_h - total_h) // 2
+        for i, line in enumerate(c_lines):
+            bbox = draw.textbbox((0, 0), line, font=c_font)
+            line_w = bbox[2] - bbox[0]
+            draw.text((box_x + (box_w - line_w) / 2, cy), line, font=c_font, fill=gold)
+            cy += line_metrics[i] + 8
+
+    draw.text((width / 2, height - 78), "Osmel Fabre", font=signature_font, fill=white, anchor="mm")
+
+    out = BytesIO()
+    image.save(out, format="JPEG", quality=95, optimize=True)
+    return out.getvalue()
+
 def _normalize_carousel_canvas(image: Image.Image) -> Image.Image:
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -4805,22 +4957,15 @@ def _apply_admin_carousel_overlay(
     draw = ImageDraw.Draw(overlay)
 
     width, height = base.size
-    panel_x = int(width * 0.06)
-    panel_y = int(height * 0.07)
-    panel_w = int(width * 0.58)
-    panel_h = int(height * 0.84)
-    draw.rounded_rectangle(
-        [panel_x, panel_y, panel_x + panel_w, panel_y + panel_h],
-        radius=28,
-        fill=(10, 12, 16, 168),
-    )
+    mode = _classify_admin_slide_mode(slide_text, index, total_slides)
 
-    white = (248, 248, 245, 255)
-    gold = (186, 156, 104, 255)
-    muted = (182, 182, 182, 255)
+    draw.rectangle([0, 0, int(width * 0.48), height], fill=(4, 4, 4, 148 if mode == "image" else 106))
+
+    white = (244, 240, 233, 255)
+    gold = (196, 154, 77, 255)
+    muted = (210, 205, 198, 255)
     label = "METODO OSMEL FABRE"
     signature = "Osmel Fabre"
-    number = f"{index:02d}"
 
     serif_candidates = [
         "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
@@ -4835,44 +4980,86 @@ def _apply_admin_carousel_overlay(
         "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
     ]
 
-    number_font = _load_font_with_fallback(sans_candidates, 26)
-    label_font = _load_font_with_fallback(sans_candidates, 20)
+    ornament_font = _load_font_with_fallback(serif_candidates, 28)
+    label_font = _load_font_with_fallback(sans_candidates, 18)
     signature_font = _load_font_with_fallback(serif_candidates, 22)
+    title_font = _load_font_with_fallback(serif_candidates, 70 if index == 1 else 58)
+    body_font = _load_font_with_fallback(sans_candidates, 34)
+    callout_font = _load_font_with_fallback(serif_candidates, 42)
 
-    top_x = panel_x + 56
-    current_y = panel_y + 44
-    draw.text((top_x, current_y), number, font=number_font, fill=gold)
-    current_y += 56
+    _draw_admin_ornaments(draw, width, height, index, total_slides, gold, ornament_font)
 
     if index == 1:
-        draw.text((top_x, current_y), label, font=label_font, fill=gold)
-        current_y += 58
+        draw.text((100, 150), label, font=label_font, fill=gold)
 
-    text_area_width = panel_w - 112
-    available_height = panel_h - (current_y - panel_y) - 120
-    title_font, lines, _ = _fit_wrapped_text(
+    paragraphs = _paragraphize_slide_text(slide_text)
+    title = paragraphs[0] if paragraphs else slide_text
+    body_parts = paragraphs[1:] if len(paragraphs) > 1 else []
+    callout = ""
+    if body_parts and len(body_parts[-1]) <= 72:
+        callout = body_parts.pop()
+
+    text_area_width = int(width * 0.42)
+    title_font, title_lines, _ = _fit_wrapped_text(
         base,
-        slide_text,
+        title,
         serif_candidates,
         text_area_width,
-        available_height,
-        start_size=86 if index == 1 else 62,
-        min_size=28,
-        line_spacing=14 if index == 1 else 12,
+        320,
+        start_size=92 if index == 1 else 62,
+        min_size=30,
+        line_spacing=10,
     )
+    current_y = 220 if index == 1 else 240
+    current_y = _draw_text_block(draw, title_lines, title_font, 98, current_y, white, 6)
+    current_y += 18
 
-    body_spacing = 14 if index == 1 else 12
-    for line in lines:
-        draw.text((top_x, current_y), line, font=title_font, fill=white)
-        bbox = draw.textbbox((top_x, current_y), line, font=title_font)
-        current_y += (bbox[3] - bbox[1]) + body_spacing
+    for idx_p, paragraph in enumerate(body_parts[:3]):
+        font, lines, _ = _fit_wrapped_text(
+            base,
+            paragraph,
+            sans_candidates,
+            text_area_width,
+            220,
+            start_size=36,
+            min_size=26,
+            line_spacing=8,
+        )
+        current_y = _draw_text_block(draw, lines, font, 98, current_y, gold if idx_p == 0 else white, 8)
+        current_y += 24
 
-    draw.line(
-        [(top_x, height - 120), (top_x + 120, height - 120)],
-        fill=gold,
-        width=2,
-    )
-    draw.text((top_x, height - 102), signature, font=signature_font, fill=muted)
+    if callout:
+        box_x = 98
+        box_y = min(height - 310, current_y + 14)
+        box_w = text_area_width - 20
+        box_h = 136
+        draw.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], outline=gold, width=2)
+        c_font, c_lines, _ = _fit_wrapped_text(
+            base,
+            callout,
+            serif_candidates,
+            box_w - 64,
+            box_h - 28,
+            start_size=42,
+            min_size=28,
+            line_spacing=8,
+        )
+        total_h = 0
+        line_metrics = []
+        for line in c_lines:
+            bbox = draw.textbbox((0, 0), line, font=c_font)
+            line_h = bbox[3] - bbox[1]
+            line_metrics.append(line_h)
+            total_h += line_h
+        total_h += max(0, len(c_lines) - 1) * 8
+        cy = box_y + (box_h - total_h) // 2
+        for i, line in enumerate(c_lines):
+            bbox = draw.textbbox((0, 0), line, font=c_font)
+            line_w = bbox[2] - bbox[0]
+            draw.text((box_x + (box_w - line_w) / 2, cy), line, font=c_font, fill=gold)
+            cy += line_metrics[i] + 8
+
+    draw.text((120, height - 84), signature, font=signature_font, fill=muted)
 
     final = Image.alpha_composite(base, overlay).convert("RGB")
     out = BytesIO()
@@ -4961,11 +5148,23 @@ def _build_carousel_slide_prompt(
     project_hint: str,
 ) -> str:
     if style_id == "admin_template":
-        phase_instruction = "This is the cover slide of the set. Build a powerful hero composition with dominant editorial negative space for the title overlay and strong visual authority." if index == 1 else (
-            "This is the final slide of the set. Compose it like a refined luxury closing page with elegant negative space for a CTA overlay and a premium product-focus area."
-            if index == total_slides else
-            "This is a middle slide of the set. Compose it like an elegant editorial teaching slide with portrait support and structured text space."
-        )
+        mode = _classify_admin_slide_mode(slide_text, index, total_slides)
+        if mode == "cover":
+            phase_instruction = (
+                "This is the cover slide. Create a powerful monochrome portrait-led composition with one dominant male subject, elegant empty space for a large lower headline, and a premium fine-art photographer identity."
+            )
+        elif mode == "book_cta":
+            phase_instruction = (
+                "This is the closing book-promo slide. Create a refined premium composition with a realistic standing black book mockup on the right, photographed on a dark surface, and clean elegant negative space on the left for CTA text. The book should feel like a real luxury publication, not a floating fake object."
+            )
+        elif mode == "image":
+            phase_instruction = (
+                "This is an internal image-led teaching slide. Compose a fine-art editorial photograph with strong subject presence on the right or right-center and clean typography space on the left."
+            )
+        else:
+            phase_instruction = (
+                "This is an internal text-led editorial slide. Create a very restrained dark background with subtle texture and almost no subject emphasis, leaving the composition mostly open for a typographic editorial layout."
+            )
         return (
             "Each slide must be generated as one single separate image.\n"
             "Do not create a grid.\n"
@@ -4973,12 +5172,12 @@ def _build_carousel_slide_prompt(
             "Do not put all slides in the same image.\n"
             "Each slide must be autonomous and ready to be uploaded individually on Instagram.\n\n"
             "Create a luxury editorial Instagram carousel slide in Italian, intended for a final 4:5 vertical canvas.\n"
-            "Visual style: luxury editorial photography, fine art portrait, high-end black and white aesthetic, deep black background, dark charcoal tones, cinematic low key lighting, dramatic chiaroscuro, soft directional light, elegant shadows, refined contrast, masculine portraiture, psychological depth, quiet authority, minimal composition, premium magazine layout.\n"
+            "Visual style: luxury editorial photography, fine art portrait, high-end black and white aesthetic, deep black background, dark charcoal tones, cinematic low key lighting, dramatic chiaroscuro, soft directional light, elegant shadows, refined contrast, premium magazine layout.\n"
             "Palette: deep black, charcoal gray, pure white, very small muted gold accents only if necessary. No bright colors. No noisy modern effects. No social-pop look.\n"
-            "Typography direction to support later overlay: large elegant condensed serif headline area, high-fashion editorial mood, clean secondary sans-serif support area, airy vertical layout, lots of negative space, readable and authoritative composition. Small numbering in the top-left area with a thin underline should feel naturally supported by the composition.\n"
-            "Reference type hierarchy: headline like Schnyder Condensed / Didot editorial serif, body like Palanquin / modern grotesk, but do not render actual readable text inside the image.\n"
-            "Subjects: each slide must feature a different adult male subject. Elegant, intense, strong presence. Dark clothing, blazer, shirt, turtleneck, or tailored suit. Calm, serious, introspective expressions. No forced smiles. No exaggerated fashion poses. No commercial-ad look. The subject must communicate identity, presence, control, and depth.\n"
-            "Composition: alternate close-up portraits, medium portraits, profiles, and seated portraits across the set. The image must leave breathing room for the text and must not force text to cover the face. The final result should feel like a luxury fine art photographer's carousel, never like a generic Canva graphic.\n"
+            "Typography direction to support later overlay: elegant serif headline area, editorial hierarchy, airy vertical layout, lots of negative space, and refined left-column structure. Small numbering in the top-left area with a thin underline and tiny gold ornament should feel naturally supported by the composition.\n"
+            "Reference type hierarchy: headline like Didot / refined fashion serif, body like a modern clean sans-serif, but do not render actual readable text inside the image.\n"
+            "Subjects: when a person is present, it should be an elegant, introspective subject, photographed like a real fine-art portrait. Avoid cheesy stock-photo expressions and avoid generic influencer styling.\n"
+            "Composition: the final result should feel like a luxury fine-art photographer's carousel, with a controlled hybrid of typographic restraint and photographic depth, never like a generic Canva graphic.\n"
             f"Context: {project_hint or 'luxury portrait creator brand'}.\n"
             f"Slide {index} of {total_slides}. {phase_instruction}\n"
             f"Overlay text that will be placed later:\n{slide_text}\n\n"
@@ -5015,6 +5214,25 @@ async def _generate_carousel_slide_media(
     model: str,
     semaphore: asyncio.Semaphore,
 ) -> tuple[int, dict]:
+    mode = _classify_admin_slide_mode(slide_text, index, total_slides) if style_id == "admin_template" else "generic"
+    if style_id == "admin_template" and mode == "text":
+        image_bytes = _render_admin_text_slide(slide_text, index, total_slides)
+        media_doc = await _save_generated_media(
+            content_id,
+            image_bytes,
+            "jpg",
+            "Sketchario Admin Layout",
+            f"Carousel slide {index} - text layout",
+            {
+                "source_model": "layout",
+                "carousel_slide_index": index,
+                "carousel_style": style_id,
+                "carousel_mode": mode,
+                "generated_for_content": "carousel",
+            }
+        )
+        return index, media_doc
+
     prompt = _build_carousel_slide_prompt(slide_text, index, total_slides, style_id, project_hint)
     async with semaphore:
         try:
@@ -5037,6 +5255,7 @@ async def _generate_carousel_slide_media(
                     "source_model": model,
                     "carousel_slide_index": index,
                     "carousel_style": style_id,
+                    "carousel_mode": mode,
                     "generated_for_content": "carousel",
                 }
             )
