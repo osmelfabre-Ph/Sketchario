@@ -2340,7 +2340,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "PINTEREST_CLIENT_ID",
         "client_secret_env": "PINTEREST_CLIENT_SECRET",
         "token_url": "https://api.pinterest.com/v5/oauth/token",
-        "scope": "boards:read,pins:read,pins:write,user_accounts:read,offline_access",
+        "scope": "boards:read,boards:write,pins:read,pins:write,user_accounts:read,offline_access",
     },
     "google_slides": {
         "name": "Google Drive",
@@ -3075,8 +3075,8 @@ def _social_profile_connection_warning(profile: dict) -> str:
         return explicit_warning
     scopes = set(_scope_list(profile.get("granted_scopes", "")))
     platform = profile.get("platform", "")
-    if platform == "pinterest" and scopes and "pins:write" not in scopes:
-        return "Pinterest collegato senza scope pins:write. Ricollega l'account con l'app approvata."
+    if platform == "pinterest" and scopes and (("pins:write" not in scopes) or ("boards:write" not in scopes)):
+        return "Pinterest collegato senza scope completi di pubblicazione (pins:write, boards:write). Ricollega l'account con l'app approvata."
     if platform == "pinterest" and not scopes:
         return "Pinterest collegato ma permessi di pubblicazione non verificati. Ricollega l'account e fai un test publish."
     if platform == "tiktok" and scopes and "video.publish" not in scopes:
@@ -4201,14 +4201,14 @@ async def _run_publish_queue_once():
             token = account["access_token"]
             if item["platform"] == "pinterest":
                 granted_scopes = set(_scope_list(account.get("granted_scopes", "")))
-                if granted_scopes and "pins:write" not in granted_scopes:
+                if granted_scopes and (("pins:write" not in granted_scopes) or ("boards:write" not in granted_scopes)):
                     await _set_social_publish_diagnostics(
                         item.get("social_profile_id"),
                         status="blocked",
-                        warning="Pinterest collegato senza scope pins:write. Ricollega l'account con l'app approvata.",
+                        warning="Pinterest collegato senza scope completi di pubblicazione (pins:write, boards:write). Ricollega l'account con l'app approvata.",
                     )
                     raise ValueError(
-                        "Pinterest connesso senza scope pins:write. "
+                        "Pinterest connesso senza scope completi di pubblicazione (pins:write, boards:write). "
                         "Scollega e ricollega l'account Pinterest dopo aver verificato l'app approvata."
                     )
                 token = await _get_pinterest_access_token(item["user_id"], item.get("social_profile_id"))
@@ -4269,7 +4269,7 @@ async def _run_publish_queue_once():
             if item["platform"] == "pinterest":
                 warning = (
                     "Pinterest ha rifiutato il token di pubblicazione. "
-                    "Ricollega l'account e verifica che l'app abbia davvero pins:write."
+                    "Ricollega l'account e verifica che l'app abbia davvero pins:write e boards:write."
                     if "Pinterest ha rifiutato il token di pubblicazione" in error_text
                     else error_text
                 )
