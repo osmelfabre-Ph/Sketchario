@@ -327,6 +327,8 @@
     "composition": "Cadrage",
     "today": "Aujourd'hui",
     "selectDate": "Sélectionnez une date",
+    "suggestBestTime": "Suggérer le meilleur horaire",
+    "bestTimeApplied": "Horaire suggéré appliqué",
     "customizeTimePerSocial": "Personnaliser l'heure pour chaque compte social",
     "selectTimePerSocial": "Sélectionnez une heure ou une plage horaire",
     "unifiedTime": "Passer à l'heure unifiée",

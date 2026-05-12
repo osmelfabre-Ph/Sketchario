@@ -73,6 +73,14 @@ const CanvaIcon = ({ size = 16 }) => (
   <img src="https://www.canva.com/favicon.ico" alt="Canva" style={{ width: size, height: size, borderRadius: 3, objectFit: 'cover' }} />
 );
 
+const SMART_SCHEDULE_SLOTS = {
+  instagram: ['12:30', '18:30', '21:00'],
+  facebook: ['12:30', '18:30'],
+  linkedin: ['08:00', '12:00'],
+  pinterest: ['18:00', '21:00'],
+  tiktok: ['18:00', '21:30'],
+};
+
 const getLocaleTag = (lang) => {
   const base = String(lang || '').toLowerCase();
   if (base.startsWith('it')) return 'it-IT';
@@ -117,6 +125,79 @@ function formatScheduleHeader(dateStr, locale, t) {
   const weekday = capitalize(new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(d));
   const month = capitalize(new Intl.DateTimeFormat(locale, { month: 'short' }).format(d));
   return `${weekday}, ${month} ${d.getDate()}`;
+}
+
+function isSameCalendarDay(dateLike, reference) {
+  const date = new Date(dateLike);
+  return (
+    date.getFullYear() === reference.getFullYear()
+    && date.getMonth() === reference.getMonth()
+    && date.getDate() === reference.getDate()
+  );
+}
+
+function timeToMinutes(time) {
+  const [hours, minutes] = String(time || '00:00').split(':').map(v => Number(v) || 0);
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(totalMinutes) {
+  const safe = ((totalMinutes % 1440) + 1440) % 1440;
+  const hours = Math.floor(safe / 60);
+  const minutes = safe % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function nextRoundedTime(reference = new Date()) {
+  const next = new Date(reference);
+  next.setSeconds(0, 0);
+  next.setMinutes(next.getMinutes() + 30);
+  const minutes = next.getMinutes();
+  const rounded = minutes <= 30 ? 30 : 60;
+  if (rounded === 60) {
+    next.setHours(next.getHours() + 1, 0, 0, 0);
+  } else {
+    next.setMinutes(30, 0, 0);
+  }
+  return minutesToTime(next.getHours() * 60 + next.getMinutes());
+}
+
+function getPlatformSuggestedTime(platform, scheduleDate, reference = new Date()) {
+  const slots = SMART_SCHEDULE_SLOTS[platform] || ['10:00'];
+  const selectedDate = scheduleDate ? new Date(`${scheduleDate}T12:00:00`) : reference;
+  if (!isSameCalendarDay(selectedDate, reference)) return slots[0];
+  const nowMinutes = reference.getHours() * 60 + reference.getMinutes();
+  const nextPreferred = slots.find(slot => timeToMinutes(slot) > nowMinutes);
+  return nextPreferred || nextRoundedTime(reference);
+}
+
+function getUnifiedSuggestedTime(platforms, scheduleDate, reference = new Date()) {
+  const normalizedPlatforms = platforms.length > 0 ? platforms : ['default'];
+  const candidates = [...new Set(
+    normalizedPlatforms.flatMap(platform => SMART_SCHEDULE_SLOTS[platform] || ['10:00'])
+  )].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+  const selectedDate = scheduleDate ? new Date(`${scheduleDate}T12:00:00`) : reference;
+  const nowMinutes = reference.getHours() * 60 + reference.getMinutes();
+  const validCandidates = isSameCalendarDay(selectedDate, reference)
+    ? candidates.filter(candidate => timeToMinutes(candidate) > nowMinutes)
+    : candidates;
+
+  if (validCandidates.length === 0) return nextRoundedTime(reference);
+
+  const scoreCandidate = (candidate) => normalizedPlatforms.reduce((score, platform) => {
+    const slots = SMART_SCHEDULE_SLOTS[platform] || ['10:00'];
+    const index = slots.indexOf(candidate);
+    if (index === -1) return score;
+    return score + (slots.length - index);
+  }, 0);
+
+  return validCandidates.reduce((best, candidate) => {
+    if (!best) return candidate;
+    const bestScore = scoreCandidate(best);
+    const currentScore = scoreCandidate(candidate);
+    if (currentScore !== bestScore) return currentScore > bestScore ? candidate : best;
+    return timeToMinutes(candidate) < timeToMinutes(best) ? candidate : best;
+  }, null);
 }
 
 function useIsMobile() {
@@ -681,6 +762,27 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const selectedProfiles = socialProfiles.filter(p => displayedSocialIds.includes(p.id));
   const actionableSelectedProfiles = socialProfiles.filter(p => selectedSocials.includes(p.id));
   const socialsLocked = (content.status === 'scheduled' || contentQueueItems.length > 0) && !showSchedule;
+
+  const applyBestTimeSuggestion = () => {
+    if (!scheduleDate || actionableSelectedProfiles.length === 0) {
+      toast.warning(t('editor.selectDateAndSocials'));
+      return;
+    }
+    if (customPerSocial) {
+      const suggestedTimes = actionableSelectedProfiles.reduce((acc, profile) => {
+        acc[profile.id] = getPlatformSuggestedTime(profile.platform, scheduleDate);
+        return acc;
+      }, {});
+      setSocialTimes(prev => ({ ...prev, ...suggestedTimes }));
+    } else {
+      const unified = getUnifiedSuggestedTime(
+        actionableSelectedProfiles.map(profile => profile.platform),
+        scheduleDate
+      );
+      setScheduleTime(unified);
+    }
+    toast.success(t('editor.bestTimeApplied'));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -1537,6 +1639,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)}
                   className="w-full text-center text-xl font-semibold rounded-xl mb-4"
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '14px', color: 'var(--text-primary)' }} />
+                <button className="w-full flex items-center justify-center gap-2 text-sm rounded-xl mb-3 py-3 transition-colors"
+                  style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.25)', color: 'var(--text-primary)' }}
+                  onClick={applyBestTimeSuggestion}>
+                  <Sparkle size={14} />
+                  {t('editor.suggestBestTime')}
+                </button>
                 <button className="w-full text-center text-sm text-[var(--text-muted)] mb-4 hover:text-white transition-colors"
                   onClick={() => setCustomPerSocial(true)}>
                   {t('editor.customizeTimePerSocial')} <span style={{ opacity: 0.6 }}>ⓘ</span>
@@ -1570,6 +1678,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
                     </div>
                   );
                 })}
+                <button className="w-full flex items-center justify-center gap-2 text-sm rounded-xl mb-3 py-3 transition-colors"
+                  style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.25)', color: 'var(--text-primary)' }}
+                  onClick={applyBestTimeSuggestion}>
+                  <Sparkle size={14} />
+                  {t('editor.suggestBestTime')}
+                </button>
                 <button className="w-full text-center text-sm text-[var(--text-muted)] mb-4 hover:text-white transition-colors"
                   onClick={() => setCustomPerSocial(false)}>
                   {t('editor.unifiedTime')}

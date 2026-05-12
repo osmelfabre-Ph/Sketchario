@@ -327,6 +327,8 @@
     "composition": "Encuadre",
     "today": "Hoy",
     "selectDate": "Selecciona una fecha",
+    "suggestBestTime": "Sugerir mejor horario",
+    "bestTimeApplied": "Horario sugerido aplicado",
     "customizeTimePerSocial": "Personaliza la hora para cada cuenta social",
     "selectTimePerSocial": "Selecciona hora o franja horaria",
     "unifiedTime": "Cambiar a hora unificada",

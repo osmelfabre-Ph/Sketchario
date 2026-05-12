@@ -327,6 +327,8 @@
     "composition": "Composition",
     "today": "Today",
     "selectDate": "Select a date",
+    "suggestBestTime": "Suggest best time",
+    "bestTimeApplied": "Suggested time applied",
     "customizeTimePerSocial": "Customize the time for each social account",
     "selectTimePerSocial": "Select time or time slot",
     "unifiedTime": "Switch to unified time",

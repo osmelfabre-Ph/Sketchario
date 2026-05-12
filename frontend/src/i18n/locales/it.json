@@ -327,6 +327,8 @@
     "composition": "Inquadratura",
     "today": "Oggi",
     "selectDate": "Seleziona una data",
+    "suggestBestTime": "Suggerisci orario migliore",
+    "bestTimeApplied": "Orario suggerito applicato",
     "customizeTimePerSocial": "Personalizza l'orario per ogni account social",
     "selectTimePerSocial": "Seleziona ora o fascia oraria",
     "unifiedTime": "Passa all'orario unificato",
