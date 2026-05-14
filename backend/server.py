@@ -70,7 +70,7 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api = APIRouter(prefix="/api")
 
-@app.get("/tiktokyzNozVNZShRJFbywZtooVxTfp9UWUqBp.txt")
+@app.api_route("/tiktokyzNozVNZShRJFbywZtooVxTfp9UWUqBp.txt", methods=["GET", "HEAD"])
 async def tiktok_url_ownership_verification():
     return PlainTextResponse(
         "tiktok-developers-site-verification=yzNozVNZShRJFbywZtooVxTfp9UWUqBp"
