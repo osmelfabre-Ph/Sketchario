@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent
+VERIFY_DIR = ROOT_DIR.parent / "VERIFY"
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File
@@ -70,11 +71,13 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api = APIRouter(prefix="/api")
 
-@app.api_route("/tiktokyzNozVNZShRJFbywZtooVxTfp9UWUqBp.txt", methods=["GET", "HEAD"])
-async def tiktok_url_ownership_verification():
-    return PlainTextResponse(
-        "tiktok-developers-site-verification=yzNozVNZShRJFbywZtooVxTfp9UWUqBp"
-    )
+@app.api_route("/tiktok{token}.txt", methods=["GET", "HEAD"])
+async def tiktok_url_ownership_verification(token: str):
+    filename = f"tiktok{token}.txt"
+    file_path = VERIFY_DIR / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(404, "Verification file not found")
+    return PlainTextResponse(file_path.read_text(encoding="utf-8").strip())
 
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
