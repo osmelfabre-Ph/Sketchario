@@ -1205,6 +1205,18 @@ def get_project_content_language(project: Optional[dict], request: Optional[Requ
         return normalize_content_language(project.get("language"))
     return get_request_content_language(request)
 
+def resolve_generation_language(
+    project: Optional[dict],
+    request: Optional[Request] = None,
+    override: Optional[str] = None,
+) -> str:
+    if compact_text(override or ""):
+        return normalize_content_language(override)
+    explicit = get_explicit_request_content_language(request)
+    if explicit:
+        return explicit
+    return get_project_content_language(project, None)
+
 def get_feed_content_language(project: Optional[dict], request: Optional[Request] = None) -> str:
     return get_explicit_request_content_language(request) or get_project_content_language(project, None)
 
@@ -2264,11 +2276,13 @@ async def delete_content(content_id: str, request: Request):
 class ContentRegenerateInput(BaseModel):
     content_id: str
     project_id: str
+    language: Optional[str] = None
 
 class ContentConvertInput(BaseModel):
     content_id: str
     project_id: str
     target_format: str
+    language: Optional[str] = None
 
 @api.post("/contents/regenerate")
 async def regenerate_content(inp: ContentRegenerateInput, request: Request):
@@ -2279,7 +2293,7 @@ async def regenerate_content(inp: ContentRegenerateInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
-    language = get_project_content_language(project, request)
+    language = resolve_generation_language(project, request, inp.language)
     context_block = build_project_context(project, personas=personas, tov=tov)
     caption_len = "120-180 parole"
     if tov:
@@ -2339,7 +2353,7 @@ async def convert_content(inp: ContentConvertInput, request: Request):
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id)})
     tov = await db.tov_profiles.find_one({"project_id": inp.project_id}, {"_id": 0})
     personas = await db.personas.find({"project_id": inp.project_id}, {"_id": 0}).to_list(20)
-    language = get_project_content_language(project, request)
+    language = resolve_generation_language(project, request, inp.language)
     context_block = build_project_context(project, personas=personas, tov=tov)
     caption_len = "120-180 parole"
     if tov:

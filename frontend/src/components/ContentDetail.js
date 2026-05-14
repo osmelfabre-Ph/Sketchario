@@ -810,7 +810,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
     setSaving(true);
     const tid = toast.loading(t('editor.regenerateLoading'));
     try {
-      const { data } = await api.post('/contents/regenerate', { content_id: content.id, project_id: project.id });
+      const contentLanguage = String(project?.language || i18n.language || 'it').toLowerCase().split('-', 1)[0] || 'it';
+      const { data } = await api.post('/contents/regenerate', { content_id: content.id, project_id: project.id, language: contentLanguage });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
       setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
@@ -825,7 +826,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
     setSaving(true);
     const tid = toast.loading(t('editor.convertLoading', { format: t(`format.${target}`) }));
     try {
-      const { data } = await api.post('/contents/convert', { content_id: content.id, project_id: project.id, target_format: target });
+      const contentLanguage = String(project?.language || i18n.language || 'it').toLowerCase().split('-', 1)[0] || 'it';
+      const { data } = await api.post('/contents/convert', { content_id: content.id, project_id: project.id, target_format: target, language: contentLanguage });
       setEditScript(data.script || ''); setEditCaption(data.caption || ''); setEditHashtags(String(data.hashtags || ''));
       setEditOpeningHook(data.opening_hook || ''); setEditVisualDirection(data.visual_direction || '');
       setContent(data); onUpdate?.(data);
