@@ -13,7 +13,7 @@ import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, h
 import boto3
 from contextlib import asynccontextmanager
 from urllib.parse import quote, urlencode
-from starlette.responses import HTMLResponse
+from starlette.responses import HTMLResponse, PlainTextResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -69,6 +69,12 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(lifespan=lifespan)
 app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api = APIRouter(prefix="/api")
+
+@app.get("/tiktokyzNozVNZShRJFbywZtooVxTfp9UWUqBp.txt")
+async def tiktok_url_ownership_verification():
+    return PlainTextResponse(
+        "tiktok-developers-site-verification=yzNozVNZShRJFbywZtooVxTfp9UWUqBp"
+    )
 
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
@@ -3336,7 +3342,7 @@ async def _prepare_tiktok_image_url(media_doc: dict, app_url: str) -> str:
             f"Immagine non convertibile per TikTok: {media_doc.get('original_name') or media_doc.get('filename') or media_url}. {str(e)[:120]}"
         ) from e
 
-    return f"{app_url}/api/media/file/{safe_name}"
+    return f"{_backend_url()}/api/media/file/{safe_name}"
 
 async def _publish_instagram(
     token: str,
