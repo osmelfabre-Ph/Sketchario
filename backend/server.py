@@ -71,17 +71,27 @@ UPLOAD_DIR = Path(os.environ.get("UPLOADS_DIR", "/app/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(lifespan=lifespan)
-app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api = APIRouter(prefix="/api")
 
-@app.api_route("/tiktok{token}.txt", methods=["GET", "HEAD"])
-async def tiktok_url_ownership_verification(token: str):
+def _load_tiktok_verification_text(token: str) -> str:
     filename = f"tiktok{token}.txt"
     for verify_dir in VERIFY_DIRS:
         file_path = verify_dir / filename
         if file_path.exists() and file_path.is_file():
-            return PlainTextResponse(file_path.read_text(encoding="utf-8").strip())
+            return file_path.read_text(encoding="utf-8").strip()
     raise HTTPException(404, "Verification file not found")
+
+@app.api_route("/tiktok{token}.txt", methods=["GET", "HEAD"])
+async def tiktok_url_ownership_verification(token: str):
+    return PlainTextResponse(_load_tiktok_verification_text(token))
+
+@app.api_route("/api/media/file/tiktok{token}.txt", methods=["GET", "HEAD"])
+async def tiktok_media_prefix_verification(token: str):
+    return PlainTextResponse(_load_tiktok_verification_text(token))
+
+app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
 
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
