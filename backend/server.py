@@ -3298,6 +3298,46 @@ async def _prepare_instagram_image_url(media_doc: dict, app_url: str) -> str:
     stored_url = await _store_media_bytes(safe_name, safe_bytes, content_type="image/jpeg")
     return f"{app_url}{stored_url}" if stored_url.startswith("/") else stored_url
 
+async def _prepare_tiktok_image_url(media_doc: dict, app_url: str) -> str:
+    media_path = media_doc.get("url") or ""
+    media_url = f"{app_url}{media_path}" if media_path.startswith("/") else media_path
+    if not media_url:
+        raise ValueError("Media TikTok senza URL")
+
+    raw_bytes = None
+    local_name = media_doc.get("filename")
+    if media_path.startswith("/api/media/file/") and local_name:
+        local_path = UPLOAD_DIR / local_name
+        if local_path.exists():
+            raw_bytes = local_path.read_bytes()
+
+    if raw_bytes is None:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as c:
+            resp = await c.get(media_url)
+            resp.raise_for_status()
+            raw_bytes = resp.content
+
+    try:
+        with Image.open(BytesIO(raw_bytes)) as source_image:
+            image = ImageOps.exif_transpose(source_image)
+            if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+                rgba = image.convert("RGBA")
+                canvas = Image.new("RGB", rgba.size, (255, 255, 255))
+                canvas.paste(rgba, mask=rgba.getchannel("A"))
+                image = canvas
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
+
+            safe_name = f"tiktoksafe_{uuid.uuid4().hex}.jpg"
+            safe_path = UPLOAD_DIR / safe_name
+            image.save(safe_path, format="JPEG", quality=92, optimize=True)
+    except Exception as e:
+        raise ValueError(
+            f"Immagine non convertibile per TikTok: {media_doc.get('original_name') or media_doc.get('filename') or media_url}. {str(e)[:120]}"
+        ) from e
+
+    return f"{app_url}/api/media/file/{safe_name}"
+
 async def _publish_instagram(
     token: str,
     ig_id: str,
@@ -3504,7 +3544,33 @@ async def _do_publish(platform: str, token: str, profile_id: str, content: dict)
     elif platform == "pinterest":
         return await _publish_pinterest(token, text, title, image_url)
     elif platform == "tiktok":
-        return await _publish_tiktok(token, text, title, image_urls, video_url)
+        tiktok_image_urls = []
+        rejected_media = []
+
+        for media_doc in media:
+            if media_doc.get("type") != "image":
+                continue
+            try:
+                prepared_image_url = await _prepare_tiktok_image_url(media_doc, media_base_url)
+                tiktok_image_urls.append(prepared_image_url)
+            except Exception as e:
+                rejected_media.append({
+                    "name": media_doc.get("original_name") or media_doc.get("filename") or media_doc.get("url") or "?",
+                    "ext": _media_extension(media_doc) or "?",
+                    "detail": str(e)[:160],
+                })
+
+        if not video_url and not tiktok_image_urls:
+            rejected_list = ", ".join(
+                f"{item['name']} ({item['ext']}){': ' + item['detail'] if item.get('detail') else ''}" for item in rejected_media[:3]
+            )
+            raise ValueError(
+                "TikTok photo post via API accetta solo immagini realmente servite in JPEG/WebP. "
+                "Sketchario ora prova a convertirle in JPEG prima del publish."
+                + (f" Media rifiutati: {rejected_list}" if rejected_list else "")
+            )
+
+        return await _publish_tiktok(token, text, title, tiktok_image_urls, video_url)
     else:
         raise ValueError(f"Piattaforma {platform} non supportata per la pubblicazione")
 
