@@ -14,6 +14,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os, logging, uuid, json, secrets, base64, shutil, hashlib, asyncio, re, html as html_lib
+import boto3
 from contextlib import asynccontextmanager
 from urllib.parse import quote, urlencode
 from starlette.responses import HTMLResponse, PlainTextResponse
@@ -30,6 +31,13 @@ from io import BytesIO
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from PIL import Image, ImageOps, ImageDraw, ImageFont
+
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+except Exception:  # pragma: no cover - optional dependency
+    sentry_sdk = None
+    FastApiIntegration = None
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -50,12 +58,17 @@ async def _run_publish_queue():
             await _run_publish_queue_once()
         except Exception as e:
             logger.error(f"Queue worker loop error: {e}")
+            if sentry_sdk:
+                sentry_sdk.capture_exception(e)
         await asyncio.sleep(PUBLISH_QUEUE_LOOP_SECONDS)
 
 @asynccontextmanager
 async def lifespan(app_instance):
     asyncio.create_task(_run_publish_queue())
     yield
+
+UPLOAD_DIR = Path(os.environ.get("UPLOADS_DIR", "/app/uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(lifespan=lifespan)
 api = APIRouter(prefix="/api")
@@ -76,6 +89,8 @@ async def tiktok_url_ownership_verification(token: str):
 async def tiktok_media_prefix_verification(token: str):
     return PlainTextResponse(_load_tiktok_verification_text(token))
 
+app.mount("/api/media/file", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
 app.mount("/api/media/file", StaticFiles(directory="/app/uploads"), name="uploads")
 
 JWT_ALGORITHM = "HS256"
@@ -84,14 +99,97 @@ GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v24.0")
 PUBLISH_QUEUE_LOOP_SECONDS = max(10, int(os.environ.get("PUBLISH_QUEUE_LOOP_SECONDS", "30")))
 PUBLISH_QUEUE_STALE_MINUTES = max(5, int(os.environ.get("PUBLISH_QUEUE_STALE_MINUTES", "12")))
 PUBLISH_QUEUE_HEARTBEAT_SECONDS = max(5, int(os.environ.get("PUBLISH_QUEUE_HEARTBEAT_SECONDS", "15")))
+PUBLISH_QUEUE_RETRY_LIMIT = max(1, int(os.environ.get("PUBLISH_QUEUE_RETRY_LIMIT", "5")))
+PUBLISH_QUEUE_RETRY_BASE_SECONDS = max(30, int(os.environ.get("PUBLISH_QUEUE_RETRY_BASE_SECONDS", "90")))
+PUBLISH_QUEUE_RETRY_MAX_SECONDS = max(PUBLISH_QUEUE_RETRY_BASE_SECONDS, int(os.environ.get("PUBLISH_QUEUE_RETRY_MAX_SECONDS", "900")))
 
-# ── SMTP EMAIL ───────────────────────────────────────
-async def send_email_smtp(to: str, subject: str, html_body: str):
+
+class RetryablePublishError(Exception):
+    def __init__(self, message: str, *, stage: str = "publishing", retry_after_seconds: Optional[int] = None):
+        super().__init__(message)
+        self.stage = stage
+        self.retry_after_seconds = retry_after_seconds or PUBLISH_QUEUE_RETRY_BASE_SECONDS
+
+def _r2_enabled() -> bool:
+    return all(
+        os.environ.get(key, "").strip()
+        for key in ("R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PUBLIC_BASE_URL")
+    )
+
+def _r2_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name=os.environ.get("R2_REGION", "auto"),
+    )
+
+def _guess_content_type(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif",
+        "mp4": "video/mp4",
+        "webm": "video/webm",
+        "mov": "video/quicktime",
+    }.get(ext, "application/octet-stream")
+
+def _public_media_url(filename: str) -> str:
+    if _r2_enabled():
+        return f"{os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')}/{quote(filename)}"
+    return f"/api/media/file/{filename}"
+
+async def _store_media_bytes(filename: str, payload: bytes, *, content_type: Optional[str] = None) -> str:
+    if _r2_enabled():
+        client = _r2_client()
+        bucket = os.environ["R2_BUCKET"]
+        await asyncio.to_thread(
+            client.put_object,
+            Bucket=bucket,
+            Key=filename,
+            Body=payload,
+            ContentType=content_type or _guess_content_type(filename),
+        )
+        return _public_media_url(filename)
+    fpath = UPLOAD_DIR / filename
+    with open(fpath, "wb") as f:
+        f.write(payload)
+    return _public_media_url(filename)
+
+async def _delete_media_asset(filename: str) -> None:
+    if not filename:
+        return
+    if _r2_enabled():
+        try:
+            client = _r2_client()
+            await asyncio.to_thread(client.delete_object, Bucket=os.environ["R2_BUCKET"], Key=filename)
+        except Exception as e:
+            logger.warning(f"R2 delete warning [{filename}]: {e}")
+        return
+    fpath = UPLOAD_DIR / filename
+    if fpath.exists():
+        fpath.unlink()
+
+# ── EMAIL ────────────────────────────────────────────
+async def send_email_smtp(
+    to: str,
+    subject: str,
+    html_body: str,
+    *,
+    reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
+    from_name: Optional[str] = None,
+):
     smtp_host = os.environ.get("SMTP_HOST", "smtps.aruba.it")
     smtp_port = int(os.environ.get("SMTP_PORT", "465"))
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASSWORD", "")
-    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    smtp_from = from_email or os.environ.get("SMTP_FROM", smtp_user)
+    smtp_from_name = from_name or os.environ.get("EMAIL_FROM_NAME", "Sketchario")
     smtp_security = os.environ.get("SMTP_SECURITY", "ssl").strip().lower()
     smtp_timeout = int(os.environ.get("SMTP_TIMEOUT", "20"))
     if not smtp_user or not smtp_pass:
@@ -100,8 +198,10 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"Sketchario <{smtp_from}>"
+        msg["From"] = f"{smtp_from_name} <{smtp_from}>"
         msg["To"] = to
+        if reply_to:
+            msg["Reply-To"] = reply_to
         msg.attach(MIMEText(html_body, "html"))
         logger.info(f"Sending SMTP email via {smtp_host}:{smtp_port} ({smtp_security}) to {to}")
         if smtp_security == "starttls":
@@ -124,6 +224,82 @@ async def send_email_smtp(to: str, subject: str, html_body: str):
     except Exception as e:
         logger.error(f"SMTP email error: {e}")
         return False
+
+async def send_email_resend(
+    to: str,
+    subject: str,
+    html_body: str,
+    *,
+    reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
+    from_name: Optional[str] = None,
+):
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("Resend not configured, email not sent")
+        return False
+
+    sender_email = from_email or os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER") or "helpdesk@sketchario.app"
+    sender_name = from_name or os.environ.get("EMAIL_FROM_NAME", "Sketchario")
+    payload = {
+        "from": f"{sender_name} <{sender_email}>",
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+
+    try:
+        logger.info(f"Sending email via Resend API to {to}")
+        async with httpx.AsyncClient(timeout=30) as hc:
+            resp = await hc.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if resp.status_code >= 400:
+            logger.error(f"Resend API error [{resp.status_code}]: {resp.text}")
+            return False
+        logger.info(f"Resend API email sent to {to}")
+        return True
+    except Exception as e:
+        logger.error(f"Resend email error: {e}")
+        return False
+
+async def send_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    *,
+    reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
+    from_name: Optional[str] = None,
+):
+    provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower()
+    if provider == "resend" or os.environ.get("RESEND_API_KEY"):
+        ok = await send_email_resend(
+            to,
+            subject,
+            html_body,
+            reply_to=reply_to,
+            from_email=from_email,
+            from_name=from_name,
+        )
+        if ok:
+            return True
+        logger.warning("Resend send failed, falling back to SMTP")
+    return await send_email_smtp(
+        to,
+        subject,
+        html_body,
+        reply_to=reply_to,
+        from_email=from_email,
+        from_name=from_name,
+    )
 
 
 APP_TIMEZONE = os.environ.get("APP_TIMEZONE", "Europe/Rome").strip() or "Europe/Rome"
@@ -215,7 +391,7 @@ async def _send_publish_schedule_email(user: dict, project: dict, content: dict,
         <hr style="border:1px solid #1a2540;margin:20px 0;">
         <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
     </div>"""
-    return await send_email_smtp(email, subject, html)
+    return await send_email(email, subject, html)
 
 
 async def _send_publish_completed_email(user: dict, project: dict, content: dict, items: List[dict]) -> bool:
@@ -240,7 +416,7 @@ async def _send_publish_completed_email(user: dict, project: dict, content: dict
         <hr style="border:1px solid #1a2540;margin:20px 0;">
         <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
     </div>"""
-    return await send_email_smtp(email, subject, html)
+    return await send_email(email, subject, html)
 
 # ── GLOBAL PROMPTING ─────────────────────────────────
 GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIAL (da rispettare sempre, senza eccezioni):
@@ -295,6 +471,14 @@ GLOBAL_CONTENT_PROMPT = """REGOLE ASSOLUTE PER LA GENERAZIONE DI CONTENUTI SOCIA
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+if sentry_sdk and os.environ.get("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ.get("SENTRY_DSN"),
+        environment=os.environ.get("APP_ENV", os.environ.get("RAILWAY_ENVIRONMENT", "production")),
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+        integrations=[FastApiIntegration()],
+    )
+
 # ── Helpers ──────────────────────────────────────────
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -327,6 +511,7 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(status_code=401, detail="User not found")
         user["_id"] = str(user["_id"])
         user.pop("password_hash", None)
+        asyncio.create_task(_touch_user_activity(user.copy()))
         return user
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -524,7 +709,45 @@ def _media_public_url() -> str:
     return os.environ.get("MEDIA_PUBLIC_BASE_URL", _backend_url()).rstrip("/")
 
 def _frontend_base() -> str:
-    return os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip().rstrip("/")
+    return (
+        os.environ.get("APP_URL", "")
+        or os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")[0].strip()
+    ).rstrip("/")
+
+def _is_platform_enabled(platform: str) -> bool:
+    if platform == "pinterest":
+        return os.environ.get("ENABLE_PINTEREST", "true").strip().lower() in {"1", "true", "yes", "on"}
+    return True
+
+async def _touch_user_activity(user: dict):
+    try:
+        user_id = user.get("_id")
+        if not user_id:
+            return
+        now = datetime.now(timezone.utc)
+        last_active = _parse_dt(user.get("last_active_at", ""))
+        if last_active >= now - timedelta(minutes=30):
+            return
+
+        now_iso = now.isoformat()
+        day_key = now.strftime("%Y-%m-%d")
+        month_key = now.strftime("%Y-%m")
+        await db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"last_active_at": now_iso, "last_active_day": day_key, "last_active_month": month_key}}
+        )
+        await db.activity_daily.update_one(
+            {"user_id": user_id, "day": day_key},
+            {"$set": {"last_seen_at": now_iso}, "$setOnInsert": {"created_at": now_iso}},
+            upsert=True,
+        )
+        await db.activity_monthly.update_one(
+            {"user_id": user_id, "month": month_key},
+            {"$set": {"last_seen_at": now_iso}, "$setOnInsert": {"created_at": now_iso}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"Activity tracking error: {e}")
 
 async def _social_login_user(email: str, name: str, provider: str) -> str:
     """Find or create user from social login, return JWT."""
@@ -775,7 +998,7 @@ async def parse_instructions_file(file: UploadFile = File(...), request: Request
         raise
     except Exception as e:
         raise HTTPException(500, f"Errore lettura file: {str(e)}")
-    return {"text": text[:MAX_INSTRUCTIONS_FILE_CHARS]}
+    return {"text": text[:12000]}
 
 @api.get("/projects/{project_id}")
 async def get_project(project_id: str, request: Request):
@@ -844,16 +1067,12 @@ async def upload_project_cover(project_id: str, request: Request, file: UploadFi
     if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
         raise HTTPException(400, "Formato non supportato. Usa jpg, png, webp o gif.")
     fname = f"cover_{project_id}_{uuid.uuid4().hex[:8]}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    cover_url = f"/api/media/file/{fname}"
+    payload = await file.read()
+    cover_url = await _store_media_bytes(fname, payload)
     old = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if old and old.get("cover_url"):
         old_fname = old["cover_url"].split("/")[-1]
-        old_fpath = UPLOAD_DIR / old_fname
-        if old_fpath.exists():
-            old_fpath.unlink()
+        await _delete_media_asset(old_fname)
     await db.projects.update_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"$set": {"cover_url": cover_url}})
     return {"cover_url": cover_url}
 
@@ -863,9 +1082,7 @@ async def remove_project_cover(project_id: str, request: Request):
     p = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if p and p.get("cover_url"):
         fname = p["cover_url"].split("/")[-1]
-        fpath = UPLOAD_DIR / fname
-        if fpath.exists():
-            fpath.unlink()
+        await _delete_media_asset(fname)
     await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"cover_url": ""}})
     return {"ok": True}
 
@@ -938,19 +1155,6 @@ def coerce_str(val) -> str:
 
 def compact_text(value) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
-MAX_INSTRUCTIONS_FILE_CHARS = int(os.environ.get("MAX_INSTRUCTIONS_FILE_CHARS", "100000"))
-MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS = int(os.environ.get("MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS", "6000"))
-MAX_BRIEF_NOTES_PROMPT_CHARS = int(os.environ.get("MAX_BRIEF_NOTES_PROMPT_CHARS", "2500"))
-
-
-def truncate_text_for_prompt(value: str, max_len: int) -> str:
-    text = compact_text(value or "")
-    if len(text) <= max_len:
-        return text
-    cut = text[: max_len - 1].rsplit(" ", 1)[0].strip()
-    return f"{cut or text[: max_len - 1]}…"
 
 
 FEED_KEYWORD_STOPWORDS = {
@@ -1483,15 +1687,9 @@ def filter_and_rank_feed_items(items: List[dict], project: Optional[dict]) -> Li
     return scored[:18]
 
 def build_tov_summary(project: dict, tov: Optional[dict]) -> str:
-    project_instructions = truncate_text_for_prompt(
-        project.get("custom_instructions", ""),
-        MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS,
-    )
+    project_instructions = compact_text(project.get("custom_instructions", ""))
     if tov:
-        tov_instructions = truncate_text_for_prompt(
-            tov.get("custom_instructions", ""),
-            MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS // 2,
-        )
+        tov_instructions = compact_text(tov.get("custom_instructions", ""))
         combined = " ".join(filter(None, [project_instructions, tov_instructions]))
         tone_bits = [
             f"formalita {tov.get('formality', 5)}/10",
@@ -1541,10 +1739,7 @@ def build_project_context(project: dict, personas: Optional[List[dict]] = None, 
     if personas:
         persona_summary = [f"{p.get('name') or p.get('role', '')} - {p.get('role', '')}".strip(" -") for p in personas]
         context_lines.append(f"Personas: {json.dumps(persona_summary, ensure_ascii=False)}")
-    brief_notes = truncate_text_for_prompt(
-        project.get("brief_notes", ""),
-        MAX_BRIEF_NOTES_PROMPT_CHARS,
-    )
+    brief_notes = compact_text(project.get("brief_notes", ""))
     if brief_notes:
         context_lines.append(f"Note strategiche dal brief: {brief_notes}")
     tov_summary = build_tov_summary(project, tov)
@@ -2300,7 +2495,7 @@ SOCIAL_PLATFORMS = {
         "client_id_env": "PINTEREST_CLIENT_ID",
         "client_secret_env": "PINTEREST_CLIENT_SECRET",
         "token_url": "https://api.pinterest.com/v5/oauth/token",
-        "scope": "boards:read,pins:read,pins:write,user_accounts:read,offline_access",
+        "scope": "boards:read,boards:write,pins:read,pins:write,user_accounts:read,offline_access",
     },
     "google_slides": {
         "name": "Google Drive",
@@ -2592,15 +2787,15 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
         while datetime.now(timezone.utc) < deadline:
             status_r = await c.get(
                 f"https://graph.facebook.com/{GRAPH_API_VERSION}/{container_id}",
-                # Meta does not expose error_message on this node consistently; requesting
-                # only stable fields avoids false 400s during container polling.
+                # Meta is inconsistent on this node: fields like error_message and
+                # status_message can trigger false 400s. Request only stable fields.
                 params={"fields": "status_code,status"},
                 headers={"Authorization": f"Bearer {token}"},
             )
             if status_r.status_code == 200:
                 data = status_r.json()
                 last_status = (data.get("status_code") or data.get("status") or "").upper()
-                last_message = data.get("status_message") or data.get("message") or ""
+                last_message = data.get("message") or ""
 
                 if last_status in {"FINISHED", "PUBLISHED"}:
                     return
@@ -2635,10 +2830,23 @@ async def _wait_for_instagram_container_ready(token: str, container_id: str, tim
                 await asyncio.sleep(3)
                 continue
 
-            raise ValueError(f"Instagram container status error HTTP {status_r.status_code}: {status_r.text[:300]}")
+            raise RetryablePublishError(
+                f"Instagram container status error HTTP {status_r.status_code}: {status_r.text[:300]}",
+                stage="instagram_container_status",
+                retry_after_seconds=90,
+            )
 
     if last_status:
-        raise ValueError(f"Instagram media ancora in elaborazione ({last_status}). Riprova tra poco.{f' Dettaglio: {last_message}' if last_message else ''}")
+        raise RetryablePublishError(
+            f"Instagram media ancora in elaborazione ({last_status}).{f' Dettaglio: {last_message}' if last_message else ''}",
+            stage="instagram_container_ready",
+            retry_after_seconds=120,
+        )
+    raise RetryablePublishError(
+        "Timeout nel controllo dello stato del container Instagram.",
+        stage="instagram_container_status",
+        retry_after_seconds=90,
+    )
 
 
 async def _publish_instagram_container_with_retry(
@@ -2673,7 +2881,11 @@ async def _publish_instagram_container_with_retry(
 
         raise ValueError(f"IG publish error: {last_message}")
 
-    raise ValueError(f"IG publish error: Media ID is not available. Meta non ha ancora completato l'elaborazione del media.")
+    raise RetryablePublishError(
+        "IG publish error: Media ID is not available. Meta non ha ancora completato l'elaborazione del media.",
+        stage="instagram_publish",
+        retry_after_seconds=120,
+    )
 
 async def _exchange_token_google_slides(code: str, redirect_uri: str) -> dict:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -3018,8 +3230,8 @@ def _social_profile_connection_warning(profile: dict) -> str:
         return explicit_warning
     scopes = set(_scope_list(profile.get("granted_scopes", "")))
     platform = profile.get("platform", "")
-    if platform == "pinterest" and scopes and "pins:write" not in scopes:
-        return "Pinterest collegato senza scope pins:write. Ricollega l'account con l'app approvata."
+    if platform == "pinterest" and scopes and (("pins:write" not in scopes) or ("boards:write" not in scopes)):
+        return "Pinterest collegato senza scope completi di pubblicazione (pins:write, boards:write). Ricollega l'account con l'app approvata."
     if platform == "pinterest" and not scopes:
         return "Pinterest collegato ma permessi di pubblicazione non verificati. Ricollega l'account e fai un test publish."
     if platform == "tiktok" and scopes and "video.publish" not in scopes:
@@ -3112,14 +3324,16 @@ async def _prepare_instagram_image_url(media_doc: dict, app_url: str) -> str:
                 image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
 
             safe_name = f"igsafe_{uuid.uuid4().hex}.jpg"
-            safe_path = UPLOAD_DIR / safe_name
-            image.save(safe_path, format="JPEG", quality=92, optimize=True)
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG", quality=92, optimize=True)
+            safe_bytes = buffer.getvalue()
     except Exception as e:
         raise ValueError(
             f"Immagine non convertibile per Instagram: {media_doc.get('original_name') or media_doc.get('filename') or media_url}. {str(e)[:120]}"
         ) from e
 
-    return f"{app_url}/api/media/file/{safe_name}"
+    stored_url = await _store_media_bytes(safe_name, safe_bytes, content_type="image/jpeg")
+    return f"{app_url}{stored_url}" if stored_url.startswith("/") else stored_url
 
 async def _prepare_tiktok_image_url(media_doc: dict, app_url: str) -> str:
     media_path = media_doc.get("url") or ""
@@ -3413,6 +3627,8 @@ async def list_platforms(request: Request):
     await get_current_user(request)
     platforms = []
     for key, cfg in SOCIAL_PLATFORMS.items():
+        if not _is_platform_enabled(key):
+            continue
         client_id = os.environ.get(cfg["client_id_env"], "")
         platforms.append({
             "id": key,
@@ -3429,6 +3645,8 @@ async def get_social_oauth_config(request: Request):
     callback_url = _oauth_callback_url()
     items = []
     for key, cfg in SOCIAL_PLATFORMS.items():
+        if not _is_platform_enabled(key):
+            continue
         items.append({
             "id": key,
             "name": cfg["name"],
@@ -3448,6 +3666,8 @@ async def social_oauth_start(platform: str, request: Request):
     cfg = SOCIAL_PLATFORMS.get(platform)
     if not cfg:
         raise HTTPException(400, "Piattaforma non supportata")
+    if not _is_platform_enabled(platform):
+        raise HTTPException(403, f"{cfg['name']} è temporaneamente disabilitato.")
     client_id = os.environ.get(cfg["client_id_env"], "")
     if not client_id:
         raise HTTPException(400, f"Credenziali {platform} non configurate")
@@ -4010,6 +4230,55 @@ async def _maybe_send_batch_publish_email(item: dict, content: dict):
             {"$set": {"batch_publish_notified_at": datetime.now(timezone.utc).isoformat()}},
         )
 
+def _queue_retry_delay_seconds(item: dict, requested_delay: Optional[int] = None) -> int:
+    retry_count = max(0, int(item.get("retry_count") or 0))
+    base = requested_delay or PUBLISH_QUEUE_RETRY_BASE_SECONDS
+    scaled = int(base * (2 ** retry_count))
+    return max(PUBLISH_QUEUE_RETRY_BASE_SECONDS, min(PUBLISH_QUEUE_RETRY_MAX_SECONDS, scaled))
+
+
+async def _schedule_retryable_publish(item: dict, processing_token: str, error: RetryablePublishError) -> bool:
+    claim_active = await _publish_queue_claim_is_active(item["id"], processing_token)
+    if not claim_active:
+        return False
+
+    next_retry_count = max(0, int(item.get("retry_count") or 0)) + 1
+    if next_retry_count > PUBLISH_QUEUE_RETRY_LIMIT:
+        return False
+
+    delay_seconds = _queue_retry_delay_seconds(item, error.retry_after_seconds)
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+    stage_label = {
+        "instagram_container_ready": "attesa elaborazione media Instagram",
+        "instagram_publish": "pubblicazione Instagram",
+        "instagram_container_status": "verifica stato container Instagram",
+    }.get(error.stage, "publish")
+    error_text = (
+        f"{str(error)[:700]} Riprovo automaticamente alle {retry_at.strftime('%H:%M:%S UTC')} "
+        f"(tentativo {next_retry_count}/{PUBLISH_QUEUE_RETRY_LIMIT}, fase: {stage_label})."
+    )[:1000]
+
+    await db.publish_queue.update_one(
+        {"id": item["id"], "status": "processing", "processing_token": processing_token},
+        {
+            "$set": {
+                "status": "queued",
+                "scheduled_at": retry_at.isoformat(),
+                "retry_count": next_retry_count,
+                "last_error_message": str(error)[:1000],
+                "last_error_at": datetime.now(timezone.utc).isoformat(),
+                "last_retry_at": retry_at.isoformat(),
+                "publish_stage": error.stage,
+                "error_message": error_text,
+            },
+            "$unset": {
+                "processing_started_at": "",
+                "processing_heartbeat_at": "",
+                "processing_token": "",
+            },
+        }
+    )
+    return True
 @api.post("/publish/schedule")
 async def schedule_publish(inp: PublishSchedule, request: Request):
     user = await get_current_user(request)
@@ -4060,7 +4329,8 @@ async def schedule_publish(inp: PublishSchedule, request: Request):
             "social_profile_id": sp_id, "platform": profile.get("platform", ""),
             "profile_name": profile.get("profile_name", ""), "user_id": user["_id"],
             "status": "queued", "scheduled_at": item_scheduled_at, "first_comment": inp.first_comment,
-            "error_message": "", "published_at": "", "created_at": now_iso, "batch_id": batch_id,
+            "error_message": "", "published_at": "", "created_at": now_iso,
+            "retry_count": 0, "publish_stage": "", "batch_id": batch_id,
         }
         await db.publish_queue.insert_one(doc)
         doc.pop("_id", None)
@@ -4190,14 +4460,14 @@ async def _run_publish_queue_once():
             token = account["access_token"]
             if item["platform"] == "pinterest":
                 granted_scopes = set(_scope_list(account.get("granted_scopes", "")))
-                if granted_scopes and "pins:write" not in granted_scopes:
+                if granted_scopes and (("pins:write" not in granted_scopes) or ("boards:write" not in granted_scopes)):
                     await _set_social_publish_diagnostics(
                         item.get("social_profile_id"),
                         status="blocked",
-                        warning="Pinterest collegato senza scope pins:write. Ricollega l'account con l'app approvata.",
+                        warning="Pinterest collegato senza scope completi di pubblicazione (pins:write, boards:write). Ricollega l'account con l'app approvata.",
                     )
                     raise ValueError(
-                        "Pinterest connesso senza scope pins:write. "
+                        "Pinterest connesso senza scope completi di pubblicazione (pins:write, boards:write). "
                         "Scollega e ricollega l'account Pinterest dopo aver verificato l'app approvata."
                     )
                 token = await _get_pinterest_access_token(item["user_id"], item.get("social_profile_id"))
@@ -4209,11 +4479,16 @@ async def _run_publish_queue_once():
             publish_result = await db.publish_queue.update_one(
                 {"id": item["id"], "status": "processing", "processing_token": processing_token},
                 {
-                    "$set": {"status": "published", "published_at": now_iso, "post_id": post_id},
+                    "$set": {"status": "published", "published_at": now_iso, "post_id": post_id, "error_message": ""},
                     "$unset": {
                         "processing_started_at": "",
                         "processing_heartbeat_at": "",
                         "processing_token": "",
+                        "retry_count": "",
+                        "last_error_message": "",
+                        "last_error_at": "",
+                        "last_retry_at": "",
+                        "publish_stage": "",
                     }
                 }
             )
@@ -4246,10 +4521,15 @@ async def _run_publish_queue_once():
         except Exception as e:
             logger.error(f"Manual queue trigger error [{item['id']}]: {e}")
             error_text = str(e)[:1000]
+            if sentry_sdk and item.get("platform") == "instagram":
+                sentry_sdk.capture_message(
+                    f"Instagram publish failed [{item['id']}] stage={item.get('publish_stage') or 'publishing'} error={error_text}",
+                    level="error",
+                )
             if item["platform"] == "pinterest":
                 warning = (
                     "Pinterest ha rifiutato il token di pubblicazione. "
-                    "Ricollega l'account e verifica che l'app abbia davvero pins:write."
+                    "Ricollega l'account e verifica che l'app abbia davvero pins:write e boards:write."
                     if "Pinterest ha rifiutato il token di pubblicazione" in error_text
                     else error_text
                 )
@@ -4264,6 +4544,21 @@ async def _run_publish_queue_once():
                     status="blocked",
                     warning=error_text,
                 )
+            if isinstance(e, RetryablePublishError) and item["platform"] == "instagram":
+                retry_scheduled = await _schedule_retryable_publish(item, processing_token, e)
+                if retry_scheduled:
+                    logger.warning(
+                        "Queue retry scheduled [%s] platform=%s stage=%s retry_count=%s",
+                        item["id"],
+                        item.get("platform", ""),
+                        e.stage,
+                        int(item.get("retry_count") or 0) + 1,
+                    )
+                    await db.contents.update_one(
+                        {"id": item["content_id"]},
+                        {"$set": {"status": "scheduled"}}
+                    )
+                    continue
             claim_active = await _publish_queue_claim_is_active(item["id"], processing_token)
             if claim_active:
                 await db.publish_queue.update_one(
@@ -4351,9 +4646,6 @@ async def mark_published(content_id: str, request: Request):
     return {"ok": True}
 
 # ── MEDIA UPLOAD ──────────────────────────────────────
-UPLOAD_DIR = Path("/app/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 @api.post("/media/upload/{content_id}")
 async def upload_media(content_id: str, request: Request, file: UploadFile = File(...)):
     user = await get_current_user(request)
@@ -4362,11 +4654,9 @@ async def upload_media(content_id: str, request: Request, file: UploadFile = Fil
     if ext not in allowed:
         raise HTTPException(400, f"Formato non supportato. Usa: {', '.join(allowed)}")
     fname = f"{uuid.uuid4().hex}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    media_url = f"/api/media/file/{fname}"
-    media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": file.filename, "url": media_url, "type": "image" if ext in {"jpg","jpeg","png","webp","gif"} else "video", "size": fpath.stat().st_size, "created_at": datetime.now(timezone.utc).isoformat()}
+    payload = await file.read()
+    media_url = await _store_media_bytes(fname, payload)
+    media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": file.filename, "url": media_url, "type": "image" if ext in {"jpg","jpeg","png","webp","gif"} else "video", "size": len(payload), "created_at": datetime.now(timezone.utc).isoformat()}
     await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
     return media_doc
 
@@ -4378,9 +4668,7 @@ async def delete_media(content_id: str, media_id: str, request: Request):
         media_list = content.get("media", [])
         for m in media_list:
             if m.get("id") == media_id:
-                fpath = UPLOAD_DIR / m.get("filename", "")
-                if fpath.exists():
-                    fpath.unlink()
+                await _delete_media_asset(m.get("filename", ""))
                 break
         await db.contents.update_one({"id": content_id}, {"$pull": {"media": {"id": media_id}}})
     return {"ok": True}
@@ -4939,14 +5227,12 @@ async def _generate_image_bytes(
 
 async def _save_generated_media(content_id: str, image_bytes: bytes, ext: str, source_label: str, original_name: str, extra: Optional[dict] = None) -> dict:
     fname = f"{source_label.lower().replace(' ', '_').replace('/', '_')}_{uuid.uuid4().hex}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f:
-        f.write(image_bytes)
+    media_url = await _store_media_bytes(fname, image_bytes)
     media_doc = {
         "id": str(uuid.uuid4()),
         "filename": fname,
         "original_name": original_name,
-        "url": f"/api/media/file/{fname}",
+        "url": media_url,
         "type": "image",
         "source": source_label,
         "size": len(image_bytes),
@@ -5309,6 +5595,18 @@ async def delete_release_note(note_id: str, request: Request):
         raise HTTPException(403, "Accesso negato")
     await db.release_notes.delete_one({"id": note_id})
     return {"ok": True}
+
+@api.get("/admin/usage/summary")
+async def admin_usage_summary(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Accesso negato")
+    now = datetime.now(timezone.utc)
+    day_floor = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    month_floor = (now - timedelta(days=30)).strftime("%Y-%m")
+    dau = await db.activity_daily.count_documents({"day": {"$gte": day_floor}})
+    mau = await db.activity_monthly.count_documents({"month": {"$gte": month_floor}})
+    return {"dau": dau, "mau": mau, "generated_at": now.isoformat()}
 
 # ── STRIPE BILLING ────────────────────────────────────
 PLANS = {
@@ -5692,10 +5990,7 @@ async def canva_export_download(content_id: str, request: Request):
             if resp.status_code != 200:
                 continue
             fname = f"canva_{uuid.uuid4().hex}.png"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             media_doc = {
                 "id": str(uuid.uuid4()),
                 "filename": fname,
@@ -5743,10 +6038,7 @@ async def canva_import(request: Request):
             if resp.status_code != 200:
                 raise HTTPException(400, "Impossibile scaricare l'immagine da Canva")
             fname = f"canva_{uuid.uuid4().hex}.png"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": "Canva Export", "url": media_url, "type": "image", "source": "canva", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
             await db.contents.update_one({"id": content_id}, {"$push": {"media": media_doc}})
             return media_doc
@@ -5821,6 +6113,14 @@ class ResetPasswordInput(BaseModel):
     token: str
     new_password: str
 
+class PublicContactInput(BaseModel):
+    name: str
+    email: str
+    contact_type: str = "informative"
+    message: str
+    company: Optional[str] = ""
+    website: Optional[str] = ""
+
 @api.post("/auth/forgot-password")
 async def forgot_password(inp: ForgotPasswordInput):
     email = inp.email.strip().lower()
@@ -5833,7 +6133,7 @@ async def forgot_password(inp: ForgotPasswordInput):
         "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    frontend_url = os.environ.get("FRONTEND_URL", "")
+    frontend_url = _frontend_base()
     reset_link = f"{frontend_url}?reset_token={token}"
     logger.info(f"Password reset link for {email}: {reset_link}")
     html = f"""
@@ -5846,7 +6146,7 @@ async def forgot_password(inp: ForgotPasswordInput):
         <hr style="border:1px solid #1a2540;margin:20px 0;">
         <p style="font-size:11px;color:#5c6370;">Sketchario - Content Strategy Engine</p>
     </div>"""
-    email_sent = await send_email_smtp(email, "Sketchario - Reset Password", html)
+    email_sent = await send_email(email, "Sketchario - Reset Password", html)
     return {"ok": True, "message": "Se l'email esiste, riceverai un link di reset.", "email_sent": email_sent}
 
 @api.post("/auth/reset-password")
@@ -5861,6 +6161,73 @@ async def reset_password(inp: ResetPasswordInput):
     await db.users.update_one({"email": token_doc["email"]}, {"$set": {"password_hash": hash_password(inp.new_password)}})
     await db.password_reset_tokens.update_one({"token": inp.token}, {"$set": {"used": True}})
     return {"ok": True, "message": "Password aggiornata con successo"}
+
+@api.post("/public/contact")
+async def public_contact(inp: PublicContactInput):
+    name = inp.name.strip()
+    email = inp.email.strip().lower()
+    contact_type = (inp.contact_type or "informative").strip().lower()
+    company = (inp.company or "").strip()
+    message = inp.message.strip()
+    honeypot = (inp.website or "").strip()
+
+    if honeypot:
+        return {"ok": True}
+
+    if len(name) < 2 or len(name) > 120:
+        raise HTTPException(400, "Nome non valido")
+    if "@" not in email or len(email) > 200:
+        raise HTTPException(400, "Email non valida")
+    if len(message) < 10 or len(message) > 5000:
+        raise HTTPException(400, "Messaggio non valido")
+
+    is_technical = contact_type == "technical"
+    destination = os.environ.get(
+        "CONTACT_SUPPORT_EMAIL" if is_technical else "CONTACT_INFO_EMAIL",
+        "helpdesk@sketchario.app" if is_technical else "info@sketchario.app",
+    )
+    subject_prefix = "Richiesta tecnica" if is_technical else "Richiesta informazioni"
+    safe_name = html_lib.escape(name)
+    safe_email = html_lib.escape(email)
+    safe_company = html_lib.escape(company) if company else "Non indicata"
+    safe_message = html_lib.escape(message).replace("\n", "<br>")
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:32px;background:#0f1629;color:#fff;border-radius:16px;">
+        <h2 style="margin:0 0 10px;color:#c4b5fd;">Nuovo contatto dal sito Sketchario</h2>
+        <p style="margin:0 0 22px;color:#cbd5e1;">È arrivata una nuova richiesta dal form contatti di www.sketchario.app.</p>
+        <table style="width:100%;border-collapse:collapse;background:#111b31;border:1px solid #223154;border-radius:12px;overflow:hidden;">
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;width:160px;">Tipo</td><td style="padding:12px 14px;border-bottom:1px solid #223154;">{subject_prefix}</td></tr>
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;">Nome</td><td style="padding:12px 14px;border-bottom:1px solid #223154;">{safe_name}</td></tr>
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;">Email</td><td style="padding:12px 14px;border-bottom:1px solid #223154;"><a href="mailto:{safe_email}" style="color:#fff;">{safe_email}</a></td></tr>
+            <tr><td style="padding:12px 14px;border-bottom:1px solid #223154;color:#94a3b8;">Azienda</td><td style="padding:12px 14px;border-bottom:1px solid #223154;">{safe_company}</td></tr>
+            <tr><td style="padding:12px 14px;color:#94a3b8;vertical-align:top;">Messaggio</td><td style="padding:12px 14px;">{safe_message}</td></tr>
+        </table>
+    </div>"""
+
+    sent = await send_email(
+        destination,
+        f"Sketchario · {subject_prefix} da {name}",
+        html,
+        reply_to=email,
+        from_name="Sketchario Contacts",
+    )
+    if not sent:
+        raise HTTPException(502, "Invio email non riuscito")
+    return {"ok": True}
+
+@api.get("/public/health/email")
+async def public_email_health():
+    email_provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower()
+    resend_ready = bool(os.environ.get("RESEND_API_KEY"))
+    smtp_ready = bool(os.environ.get("SMTP_USER")) and bool(os.environ.get("SMTP_PASSWORD"))
+    effective_provider = "resend" if email_provider == "resend" or resend_ready else "smtp" if smtp_ready else "none"
+    return {
+        "ok": effective_provider != "none",
+        "provider": effective_provider,
+        "resend_ready": resend_ready,
+        "smtp_ready": smtp_ready,
+    }
 
 # ── GOOGLE DRIVE IMPORT ───────────────────────────────
 class DriveImportInput(BaseModel):
@@ -5893,10 +6260,7 @@ async def import_from_drive(inp: DriveImportInput, request: Request):
             elif "mp4" in ct: ext = "mp4"
             elif "video" in ct: ext = "mp4"
             fname = f"drive_{uuid.uuid4().hex}.{ext}"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
             display_name = inp.file_name or "Google Drive Import"
             media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": display_name, "url": media_url, "type": ftype, "source": "google_drive", "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
@@ -5959,16 +6323,13 @@ async def render_video(inp: RenderVideoInput, request: Request):
             if r.status_code != 200:
                 raise HTTPException(500, f"Renderer error: {r.text[:300]}")
             out_name = r.headers.get("x-filename") or f"render_{inp.content_id}_{uuid.uuid4().hex[:8]}.mp4"
-            fpath = UPLOAD_DIR / out_name
-            with open(fpath, "wb") as f:
-                f.write(r.content)
+            media_url = await _store_media_bytes(out_name, r.content)
     except httpx.TimeoutException:
         raise HTTPException(504, "Timeout rendering video (>3 min). Riprova con uno script più corto.")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, f"Errore renderer: {str(e)}")
-    media_url = f"/api/media/file/{out_name}"
     media_doc = {
         "id": str(uuid.uuid4()),
         "filename": out_name,
@@ -6418,10 +6779,7 @@ async def import_from_cloud(inp: CloudImportInput, request: Request):
             elif "gif" in ct: ext = "gif"
             elif "mp4" in ct or "video" in ct: ext = "mp4"
             fname = f"{inp.source}_{uuid.uuid4().hex}.{ext}"
-            fpath = UPLOAD_DIR / fname
-            with open(fpath, "wb") as f:
-                f.write(resp.content)
-            media_url = f"/api/media/file/{fname}"
+            media_url = await _store_media_bytes(fname, resp.content)
             ftype = "video" if ext in ("mp4", "webm", "mov") else "image"
             media_doc = {"id": str(uuid.uuid4()), "filename": fname, "original_name": f"{inp.source.title()} Import", "url": media_url, "type": ftype, "source": inp.source, "size": len(resp.content), "created_at": datetime.now(timezone.utc).isoformat()}
             await db.contents.update_one({"id": inp.content_id}, {"$push": {"media": media_doc}})
@@ -6489,7 +6847,27 @@ async def root():
 
 app.include_router(api)
 
-_cors_origins = [o.strip() for o in os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",") if o.strip()]
+def _collect_cors_origins() -> List[str]:
+    raw_values = [
+        os.environ.get("FRONTEND_URL", ""),
+        os.environ.get("APP_URL", ""),
+        os.environ.get("MARKETING_URL", ""),
+        "http://localhost:3000",
+        "https://www.sketchario.app",
+        "https://app.sketchario.app",
+        "https://sketchario.app",
+    ]
+    origins: List[str] = []
+    for value in raw_values:
+        for origin in str(value or "").split(","):
+            cleaned = origin.strip().rstrip("/")
+            if "*" in cleaned:
+                raise RuntimeError(f"CORS origin non valido: {cleaned}")
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+    return origins
+
+_cors_origins = _collect_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -6520,6 +6898,10 @@ async def startup():
     await db.payment_transactions.create_index("session_id")
     await db.tov_library.create_index("user_id")
     await db.password_reset_tokens.create_index("token")
+    await db.activity_daily.create_index([("user_id", 1), ("day", 1)], unique=True)
+    await db.activity_monthly.create_index([("user_id", 1), ("month", 1)], unique=True)
+    if os.environ.get("UPLOADS_DIR", "").strip() == "":
+        logger.warning("UPLOADS_DIR non configurato: i media restano su filesystem locale del container.")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.release_note_reads.create_index([("user_id", 1), ("note_id", 1)])
     await db.onboarding.create_index("user_id", unique=True)
