@@ -440,6 +440,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
     user?.role === 'admin' || ['osmel@osmelfabre.it', 'osmel.fabre@gmail.com'].includes((user?.email || '').toLowerCase())
   );
   const adminCarouselSlidesCount = Math.min(8, Math.max(4, carouselSlides.length || 8));
+  const [dragMediaId, setDragMediaId] = useState(null);
 
   const syncQueueState = useCallback((queueData, effectiveStatus = content.status) => {
     const items = (queueData || []).filter(q =>
@@ -541,6 +542,30 @@ export default function ContentDetail({ content: initialContent, project, onClos
       setImageModel('openai');
     }
   }, [isAdminCarouselTemplateActive, imageModel]);
+
+  const reorderContentMedia = useCallback(async (fromId, toId) => {
+    if (!fromId || !toId || fromId === toId) return;
+    const mediaItems = [...(content.media || [])];
+    const fromIndex = mediaItems.findIndex(item => item.id === fromId);
+    const toIndex = mediaItems.findIndex(item => item.id === toId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const reordered = [...mediaItems];
+    const [movedItem] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, movedItem);
+
+    const updated = { ...content, media: reordered };
+    setContent(updated);
+    onUpdate?.(updated);
+
+    try {
+      await api.put(`/contents/${content.id}`, { media: reordered });
+    } catch (e) {
+      setContent(content);
+      onUpdate?.(content);
+      toast.error(t('editor.uploadError', { message: e.response?.data?.detail || e.message }));
+    }
+  }, [api, content, onUpdate, t]);
 
   // ── CANVA ─────────────────────────────────────────────
   const openCanvaEditor = async () => {
@@ -1070,12 +1095,33 @@ export default function ContentDetail({ content: initialContent, project, onClos
           return (
           <div className="flex gap-2 flex-wrap mb-3">
             {content.media.map(m => (
-              <div key={m.id} className="relative group w-14 h-14 md:w-16 md:h-16">
+              <div
+                key={m.id}
+                className={`relative group w-14 h-14 md:w-16 md:h-16 ${dragMediaId === m.id ? 'opacity-60 scale-95' : ''}`}
+                draggable
+                onDragStart={() => setDragMediaId(m.id)}
+                onDragEnd={() => setDragMediaId(null)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={async e => {
+                  e.preventDefault();
+                  const sourceId = dragMediaId;
+                  setDragMediaId(null);
+                  await reorderContentMedia(sourceId, m.id);
+                }}
+                title={m.type === 'image' ? 'Trascina per riordinare le slide' : 'Trascina per riordinare'}
+                style={{ cursor: 'grab' }}
+              >
                 {m.type === 'image' ? (
                   <img src={resolveAssetUrl(m.url)} alt="" className="w-full h-full object-cover rounded-lg" />
                 ) : (
                   <div className="w-full h-full rounded-lg bg-[var(--bg-secondary)] flex items-center justify-center"><Video size={20} /></div>
                 )}
+                <div
+                  className="absolute left-1 top-1 rounded px-1 py-0.5 text-[9px] font-semibold pointer-events-none"
+                  style={{ background: 'rgba(0,0,0,0.55)', color: 'white' }}
+                >
+                  {content.media.findIndex(item => item.id === m.id) + 1}
+                </div>
                 {m.type === 'image' && (
                   <button className="absolute inset-0 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setLightboxIdx(imgMedia.findIndex(im => im.id === m.id))}>
                     <Eye size={18} color="white" />

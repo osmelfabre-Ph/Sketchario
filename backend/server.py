@@ -578,6 +578,7 @@ class ContentUpdate(BaseModel):
     caption: Optional[str] = None
     hashtags: Optional[str] = None
     slides: Optional[list] = None
+    media: Optional[list] = None
     opening_hook: Optional[str] = None
     visual_direction: Optional[str] = None
     hook_text: Optional[str] = None
