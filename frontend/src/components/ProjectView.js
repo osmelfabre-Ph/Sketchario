@@ -35,6 +35,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const canAnalytics = Boolean(planLimits?.can_analytics);
+  const canRssFeeds = Boolean(planLimits?.can_rss_feeds);
   const lastFeedLanguageRef = useRef(null);
   const [tab, setTab] = useState(activeTab || 'list');
   const [contents, setContents] = useState([]);
@@ -100,6 +101,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   const today = new Date();
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth()); // 0-based
+  const lockedFeedPlaceholders = [1, 2, 3];
 
   useEffect(() => {
     if (activeTab === 'analytics') {
@@ -117,25 +119,35 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
   useEffect(() => {
     if (!project?.id) return;
-    Promise.all([
+    const requests = [
       api.get(`/contents/${project.id}`).then(r => setContents(r.data)).catch(() => {}),
       api.get(`/personas/${project.id}`).then(r => setPersonas(r.data)).catch(() => {}),
       api.get(`/tov/${project.id}`).then(r => setTov(r.data || {})).catch(() => {}),
       api.get('/social/platforms').then(r => setPlatforms(r.data)).catch(() => {}),
       api.get('/social/profiles').then(r => setSocialProfiles(r.data)).catch(() => {}),
       api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {}),
-      api.get(`/feeds/${project.id}`).then(r => setFeeds(r.data)).catch(() => {}),
-      api.get(`/feeds/${project.id}/pinned`).then(r => setPinnedItemIds(new Set(r.data.map(p => p.item_id)))).catch(() => {}),
-      api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
-      api.post(`/feeds/ai-suggestions/${project.id}`).then(r => setAiFeedItems(r.data || [])).catch(() => {}),
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {}),
       api.get('/tov-library').then(r => setTovLibrary(r.data)).catch(() => {}),
-    ]).finally(() => setLoading(false));
-  }, [api, project?.id]);
+    ];
+    if (canRssFeeds) {
+      requests.push(
+        api.get(`/feeds/${project.id}`).then(r => setFeeds(r.data)).catch(() => {}),
+        api.get(`/feeds/${project.id}/pinned`).then(r => setPinnedItemIds(new Set(r.data.map(p => p.item_id)))).catch(() => {}),
+        api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {}),
+        api.post(`/feeds/ai-suggestions/${project.id}`).then(r => setAiFeedItems(r.data || [])).catch(() => {})
+      );
+    } else {
+      setFeeds([]);
+      setFeedItems([]);
+      setAiFeedItems([]);
+      setPinnedItemIds(new Set());
+    }
+    Promise.all(requests).finally(() => setLoading(false));
+  }, [api, project?.id, canRssFeeds]);
 
   // Auto-refresh feeds every 10 min
   useEffect(() => {
-    if (!project?.id || loading) return;
+    if (!project?.id || loading || !canRssFeeds) return;
     const interval = setInterval(() => {
       api.post(`/feeds/refresh/${project.id}`).then(() => {
         api.get(`/feeds/${project.id}/items`).then(r => setFeedItems(r.data)).catch(() => {});
@@ -143,19 +155,19 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
       api.post(`/feeds/ai-suggestions/${project.id}/refresh`).then(r => setAiFeedItems(r.data || [])).catch(() => {});
     }, 600000);
     return () => clearInterval(interval);
-  }, [api, project?.id, loading]);
+  }, [api, project?.id, loading, canRssFeeds]);
 
   useEffect(() => {
-    if (!project?.id || loading) return;
+    if (!project?.id || loading || !canRssFeeds) return;
     const interval = setInterval(() => {
       api.get(`/contents/${project.id}`).then(r => setContents(r.data)).catch(() => {});
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {});
     }, 8000);
     return () => clearInterval(interval);
-  }, [api, project?.id, loading]);
+  }, [api, project?.id, loading, canRssFeeds]);
 
   useEffect(() => {
-    if (!project?.id || loading) return;
+    if (!project?.id || loading || !canRssFeeds) return;
     api.post(`/feeds/bootstrap/${project.id}`)
       .then(({ data }) => {
         if (Array.isArray(data)) {
@@ -166,7 +178,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
         }
       })
       .catch(() => {});
-  }, [api, project?.id, loading]);
+  }, [api, project?.id, loading, canRssFeeds]);
 
   useEffect(() => {
     if (!project?.id || loading) return;
@@ -197,7 +209,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
 
     reloadLocalizedFeeds();
     return () => { cancelled = true; };
-  }, [api, i18n.language, loading, project?.id]);
+  }, [api, i18n.language, loading, project?.id, canRssFeeds]);
 
   const openContentDetail = (c) => setSelectedContent(c);
   const handleContentUpdate = (updated) => setContents(prev => prev.map(c => c.id === updated.id ? updated : c));
@@ -229,6 +241,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   };
 
   const feedToPost = async (item) => {
+    if (!canRssFeeds) return;
     setFeedLoading(true);
     const tid = toast.loading(t('project.content.feedGenerating'));
     try {
@@ -389,6 +402,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   };
 
   const refreshFeeds = async () => {
+    if (!canRssFeeds) return;
     setRefreshingFeeds(true);
     const tid = toast.loading(t('project.feeds.refreshLoading'));
     try {
@@ -407,6 +421,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   };
 
   const refreshAiSuggestions = async () => {
+    if (!canRssFeeds) return;
     setRefreshingAi(true);
     const tid = toast.loading(t('project.feeds.aiLoading'));
     try {
@@ -690,48 +705,66 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             {tab === 'feeds' && (
               <div className="pt-2 space-y-6">
                 {/* News & Reddit */}
-                <div>
+                <div className="relative">
+                  {!canRssFeeds && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+                      <div className="rounded-full border border-[var(--gradient-start)]/40 bg-[rgba(8,10,18,0.88)] px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm">
+                        {t('project.feeds.proOnly')}
+                      </div>
+                    </div>
+                  )}
+                  <div className={!canRssFeeds ? 'opacity-40 pointer-events-none select-none' : ''}>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold flex items-center gap-2"><RssSimple size={16} /> {t('project.feeds.newsReddit')} — {project.sector}</p>
-                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingFeeds} onClick={refreshFeeds}>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={!canRssFeeds || refreshingFeeds} onClick={refreshFeeds}>
                       <ArrowClockwise size={12} className={refreshingFeeds ? 'animate-spin' : ''} /> {refreshingFeeds ? '...' : t('project.feeds.refresh')}
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {feedItems.slice(0, 8).map(item => (
-                      <div key={item.id} className="card cursor-pointer hover:border-[var(--gradient-start)] transition-colors relative" onClick={() => setSelectedFeedItem({ ...item, _type: 'rss' })}>
-                        {pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
-                        <p className="text-sm font-medium mb-1 pr-5">{item.title}</p>
-                        <p className="text-xs text-[var(--text-muted)]">{item.feed_name}</p>
+                    {(canRssFeeds ? feedItems.slice(0, 8) : lockedFeedPlaceholders).map(item => (
+                      <div key={item.id || `rss-placeholder-${item}`} className="card cursor-pointer hover:border-[var(--gradient-start)] transition-colors relative" onClick={() => canRssFeeds && setSelectedFeedItem({ ...item, _type: 'rss' })}>
+                        {canRssFeeds && pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
+                        <p className="text-sm font-medium mb-1 pr-5">{canRssFeeds ? item.title : t('project.feeds.lockedTitle')}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{canRssFeeds ? item.feed_name : t('project.feeds.lockedSubtitle')}</p>
                       </div>
                     ))}
-                    {feedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">{t('project.feeds.noFeeds')}</p>}
+                    {canRssFeeds && feedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">{t('project.feeds.noFeeds')}</p>}
+                  </div>
                   </div>
                 </div>
                 {/* AI Suggestions */}
-                <div>
+                <div className="relative">
+                  {!canRssFeeds && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+                      <div className="rounded-full border border-[var(--gradient-start)]/40 bg-[rgba(8,10,18,0.88)] px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm">
+                        {t('project.feeds.proOnly')}
+                      </div>
+                    </div>
+                  )}
+                  <div className={!canRssFeeds ? 'opacity-40 pointer-events-none select-none' : ''}>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold flex items-center gap-2"><Sparkle size={16} weight="fill" /> {t('project.feeds.aiSuggestions')} — {project.sector}</p>
-                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={refreshingAi} onClick={refreshAiSuggestions}>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1" disabled={!canRssFeeds || refreshingAi} onClick={refreshAiSuggestions}>
                       <ArrowClockwise size={12} className={refreshingAi ? 'animate-spin' : ''} /> {refreshingAi ? '...' : t('editor.regenerate')}
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {aiFeedItems.map(item => (
-                      <div key={item.id} className="card cursor-pointer hover:border-[var(--accent-purple)] transition-colors relative"
+                    {(canRssFeeds ? aiFeedItems : lockedFeedPlaceholders).map(item => (
+                      <div key={item.id || `ai-placeholder-${item}`} className="card cursor-pointer hover:border-[var(--accent-purple)] transition-colors relative"
                         style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(236,72,153,0.08) 100%)', border: '1px solid rgba(99,102,241,0.15)' }}
-                        onClick={() => setSelectedFeedItem({ ...item, _type: 'ai' })}>
-                        {pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
+                        onClick={() => canRssFeeds && setSelectedFeedItem({ ...item, _type: 'ai' })}>
+                        {canRssFeeds && pinnedItemIds.has(item.id) && <span className="absolute top-2 right-2 text-[10px]">📌</span>}
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className={`w-2 h-2 rounded-full ${item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
-                          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase">{item.format ? t(`format.${item.format}`) : t('format.reel')}</span>
-                          {item.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
+                          <span className={`w-2 h-2 rounded-full ${canRssFeeds && item.format === 'reel' ? 'bg-[var(--accent-pink)]' : 'bg-[var(--gradient-start)]'}`} />
+                          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase">{canRssFeeds && item.format ? t(`format.${item.format}`) : t('format.reel')}</span>
+                          {canRssFeeds && item.trend_tag && <span className="text-[10px] text-[var(--accent-purple)]">#{item.trend_tag}</span>}
                         </div>
-                        <p className="text-sm font-medium mb-1 pr-5">{item.title}</p>
-                        <p className="text-xs text-[var(--text-muted)]">{item.summary}</p>
+                        <p className="text-sm font-medium mb-1 pr-5">{canRssFeeds ? item.title : t('project.feeds.lockedAiTitle')}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{canRssFeeds ? item.summary : t('project.feeds.lockedAiSubtitle')}</p>
                       </div>
                     ))}
-                    {aiFeedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">{t('project.feeds.aiEmpty')}</p>}
+                    {canRssFeeds && aiFeedItems.length === 0 && <p className="text-sm text-[var(--text-muted)]">{t('project.feeds.aiEmpty')}</p>}
+                  </div>
                   </div>
                 </div>
               </div>
@@ -749,6 +782,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
             refreshFeeds={refreshFeeds}
             refreshAiSuggestions={refreshAiSuggestions}
             setSelectedFeedItem={setSelectedFeedItem}
+            canRssFeeds={canRssFeeds}
             t={t}
           />
         </div>

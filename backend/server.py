@@ -3840,6 +3840,7 @@ class FeedGenerateInput(BaseModel):
 @api.post("/feeds/bootstrap/{project_id}")
 async def bootstrap_project_feeds(project_id: str, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
@@ -3894,6 +3895,7 @@ async def bootstrap_project_feeds(project_id: str, request: Request):
 @api.post("/feeds/add")
 async def add_feed(inp: FeedAddInput, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     doc = {
         "id": str(uuid.uuid4()),
         "project_id": inp.project_id,
@@ -3908,13 +3910,15 @@ async def add_feed(inp: FeedAddInput, request: Request):
 
 @api.get("/feeds/{project_id}")
 async def list_feeds(project_id: str, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
     return feeds
 
 @api.delete("/feeds/{feed_id}")
 async def delete_feed(feed_id: str, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     await db.feeds.delete_one({"id": feed_id})
     await db.feed_cache.delete_many({"feed_id": feed_id})
     return {"ok": True}
@@ -3922,6 +3926,7 @@ async def delete_feed(feed_id: str, request: Request):
 @api.get("/feeds/{project_id}/items")
 async def get_feed_items(project_id: str, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"_id": 0})
     feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
     all_items = []
@@ -3965,7 +3970,8 @@ async def get_feed_items(project_id: str, request: Request):
 
 @api.post("/feeds/refresh/{project_id}")
 async def refresh_feeds(project_id: str, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     feeds = await db.feeds.find({"project_id": project_id}, {"_id": 0}).to_list(20)
     for feed in feeds:
         await db.feed_cache.delete_many({"feed_id": feed["id"]})
@@ -3980,6 +3986,7 @@ class PinItemInput(BaseModel):
 @api.post("/feeds/items/{item_id}/pin")
 async def pin_feed_item(item_id: str, inp: PinItemInput, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     existing = await db.pinned_feed_items.find_one({"item_id": item_id, "user_id": user["_id"]})
     if existing:
         await db.pinned_feed_items.delete_one({"item_id": item_id, "user_id": user["_id"]})
@@ -3999,6 +4006,7 @@ async def pin_feed_item(item_id: str, inp: PinItemInput, request: Request):
 @api.get("/feeds/{project_id}/pinned")
 async def get_pinned_items(project_id: str, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     items = await db.pinned_feed_items.find(
         {"project_id": project_id, "user_id": user["_id"]}, {"_id": 0}
     ).to_list(50)
@@ -4007,6 +4015,7 @@ async def get_pinned_items(project_id: str, request: Request):
 @api.post("/feeds/generate-content")
 async def generate_content_from_feed(inp: FeedGenerateInput, request: Request):
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     project = await db.projects.find_one({"_id": ObjectId(inp.project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
@@ -4073,6 +4082,7 @@ Return JSON with: hook_text, script, caption, hashtags, format ("reel" or "carou
 async def get_ai_feed_suggestions(project_id: str, request: Request):
     """Generate 5 AI-powered content suggestions based on the project theme/sector."""
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]})
     if not project:
         raise HTTPException(404, "Progetto non trovato")
@@ -4149,6 +4159,7 @@ Return a JSON array of 5 objects with:
 async def refresh_ai_feed_suggestions(project_id: str, request: Request):
     """Force refresh AI feed suggestions, keeping pinned items."""
     user = await get_current_user(request)
+    await check_plan_limit(user, "rss_feeds")
     project = await db.projects.find_one({"_id": ObjectId(project_id), "user_id": user["_id"]}, {"_id": 0})
     language = get_feed_content_language(project, request)
     cache_key = f"ai_feed_v2_{project_id}_{language}"
@@ -5746,13 +5757,13 @@ async def get_plans(request: Request):
 ADMIN_EMAILS = {"osmel@osmelfabre.it", "osmel.fabre@gmail.com"}
 
 PLAN_LIMITS = {
-    "free":       {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
-    "trial":      {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": True,  "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
-    "pro":        {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "max_duration_weeks": 1},
-    "creator":    {"max_projects": 3, "max_contents_per_project": 50,  "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": False, "max_duration_weeks": 4},
-    "strategist": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
-    "custom":     {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
-    "admin":      {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "max_duration_weeks": 52},
+    "free":       {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "can_rss_feeds": False, "max_duration_weeks": 1},
+    "trial":      {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": True,  "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "can_rss_feeds": False, "max_duration_weeks": 1},
+    "pro":        {"max_projects": 1, "max_contents_per_project": 7,   "can_publish": False, "can_export_csv": False, "max_socials": 1,    "can_analytics": False, "can_rss_feeds": False, "max_duration_weeks": 1},
+    "creator":    {"max_projects": 3, "max_contents_per_project": 50,  "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": False, "can_rss_feeds": False, "max_duration_weeks": 4},
+    "strategist": {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True,  "can_export_csv": True,  "max_socials": 999,  "can_analytics": True,  "can_rss_feeds": True,  "max_duration_weeks": 52},
+    "custom":     {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "can_rss_feeds": True,  "max_duration_weeks": 52},
+    "admin":      {"max_projects": 999, "max_contents_per_project": 999, "can_publish": True, "can_export_csv": True, "max_socials": 999,  "can_analytics": True,  "can_rss_feeds": True,  "max_duration_weeks": 52},
 }
 
 async def check_plan_limit(user: dict, resource: str, project_id: str = None):
@@ -5783,6 +5794,9 @@ async def check_plan_limit(user: dict, resource: str, project_id: str = None):
     elif resource == "analytics":
         if not limits["can_analytics"]:
             raise HTTPException(403, "Gli analytics avanzati sono disponibili solo per il piano Strategist o superiore.")
+    elif resource == "rss_feeds":
+        if not limits["can_rss_feeds"]:
+            raise HTTPException(403, "I feed RSS sono disponibili solo con il piano Pro.")
     return limits
 
 @api.get("/plan/limits")
