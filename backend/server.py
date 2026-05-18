@@ -998,7 +998,7 @@ async def parse_instructions_file(file: UploadFile = File(...), request: Request
         raise
     except Exception as e:
         raise HTTPException(500, f"Errore lettura file: {str(e)}")
-    return {"text": text[:12000]}
+    return {"text": text[:MAX_INSTRUCTIONS_FILE_CHARS]}
 
 @api.get("/projects/{project_id}")
 async def get_project(project_id: str, request: Request):
@@ -1155,6 +1155,19 @@ def coerce_str(val) -> str:
 
 def compact_text(value) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+MAX_INSTRUCTIONS_FILE_CHARS = int(os.environ.get("MAX_INSTRUCTIONS_FILE_CHARS", "100000"))
+MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS = int(os.environ.get("MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS", "6000"))
+MAX_BRIEF_NOTES_PROMPT_CHARS = int(os.environ.get("MAX_BRIEF_NOTES_PROMPT_CHARS", "2500"))
+
+
+def truncate_text_for_prompt(value: str, max_len: int) -> str:
+    text = compact_text(value or "")
+    if len(text) <= max_len:
+        return text
+    cut = text[: max_len - 1].rsplit(" ", 1)[0].strip()
+    return f"{cut or text[: max_len - 1]}…"
 
 
 FEED_KEYWORD_STOPWORDS = {
@@ -1687,9 +1700,15 @@ def filter_and_rank_feed_items(items: List[dict], project: Optional[dict]) -> Li
     return scored[:18]
 
 def build_tov_summary(project: dict, tov: Optional[dict]) -> str:
-    project_instructions = compact_text(project.get("custom_instructions", ""))
+    project_instructions = truncate_text_for_prompt(
+        project.get("custom_instructions", ""),
+        MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS,
+    )
     if tov:
-        tov_instructions = compact_text(tov.get("custom_instructions", ""))
+        tov_instructions = truncate_text_for_prompt(
+            tov.get("custom_instructions", ""),
+            MAX_PROJECT_INSTRUCTIONS_PROMPT_CHARS // 2,
+        )
         combined = " ".join(filter(None, [project_instructions, tov_instructions]))
         tone_bits = [
             f"formalita {tov.get('formality', 5)}/10",
@@ -1739,7 +1758,10 @@ def build_project_context(project: dict, personas: Optional[List[dict]] = None, 
     if personas:
         persona_summary = [f"{p.get('name') or p.get('role', '')} - {p.get('role', '')}".strip(" -") for p in personas]
         context_lines.append(f"Personas: {json.dumps(persona_summary, ensure_ascii=False)}")
-    brief_notes = compact_text(project.get("brief_notes", ""))
+    brief_notes = truncate_text_for_prompt(
+        project.get("brief_notes", ""),
+        MAX_BRIEF_NOTES_PROMPT_CHARS,
+    )
     if brief_notes:
         context_lines.append(f"Note strategiche dal brief: {brief_notes}")
     tov_summary = build_tov_summary(project, tov)
