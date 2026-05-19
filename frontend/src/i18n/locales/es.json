@@ -335,6 +335,7 @@
     "composition": "Encuadre",
     "today": "Hoy",
     "selectDate": "Selecciona una fecha",
+    "scheduleOverlapWarning": "Recordatorio: ya tienes {{count}} contenido(s) programado(s) en esta fecha.",
     "suggestBestTime": "Sugerir mejor horario",
     "bestTimeApplied": "Horario sugerido aplicado",
     "customizeTimePerSocial": "Personaliza la hora para cada cuenta social",

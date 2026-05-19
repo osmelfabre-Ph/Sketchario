@@ -335,6 +335,7 @@
     "composition": "Cadrage",
     "today": "Aujourd'hui",
     "selectDate": "Sélectionnez une date",
+    "scheduleOverlapWarning": "Rappel : vous avez déjà {{count}} contenu(s) planifié(s) à cette date.",
     "suggestBestTime": "Suggérer le meilleur horaire",
     "bestTimeApplied": "Horaire suggéré appliqué",
     "customizeTimePerSocial": "Personnaliser l'heure pour chaque compte social",

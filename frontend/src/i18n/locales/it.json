@@ -335,6 +335,7 @@
     "composition": "Inquadratura",
     "today": "Oggi",
     "selectDate": "Seleziona una data",
+    "scheduleOverlapWarning": "Promemoria: in questa data hai gia {{count}} contenuto/i programmato/i.",
     "suggestBestTime": "Suggerisci orario migliore",
     "bestTimeApplied": "Orario suggerito applicato",
     "customizeTimePerSocial": "Personalizza l'orario per ogni account social",

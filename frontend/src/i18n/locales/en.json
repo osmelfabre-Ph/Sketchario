@@ -335,6 +335,7 @@
     "composition": "Composition",
     "today": "Today",
     "selectDate": "Select a date",
+    "scheduleOverlapWarning": "Reminder: you already have {{count}} scheduled content item(s) on this date.",
     "suggestBestTime": "Suggest best time",
     "bestTimeApplied": "Suggested time applied",
     "customizeTimePerSocial": "Customize the time for each social account",

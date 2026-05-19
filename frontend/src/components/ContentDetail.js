@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -135,6 +135,12 @@ function isSameCalendarDay(dateLike, reference) {
     && date.getMonth() === reference.getMonth()
     && date.getDate() === reference.getDate()
   );
+}
+
+function localDateKey(dateLike) {
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function timeToMinutes(time) {
@@ -416,6 +422,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
   const [scheduling, setScheduling] = useState(false);
   const [cancellingSchedule, setCancellingSchedule] = useState(false);
   const [contentQueueItems, setContentQueueItems] = useState([]);
+  const [projectQueueItems, setProjectQueueItems] = useState([]);
   const [customPerSocial, setCustomPerSocial] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -441,6 +448,28 @@ export default function ContentDetail({ content: initialContent, project, onClos
   );
   const adminCarouselSlidesCount = Math.min(8, Math.max(4, carouselSlides.length || 8));
   const [dragMediaId, setDragMediaId] = useState(null);
+
+  const scheduledDateIndicators = useMemo(() => {
+    const indicators = {};
+    (projectQueueItems || []).forEach(item => {
+      if (!item.scheduled_at || !['queued', 'processing'].includes(String(item.status || ''))) return;
+      const key = localDateKey(item.scheduled_at);
+      if (!key) return;
+      if (!indicators[key]) {
+        indicators[key] = { contentIds: new Set(), otherContentIds: new Set(), platforms: new Set() };
+      }
+      if (item.content_id) {
+        indicators[key].contentIds.add(item.content_id);
+        if (item.content_id !== content.id) indicators[key].otherContentIds.add(item.content_id);
+      }
+      if (item.platform) indicators[key].platforms.add(item.platform);
+    });
+    return indicators;
+  }, [projectQueueItems, content.id]);
+
+  const selectedDateOverlapCount = scheduleDate
+    ? (scheduledDateIndicators[scheduleDate]?.otherContentIds?.size || 0)
+    : 0;
 
   const syncQueueState = useCallback((queueData, effectiveStatus = content.status) => {
     const items = (queueData || []).filter(q =>
@@ -489,7 +518,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
     api.get('/social/profiles').then(r => setSocialProfiles((r.data || []).filter(p => p.platform !== 'google_slides'))).catch(() => {});
     api.get(`/social/project/${project.id}`).then(r => setProjectSocials(r.data)).catch(() => {});
     api.get('/canva/status').then(r => setCanvaConnected(r.data.connected)).catch(() => {});
-    api.get(`/publish/queue/${project.id}`).then(r => syncQueueState(r.data, initialContent.status)).catch(() => {});
+    api.get(`/publish/queue/${project.id}`).then(r => {
+      setProjectQueueItems(r.data || []);
+      syncQueueState(r.data, initialContent.status);
+    }).catch(() => {});
   }, [api, project.id, initialContent.id, initialContent.status, syncQueueState]);
 
   useEffect(() => {
@@ -502,6 +534,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
           api.get(`/contents/${project.id}`),
         ]);
 
+        setProjectQueueItems(queueData || []);
         const queueItems = (queueData || []).filter(q => q.content_id === content.id);
 
         const latestContent = (contentsData || []).find(c => c.id === content.id);
@@ -528,6 +561,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
       const times = {};
       selectedSocials.forEach(id => { times[id] = socialTimes[id] || scheduleTime; });
       setSocialTimes(times);
+      api.get(`/publish/queue/${project.id}`).then(r => {
+        setProjectQueueItems(r.data || []);
+        syncQueueState(r.data, content.status);
+      }).catch(() => {});
     }
   }, [showSchedule]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1651,6 +1688,8 @@ export default function ContentDetail({ content: initialContent, project, onClos
                   const isSelected = scheduleDate === iso;
                   const isToday = cell.isCurrent && cell.day === todayD.getDate() && cell.month === todayD.getMonth() && cell.year === todayD.getFullYear();
                   const isPast = cell.isCurrent && new Date(cell.year, cell.month, cell.day) < new Date(todayD.getFullYear(), todayD.getMonth(), todayD.getDate());
+                  const dayIndicator = scheduledDateIndicators[iso];
+                  const indicatorPlatforms = dayIndicator ? Array.from(dayIndicator.platforms).slice(0, 4) : [];
                   const TEAL = '#14b8a6';
                   return (
                     <button key={i} onClick={() => !cell.isPrev && setScheduleDate(iso)}
@@ -1667,11 +1706,33 @@ export default function ContentDetail({ content: initialContent, project, onClos
                       }}>
                         {cell.day}
                       </div>
+                      <div className="h-2 mt-0.5 flex items-center justify-center gap-0.5">
+                        {indicatorPlatforms.map(platform => (
+                          <span
+                            key={platform}
+                            className="w-1.5 h-1.5 rounded-full"
+                            title={PLATFORM_ICONS[platform]?.name || platform}
+                            style={{
+                              background: PLATFORM_ICONS[platform]?.color || '#f97316',
+                              boxShadow: isSelected ? '0 0 0 1px rgba(255,255,255,0.35)' : 'none',
+                            }}
+                          />
+                        ))}
+                        {dayIndicator && indicatorPlatforms.length === 0 && (
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#f97316' }} />
+                        )}
+                      </div>
                     </button>
                   );
                 })}
               </div>
             </div>
+
+            {selectedDateOverlapCount > 0 && (
+              <div className="rounded-xl mb-4 px-3 py-2 text-xs leading-relaxed" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.28)', color: '#fbbf24' }}>
+                {t('editor.scheduleOverlapWarning', { count: selectedDateOverlapCount })}
+              </div>
+            )}
 
             {/* Time section */}
             {!customPerSocial ? (
