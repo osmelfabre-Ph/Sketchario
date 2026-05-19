@@ -447,6 +447,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
     user?.role === 'admin' || ['osmel@osmelfabre.it', 'osmel.fabre@gmail.com'].includes((user?.email || '').toLowerCase())
   );
   const adminCarouselSlidesCount = Math.min(8, Math.max(4, carouselSlides.length || 8));
+  const carouselPlan = String(user?.plan || 'free').toLowerCase();
+  const hasPremiumCarouselRender = isAdminCarouselTemplateActive || ['strategist', 'custom', 'admin'].includes(carouselPlan);
+  const enforcedCarouselModel = hasPremiumCarouselRender ? 'openai' : 'flux';
   const [dragMediaId, setDragMediaId] = useState(null);
 
   const scheduledDateIndicators = useMemo(() => {
@@ -575,10 +578,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
   }, [isAdminCarouselTemplateActive, carouselStylePreset]);
 
   useEffect(() => {
-    if (isAdminCarouselTemplateActive && imageModel !== 'openai') {
-      setImageModel('openai');
+    if (imageModel !== enforcedCarouselModel) {
+      setImageModel(enforcedCarouselModel);
     }
-  }, [isAdminCarouselTemplateActive, imageModel]);
+  }, [enforcedCarouselModel, imageModel]);
 
   const reorderContentMedia = useCallback(async (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
@@ -1545,9 +1548,12 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 <div>
                   <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
                   <div className="flex gap-2 flex-wrap">
-                    <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'openai' ? 'active' : ''}`} onClick={() => setImageModel('openai')}>◎ OpenAI</button>
-                    <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'flux' ? 'active' : ''}`} onClick={() => setImageModel('flux')}>⚡ FLUX</button>
-                    <button className={`preset-btn text-xs py-1 px-3 ${imageModel === 'gemini' ? 'active' : ''}`} onClick={() => setImageModel('gemini')}>🍌 Nano Banana</button>
+                    <button className="preset-btn text-xs py-1 px-3 active" type="button" disabled>
+                      {hasPremiumCarouselRender ? '◎ OpenAI GPT Image' : '⚡ FLUX'}
+                    </button>
+                    <span className="text-[10px] text-[var(--text-muted)] self-center">
+                      {hasPremiumCarouselRender ? 'Strategist / Pro render' : 'Creator render'}
+                    </span>
                   </div>
                 </div>
                 <div>
@@ -1610,7 +1616,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 const { data } = await api.post('/media/generate-carousel-slides', {
                   content_id: content.id,
                   project_id: project.id,
-                  model: isAdminCarouselTemplateActive ? 'openai' : imageModel,
+                  model: enforcedCarouselModel,
                   style: isAdminCarouselTemplateActive ? 'admin_template' : carouselStylePreset,
                   slides_count: isAdminCarouselTemplateActive ? adminCarouselSlidesCount : carouselSlidesCount,
                 });

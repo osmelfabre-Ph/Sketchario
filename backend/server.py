@@ -4820,6 +4820,21 @@ CAROUSEL_VISUAL_STYLES = {
 
 CAROUSEL_CANVAS_SIZE = (1080, 1350)
 OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1.5")
+CAROUSEL_OPENAI_PLANS = {"strategist", "custom", "admin"}
+
+async def _effective_carousel_plan(user: dict) -> str:
+    if user.get("role") == "admin" or user.get("email", "") in ADMIN_EMAILS:
+        return "admin"
+    plan = coerce_str(user.get("plan", "free")).lower() or "free"
+    pu = await db.power_users.find_one({"email": user.get("email", ""), "active": True})
+    if pu:
+        exp = pu.get("expires_at", "")
+        if exp and datetime.now(timezone.utc) < datetime.fromisoformat(exp):
+            plan = coerce_str(pu.get("plan", plan)).lower() or plan
+    return plan
+
+def _select_carousel_image_model(plan: str) -> str:
+    return "openai" if coerce_str(plan).lower() in CAROUSEL_OPENAI_PLANS else "flux"
 
 def _load_font_with_fallback(candidates: list[str], size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for candidate in candidates:
@@ -5305,19 +5320,19 @@ def _build_carousel_slide_prompt(
         mode = _classify_admin_slide_mode(slide_text, index, total_slides)
         if mode == "cover":
             phase_instruction = (
-                "This is the cover slide. Create a powerful monochrome portrait-led composition with one dominant male subject, elegant empty space for a large lower headline, and a premium fine-art photographer identity."
+                "This is the cover slide. Create a powerful monochrome portrait-led composition with one dominant male subject, elegant empty space, and a very large readable lower headline."
             )
         elif mode == "book_cta":
             phase_instruction = (
-                "This is the closing book-promo slide. Create a refined premium composition with a realistic standing black book mockup on the right, photographed on a dark surface, and clean elegant negative space on the left for CTA text. The book should feel like a real luxury publication, not a floating fake object."
+                "This is the closing book-promo slide. Create a refined premium composition with a realistic standing black book mockup on the right, photographed on a dark surface, and clean elegant text on the left. The book should feel like a real luxury publication, not a floating fake object."
             )
         elif mode == "image":
             phase_instruction = (
-                "This is an internal image-led teaching slide. Compose a fine-art editorial photograph with strong subject presence on the right or right-center and clean typography space on the left."
+                "This is an internal image-led teaching slide. Compose a fine-art editorial photograph with strong subject presence on the right or right-center and large readable typography on the left."
             )
         else:
             phase_instruction = (
-                "This is an internal text-led editorial slide. Create a very restrained dark background with subtle texture and almost no subject emphasis, leaving the composition mostly open for a typographic editorial layout."
+                "This is an internal text-led editorial slide. Create a very restrained dark background with subtle texture, mostly open composition, and a large readable typographic editorial layout."
             )
         return (
             "Each slide must be generated as one single separate image.\n"
@@ -5328,18 +5343,18 @@ def _build_carousel_slide_prompt(
             "Create a luxury editorial Instagram carousel slide in Italian, intended for a final 4:5 vertical canvas.\n"
             "Visual style: luxury editorial photography, fine art portrait, high-end black and white aesthetic, deep black background, dark charcoal tones, cinematic low key lighting, dramatic chiaroscuro, soft directional light, elegant shadows, refined contrast, premium magazine layout.\n"
             "Palette: deep black, charcoal gray, pure white, very small muted gold accents only if necessary. No bright colors. No noisy modern effects. No social-pop look.\n"
-            "Typography direction to support later overlay: elegant serif headline area, editorial hierarchy, airy vertical layout, lots of negative space, and refined left-column structure. Small numbering in the top-left area with a thin underline and tiny gold ornament should feel naturally supported by the composition.\n"
-            "Reference type hierarchy: headline like Didot / refined fashion serif, body like a modern clean sans-serif, but do not render actual readable text inside the image.\n"
+            "Typography: render the final text directly inside the image. Use elegant high-fashion serif headlines similar to Didot / Schnyder Condensed, refined body typography, strong hierarchy, airy vertical layout, lots of negative space, and a refined left-column structure. Include small slide numbering in the top-left area with a thin underline and tiny muted-gold ornament when appropriate.\n"
             "Subjects: when a person is present, it should be an elegant, introspective subject, photographed like a real fine-art portrait. Avoid cheesy stock-photo expressions and avoid generic influencer styling.\n"
             "Composition: the final result should feel like a luxury fine-art photographer's carousel, with a controlled hybrid of typographic restraint and photographic depth, never like a generic Canva graphic.\n"
             f"Context: {project_hint or 'luxury portrait creator brand'}.\n"
             f"Slide {index} of {total_slides}. {phase_instruction}\n"
-            f"Overlay text that will be placed later:\n{slide_text}\n\n"
+            f"Text to render exactly on this slide, in clear correct Italian:\n{slide_text}\n\n"
             "Important requirements:\n"
-            "- create one single finished slide background, not a collage, not a mockup sheet, not multiple slides in one image\n"
+            "- create one single finished slide, not just a background, not a collage, not a mockup sheet, not multiple slides in one image\n"
             "- preserve this visual identity consistently across the set\n"
-            "- reserve a large clean area for typography overlay\n"
-            "- do NOT render any readable words, fake letters, numbers, signatures, logos or button labels inside the image itself\n"
+            "- text must be large enough to read on mobile; never shrink the main message into tiny text\n"
+            "- keep the Italian wording faithful and do not invent extra paragraphs\n"
+            "- if the copy is long, simplify the layout with fewer blocks and more negative space instead of reducing font size too much\n"
             "- do NOT include watermarks, UI chrome, devices or multiple panels\n"
         )
     style_block = CAROUSEL_VISUAL_STYLES[style_id]["prompt"]
@@ -5351,9 +5366,11 @@ def _build_carousel_slide_prompt(
         f"Text to render on the slide:\n{slide_text}\n\n"
         f"Requirements:\n"
         f"- one single slide, not a collage\n"
-        f"- precise text rendering, keep the wording faithful\n"
-        f"- strong editorial hierarchy with readable title and body\n"
+        f"- render the final text directly inside the image; do not leave space for later overlay\n"
+        f"- precise text rendering, keep the wording faithful and readable in Italian\n"
+        f"- strong editorial hierarchy with large readable title and body\n"
         f"- mobile-friendly spacing and margins\n"
+        f"- if the copy is long, prioritize fewer larger text blocks instead of tiny unreadable paragraphs\n"
         f"- no watermarks, no UI chrome, no device mockups\n"
         f"- polished social design suitable for a professional carousel"
     )
@@ -5369,24 +5386,6 @@ async def _generate_carousel_slide_media(
     semaphore: asyncio.Semaphore,
 ) -> tuple[int, dict]:
     mode = _classify_admin_slide_mode(slide_text, index, total_slides) if style_id == "admin_template" else "generic"
-    if style_id == "admin_template" and mode == "text":
-        image_bytes = _render_admin_text_slide(slide_text, index, total_slides)
-        media_doc = await _save_generated_media(
-            content_id,
-            image_bytes,
-            "jpg",
-            "Sketchario Admin Layout",
-            f"Carousel slide {index} - text layout",
-            {
-                "source_model": "layout",
-                "carousel_slide_index": index,
-                "carousel_style": style_id,
-                "carousel_mode": mode,
-                "generated_for_content": "carousel",
-            }
-        )
-        return index, media_doc
-
     prompt = _build_carousel_slide_prompt(slide_text, index, total_slides, style_id, project_hint)
     async with semaphore:
         try:
@@ -5396,9 +5395,6 @@ async def _generate_carousel_slide_media(
                 size="1024x1536",
                 quality="high" if style_id == "admin_template" else "medium",
             )
-            if style_id == "admin_template":
-                image_bytes = _apply_admin_carousel_overlay(image_bytes, slide_text, index, total_slides)
-                ext = "jpg"
             media_doc = await _save_generated_media(
                 content_id,
                 image_bytes,
@@ -5407,9 +5403,11 @@ async def _generate_carousel_slide_media(
                 f"Carousel slide {index} - {CAROUSEL_VISUAL_STYLES[style_id]['label']}",
                 {
                     "source_model": model,
+                    "source_prompt": prompt[:4000],
                     "carousel_slide_index": index,
                     "carousel_style": style_id,
                     "carousel_mode": mode,
+                    "carousel_render_mode": "provider_composed",
                     "generated_for_content": "carousel",
                 }
             )
@@ -5465,9 +5463,13 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
         if not slides:
             raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
 
+        effective_plan = await _effective_carousel_plan(user)
+        selected_model = _select_carousel_image_model(effective_plan)
+        requested_model = inp.model
+        inp.model = selected_model
+
         if user.get("role") == "admin":
             style_id = "admin_template"
-            inp.model = "openai"
         else:
             style_id = inp.style if inp.style in CAROUSEL_VISUAL_STYLES else "elegant"
         total_slides = max(4, min(int(inp.slides_count or 6), min(len(slides), 7)))
@@ -5486,6 +5488,15 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
             total_slides,
             user.get("email", ""),
         )
+        if requested_model != inp.model:
+            logger.info(
+                "Carousel image model overridden by plan content=%s requested=%s selected=%s plan=%s user=%s",
+                inp.content_id,
+                requested_model,
+                inp.model,
+                effective_plan,
+                user.get("email", ""),
+            )
 
         max_parallel = 2 if inp.model in {"openai", "flux"} else 1
         semaphore = asyncio.Semaphore(max_parallel)
@@ -5511,7 +5522,7 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
             inp.model,
             len(created_media),
         )
-        return {"items": created_media, "count": len(created_media), "style": style_id, "model": inp.model}
+        return {"items": created_media, "count": len(created_media), "style": style_id, "model": inp.model, "plan": effective_plan}
     except HTTPException:
         raise
     except Exception as e:
