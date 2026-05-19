@@ -4878,14 +4878,35 @@ def _fit_wrapped_text(
     return best if best is not None else (_load_font_with_fallback(font_candidates, min_size), [text], max_height)
 
 def _paragraphize_slide_text(text: str) -> list[str]:
-    raw = coerce_str(text or "").replace("\r", "\n")
+    raw = coerce_str(text or "")
+    raw = re.sub(r"(?i)<br\s*/?>", "\n", raw)
+    raw = _strip_html(raw).replace("\r", "\n")
     parts = [p.strip() for p in re.split(r"\n{2,}", raw) if p.strip()]
     if parts:
         return parts
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", raw) if s.strip()]
-    if len(sentences) >= 3:
+    if len(sentences) >= 2:
         return sentences
     return [raw.strip()] if raw.strip() else []
+
+def _split_admin_slide_copy(slide_text: str) -> tuple[str, list[str], str]:
+    """Create a predictable title/body/callout split for readable admin carousel overlays."""
+    paragraphs = _paragraphize_slide_text(slide_text)
+    if not paragraphs:
+        return "", [], ""
+
+    title = paragraphs[0]
+    body_parts = paragraphs[1:]
+    if len(paragraphs) == 1:
+        words = title.split()
+        if len(words) > 14:
+            title = " ".join(words[:12]).strip()
+            body_parts = [" ".join(words[12:]).strip()]
+
+    callout = ""
+    if len(body_parts) >= 2 and len(body_parts[-1]) <= 86:
+        callout = body_parts.pop()
+    return title, [part for part in body_parts if part], callout
 
 def _classify_admin_slide_mode(slide_text: str, index: int, total_slides: int) -> str:
     if index == 1:
@@ -4955,14 +4976,7 @@ def _render_admin_text_slide(slide_text: str, index: int, total_slides: int) -> 
 
     _draw_admin_ornaments(draw, width, height, index, total_slides, gold, ornament_font)
 
-    paragraphs = _paragraphize_slide_text(slide_text)
-    title = paragraphs[0] if paragraphs else ""
-    callout = ""
-    body_parts = paragraphs[1:] if len(paragraphs) > 1 else []
-    if body_parts and len(body_parts[-1]) <= 90:
-        callout = body_parts.pop()
-    elif title and len(title) <= 90 and len(paragraphs) > 1:
-        callout = paragraphs[-1]
+    title, body_parts, callout = _split_admin_slide_copy(slide_text)
 
     title_font, title_lines, _ = _fit_wrapped_text(
         image,
@@ -5137,12 +5151,7 @@ def _apply_admin_carousel_overlay(
     if index == 1:
         draw.text((100, 150), label, font=label_font, fill=gold)
 
-    paragraphs = _paragraphize_slide_text(slide_text)
-    title = paragraphs[0] if paragraphs else slide_text
-    body_parts = paragraphs[1:] if len(paragraphs) > 1 else []
-    callout = ""
-    if body_parts and len(body_parts[-1]) <= 72:
-        callout = body_parts.pop()
+    title, body_parts, callout = _split_admin_slide_copy(slide_text)
 
     text_area_width = int(width * 0.42)
     title_font, title_lines, _ = _fit_wrapped_text(
@@ -5150,25 +5159,25 @@ def _apply_admin_carousel_overlay(
         title,
         serif_candidates,
         text_area_width,
-        320,
-        start_size=92 if index == 1 else 62,
-        min_size=30,
-        line_spacing=10,
+        430 if mode == "image" else 360,
+        start_size=98 if index == 1 else 86,
+        min_size=48 if mode == "image" else 42,
+        line_spacing=12,
     )
-    current_y = 220 if index == 1 else 240
-    current_y = _draw_text_block(draw, title_lines, title_font, 98, current_y, white, 6)
-    current_y += 18
+    current_y = 560 if index == 1 else (455 if mode == "image" else 245)
+    current_y = _draw_text_block(draw, title_lines, title_font, 98, current_y, white, 8)
+    current_y += 28
 
     for idx_p, paragraph in enumerate(body_parts[:3]):
         font, lines, _ = _fit_wrapped_text(
             base,
             paragraph,
-            sans_candidates,
+            serif_candidates,
             text_area_width,
             220,
-            start_size=36,
-            min_size=26,
-            line_spacing=8,
+            start_size=34,
+            min_size=28,
+            line_spacing=9,
         )
         current_y = _draw_text_block(draw, lines, font, 98, current_y, gold if idx_p == 0 else white, 8)
         current_y += 24
