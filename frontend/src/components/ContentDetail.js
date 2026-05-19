@@ -447,9 +447,9 @@ export default function ContentDetail({ content: initialContent, project, onClos
     user?.role === 'admin' || ['osmel@osmelfabre.it', 'osmel.fabre@gmail.com'].includes((user?.email || '').toLowerCase())
   );
   const adminCarouselSlidesCount = Math.min(8, Math.max(4, carouselSlides.length || 8));
-  const carouselPlan = String(user?.plan || 'free').toLowerCase();
-  const hasPremiumCarouselRender = isAdminCarouselTemplateActive || ['strategist', 'custom', 'admin'].includes(carouselPlan);
-  const enforcedCarouselModel = hasPremiumCarouselRender ? 'openai' : 'flux';
+  const visualPlan = String(user?.plan || 'free').toLowerCase();
+  const hasPremiumVisualRender = isAdminCarouselTemplateActive || ['strategist', 'custom', 'admin'].includes(visualPlan);
+  const enforcedVisualModel = hasPremiumVisualRender ? 'openai' : 'flux';
   const [dragMediaId, setDragMediaId] = useState(null);
 
   const scheduledDateIndicators = useMemo(() => {
@@ -578,10 +578,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
   }, [isAdminCarouselTemplateActive, carouselStylePreset]);
 
   useEffect(() => {
-    if (imageModel !== enforcedCarouselModel) {
-      setImageModel(enforcedCarouselModel);
+    if (imageModel !== enforcedVisualModel) {
+      setImageModel(enforcedVisualModel);
     }
-  }, [enforcedCarouselModel, imageModel]);
+  }, [enforcedVisualModel, imageModel]);
 
   const reorderContentMedia = useCallback(async (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
@@ -1249,7 +1249,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
             setInputModal({ title: t('editor.imagePromptTitle'), placeholder: t('editor.imagePromptPlaceholder'), value: editVisualDirection || editScript || '', multiline: true, isImagePrompt: true,
               onConfirm: async (prompt) => {
                 setGeneratingImage(true);
-                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: 'openai' }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success(t('editor.imageGenerated')); } catch(e) { toast.error(t('editor.imageGenerationError', { message: e.response?.data?.detail || e.message })); }
+                try { const { data } = await api.post('/media/generate-dalle', { content_id: content.id, prompt, project_id: project.id, model: enforcedVisualModel }); const updated = { ...content, media: [...(content.media||[]), data] }; setContent(updated); onUpdate?.(updated); toast.success(t('editor.imageGenerated')); } catch(e) { toast.error(t('editor.imageGenerationError', { message: e.response?.data?.detail || e.message })); }
                 setGeneratingImage(false);
               },
 
@@ -1549,10 +1549,10 @@ export default function ContentDetail({ content: initialContent, project, onClos
                   <p className="text-xs text-[var(--text-muted)] mb-2">{t('editor.engine')}</p>
                   <div className="flex gap-2 flex-wrap">
                     <button className="preset-btn text-xs py-1 px-3 active" type="button" disabled>
-                      {hasPremiumCarouselRender ? '◎ OpenAI GPT Image' : '⚡ FLUX'}
+                      {hasPremiumVisualRender ? '◎ OpenAI GPT Image' : '⚡ FLUX'}
                     </button>
                     <span className="text-[10px] text-[var(--text-muted)] self-center">
-                      {hasPremiumCarouselRender ? 'Strategist / Pro render' : 'Creator render'}
+                      {hasPremiumVisualRender ? 'Strategist / Pro render' : 'Creator render'}
                     </span>
                   </div>
                 </div>
@@ -1616,7 +1616,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
                 const { data } = await api.post('/media/generate-carousel-slides', {
                   content_id: content.id,
                   project_id: project.id,
-                  model: enforcedCarouselModel,
+                  model: enforcedVisualModel,
                   style: isAdminCarouselTemplateActive ? 'admin_template' : carouselStylePreset,
                   slides_count: isAdminCarouselTemplateActive ? adminCarouselSlidesCount : carouselSlidesCount,
                 });

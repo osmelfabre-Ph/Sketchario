@@ -4820,9 +4820,9 @@ CAROUSEL_VISUAL_STYLES = {
 
 CAROUSEL_CANVAS_SIZE = (1080, 1350)
 OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1.5")
-CAROUSEL_OPENAI_PLANS = {"strategist", "custom", "admin"}
+VISUAL_OPENAI_PLANS = {"strategist", "custom", "admin"}
 
-async def _effective_carousel_plan(user: dict) -> str:
+async def _effective_visual_plan(user: dict) -> str:
     if user.get("role") == "admin" or user.get("email", "") in ADMIN_EMAILS:
         return "admin"
     plan = coerce_str(user.get("plan", "free")).lower() or "free"
@@ -4833,8 +4833,8 @@ async def _effective_carousel_plan(user: dict) -> str:
             plan = coerce_str(pu.get("plan", plan)).lower() or plan
     return plan
 
-def _select_carousel_image_model(plan: str) -> str:
-    return "openai" if coerce_str(plan).lower() in CAROUSEL_OPENAI_PLANS else "flux"
+def _select_visual_image_model(plan: str) -> str:
+    return "openai" if coerce_str(plan).lower() in VISUAL_OPENAI_PLANS else "flux"
 
 def _load_font_with_fallback(candidates: list[str], size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for candidate in candidates:
@@ -5421,8 +5421,20 @@ async def _generate_carousel_slide_media(
 
 @api.post("/media/generate-dalle")
 async def generate_dalle(inp: DalleGenerateInput, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
     try:
+        effective_plan = await _effective_visual_plan(user)
+        requested_model = inp.model
+        inp.model = _select_visual_image_model(effective_plan)
+        if requested_model != inp.model:
+            logger.info(
+                "Single image model overridden by plan content=%s requested=%s selected=%s plan=%s user=%s",
+                inp.content_id,
+                requested_model,
+                inp.model,
+                effective_plan,
+                user.get("email", ""),
+            )
         content = await db.contents.find_one({"id": inp.content_id}, {"_id": 0})
         project = None
         if inp.project_id:
@@ -5440,7 +5452,7 @@ async def generate_dalle(inp: DalleGenerateInput, request: Request):
             ext,
             source_label,
             f"{source_label}: {inp.prompt[:50]}",
-            {"source_model": inp.model, "source_prompt": inp.prompt}
+            {"source_model": inp.model, "source_prompt": inp.prompt, "visual_plan": effective_plan}
         )
         return media_doc
     except HTTPException:
@@ -5463,8 +5475,8 @@ async def generate_carousel_slides(inp: CarouselSlidesGenerateInput, request: Re
         if not slides:
             raise HTTPException(400, "Questo contenuto non ha slide testuali da trasformare in carousel visuale.")
 
-        effective_plan = await _effective_carousel_plan(user)
-        selected_model = _select_carousel_image_model(effective_plan)
+        effective_plan = await _effective_visual_plan(user)
+        selected_model = _select_visual_image_model(effective_plan)
         requested_model = inp.model
         inp.model = selected_model
 
