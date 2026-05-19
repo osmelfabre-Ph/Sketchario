@@ -158,13 +158,13 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   }, [api, project?.id, loading, canRssFeeds]);
 
   useEffect(() => {
-    if (!project?.id || loading || !canRssFeeds) return;
+    if (!project?.id || loading) return;
     const interval = setInterval(() => {
       api.get(`/contents/${project.id}`).then(r => setContents(r.data)).catch(() => {});
       api.get(`/publish/queue/${project.id}`).then(r => setQueueItems(r.data)).catch(() => {});
     }, 8000);
     return () => clearInterval(interval);
-  }, [api, project?.id, loading, canRssFeeds]);
+  }, [api, project?.id, loading]);
 
   useEffect(() => {
     if (!project?.id || loading || !canRssFeeds) return;
@@ -181,7 +181,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
   }, [api, project?.id, loading, canRssFeeds]);
 
   useEffect(() => {
-    if (!project?.id || loading) return;
+    if (!project?.id || loading || !canRssFeeds) return;
     const currentLang = (i18n.language || 'it').toLowerCase().split('-', 1)[0];
     if (lastFeedLanguageRef.current === currentLang) return;
     lastFeedLanguageRef.current = currentLang;
@@ -259,6 +259,35 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
     await api.put(`/contents/${dragContent.id}`, { ...dragContent, day_offset: dayOffset });
     setContents(prev => prev.map(c => c.id === dragContent.id ? { ...c, day_offset: dayOffset } : c));
     setDragContent(null);
+  };
+
+  const moveScheduledEvent = async (event, targetDate) => {
+    const movableItems = (event.items || []).filter(item => item.status === 'queued');
+    if (!event?.scheduledAt || movableItems.length === 0) return;
+
+    const nextDate = new Date(targetDate);
+    nextDate.setHours(
+      event.scheduledAt.getHours(),
+      event.scheduledAt.getMinutes(),
+      event.scheduledAt.getSeconds(),
+      event.scheduledAt.getMilliseconds()
+    );
+    const nextIso = nextDate.toISOString();
+    const previousItems = queueItems;
+    setQueueItems(prev => prev.map(item =>
+      movableItems.some(movable => movable.id === item.id)
+        ? { ...item, scheduled_at: nextIso }
+        : item
+    ));
+
+    const tid = toast.loading(t('project.calendar.moving'));
+    try {
+      await Promise.all(movableItems.map(item => api.put(`/publish/queue/${item.id}`, { scheduled_at: nextIso })));
+      toast.success(t('project.calendar.moveSuccess'), { id: tid });
+    } catch (e) {
+      setQueueItems(previousItems);
+      toast.error(t('project.calendar.moveError', { message: e.response?.data?.detail || e.message }), { id: tid });
+    }
   };
 
   const connectSocial = async (platform) => {
@@ -550,6 +579,7 @@ export default function ProjectView({ project, setActiveView, activeTab }) {
                 handleDrop={handleDrop}
                 setDragContent={setDragContent}
                 openContentDetail={openContentDetail}
+                onMoveScheduledEvent={moveScheduledEvent}
               />
             )}
 

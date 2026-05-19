@@ -968,6 +968,19 @@ export default function ContentDetail({ content: initialContent, project, onClos
     setUploadingMedia(false);
   };
 
+  const uploadDroppedMedia = async (files) => {
+    const mediaFiles = Array.from(files || []).filter(file =>
+      file.type?.startsWith('image/') || file.type?.startsWith('video/')
+    );
+    if (mediaFiles.length === 0) {
+      toast.warning(t('editor.uploadMedia'));
+      return;
+    }
+    for (const file of mediaFiles) {
+      await uploadMedia(file);
+    }
+  };
+
   const deleteMedia = async (mediaId) => {
     setDeletingMediaId(mediaId);
     try {
@@ -1070,7 +1083,20 @@ export default function ContentDetail({ content: initialContent, project, onClos
       </div>
       <div className="mb-4">
         <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-2">{t('editor.media')}</p>
-        <label className="block p-4 md:p-6 rounded-lg border border-dashed border-[var(--border-color)] text-center cursor-pointer hover:border-[var(--gradient-start)] transition-colors mb-3" style={uploadingMedia ? { opacity: 0.6, pointerEvents: 'none' } : {}}>
+        <label
+          className="block p-4 md:p-6 rounded-lg border border-dashed border-[var(--border-color)] text-center cursor-pointer hover:border-[var(--gradient-start)] transition-colors mb-3"
+          onDragOver={e => {
+            if (uploadingMedia) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={async e => {
+            e.preventDefault();
+            if (uploadingMedia) return;
+            await uploadDroppedMedia(e.dataTransfer.files);
+          }}
+          style={uploadingMedia ? { opacity: 0.6, pointerEvents: 'none' } : {}}
+        >
           {uploadingMedia ? (
             <>
               <div className="w-5 h-5 border-2 border-[var(--gradient-start)] border-t-transparent rounded-full animate-spin mx-auto mb-1" />
@@ -1082,7 +1108,7 @@ export default function ContentDetail({ content: initialContent, project, onClos
               <p className="text-xs text-[var(--text-muted)] mt-1">{t('editor.uploadMax')}</p>
             </>
           )}
-          <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={uploadingMedia} onChange={async e => { const files = Array.from(e.target.files); e.target.value = ''; for (const f of files) await uploadMedia(f); }} />
+          <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={uploadingMedia} onChange={async e => { const files = Array.from(e.target.files); e.target.value = ''; await uploadDroppedMedia(files); }} />
         </label>
         {generatingImage && (
           <div className="flex items-center gap-3 p-3 rounded-lg mb-3" style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)' }}>

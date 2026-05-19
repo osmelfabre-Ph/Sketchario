@@ -242,6 +242,9 @@
       "day": "Jour",
       "defaultTitle": "Contenu planifié",
       "moreOther": "+{{count}} autres",
+      "moving": "Déplacement de la planification...",
+      "moveSuccess": "Planification déplacée",
+      "moveError": "Erreur de déplacement : {{message}}",
       "empty": "Aucun contenu planifié",
       "emptyDay": "Aucun contenu planifié pour cette journée."
     }

@@ -242,6 +242,9 @@
       "day": "Day",
       "defaultTitle": "Scheduled content",
       "moreOther": "+{{count}} more",
+      "moving": "Moving schedule...",
+      "moveSuccess": "Schedule moved",
+      "moveError": "Move error: {{message}}",
       "empty": "No scheduled content",
       "emptyDay": "No content scheduled on this day."
     }

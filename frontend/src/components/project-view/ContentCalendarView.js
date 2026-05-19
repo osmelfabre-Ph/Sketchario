@@ -79,9 +79,11 @@ function buildCalendarEvents(contents, queueItems, locale, fallbackTitle) {
         title: getEventTitle(content, fallbackTitle),
         platforms: [],
         statuses: [],
+        items: [],
       };
     }
 
+    grouped[groupKey].items.push(item);
     if (item.platform && !grouped[groupKey].platforms.includes(item.platform)) {
       grouped[groupKey].platforms.push(item.platform);
     }
@@ -116,15 +118,24 @@ function PlatformDots({ platforms }) {
   );
 }
 
-function CalendarEventRow({ event, compact = false, onOpen }) {
+function CalendarEventRow({ event, compact = false, onOpen, onDragStart }) {
+  const canDrag = event.items?.length > 0 && event.items.every(item => item.status === 'queued');
   return (
     <button
       type="button"
       onClick={() => onOpen(event.content)}
+      draggable={canDrag}
+      onDragStart={canDrag ? e => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart?.(event);
+      } : undefined}
+      onDragEnd={canDrag ? () => onDragStart?.(null) : undefined}
       className="w-full text-left rounded-md px-2 py-1.5 transition-colors hover:brightness-110"
       style={{
         background: 'rgba(255,255,255,0.04)',
         borderLeft: `3px solid ${getStatusAccent(event)}`,
+        cursor: canDrag ? 'grab' : 'pointer',
       }}
     >
       <div className="flex items-start gap-2">
@@ -145,7 +156,7 @@ function CalendarEventRow({ event, compact = false, onOpen }) {
   );
 }
 
-function MonthView({ focusDate, events, onOpen, onPickDate, weekdayShort, t }) {
+function MonthView({ focusDate, events, onOpen, onPickDate, onDropEvent, onDragStart, draggedEventId, weekdayShort, t }) {
   const monthStart = new Date(focusDate.getFullYear(), focusDate.getMonth(), 1);
   const monthEnd = new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 0);
   const firstGrid = startOfWeek(monthStart);
@@ -177,9 +188,19 @@ function MonthView({ focusDate, events, onOpen, onPickDate, weekdayShort, t }) {
               key={key}
               className="calendar-cell"
               onClick={() => onPickDate(date)}
+              onDragOver={e => {
+                if (!draggedEventId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={e => {
+                if (!draggedEventId) return;
+                e.preventDefault();
+                onDropEvent(date);
+              }}
               style={{
                 opacity: isCurrentMonth ? 1 : 0.45,
-                background: isToday ? 'rgba(99,102,241,0.08)' : dayEvents.length ? 'rgba(255,255,255,0.02)' : undefined,
+                background: draggedEventId ? 'rgba(99,102,241,0.06)' : isToday ? 'rgba(99,102,241,0.08)' : dayEvents.length ? 'rgba(255,255,255,0.02)' : undefined,
                 borderColor: isToday ? 'rgba(99,102,241,0.4)' : undefined,
                 cursor: 'pointer',
               }}
@@ -189,7 +210,7 @@ function MonthView({ focusDate, events, onOpen, onPickDate, weekdayShort, t }) {
               </span>
               <div className="mt-2 space-y-1">
                 {dayEvents.slice(0, 4).map(event => (
-                  <CalendarEventRow key={event.id} event={event} compact onOpen={onOpen} />
+                  <CalendarEventRow key={event.id} event={event} compact onOpen={onOpen} onDragStart={onDragStart} />
                 ))}
                 {dayEvents.length > 4 && (
                   <p className="text-[10px] px-1" style={{ color: 'var(--text-muted)' }}>
@@ -205,7 +226,7 @@ function MonthView({ focusDate, events, onOpen, onPickDate, weekdayShort, t }) {
   );
 }
 
-function WeekView({ focusDate, events, onOpen, onPickDate, locale, t }) {
+function WeekView({ focusDate, events, onOpen, onPickDate, onDropEvent, onDragStart, draggedEventId, locale, t }) {
   const start = startOfWeek(focusDate);
   const days = Array.from({ length: 7 }, (_, index) => addDays(start, index));
   const today = startOfDay(new Date());
@@ -220,8 +241,18 @@ function WeekView({ focusDate, events, onOpen, onPickDate, locale, t }) {
           <div
             key={key}
             className="rounded-xl p-3 min-h-[260px]"
+            onDragOver={e => {
+              if (!draggedEventId) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={e => {
+              if (!draggedEventId) return;
+              e.preventDefault();
+              onDropEvent(day);
+            }}
             style={{
-              background: isToday ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.03)',
+              background: draggedEventId ? 'rgba(99,102,241,0.06)' : isToday ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.03)',
               border: `1px solid ${isToday ? 'rgba(99,102,241,0.4)' : 'var(--border-color)'}`,
             }}
           >
@@ -233,7 +264,7 @@ function WeekView({ focusDate, events, onOpen, onPickDate, locale, t }) {
             </button>
             <div className="space-y-2">
               {dayEvents.length ? dayEvents.map(event => (
-                <CalendarEventRow key={event.id} event={event} onOpen={onOpen} />
+                <CalendarEventRow key={event.id} event={event} onOpen={onOpen} onDragStart={onDragStart} />
               )) : (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('project.calendar.empty')}</p>
               )}
@@ -245,7 +276,7 @@ function WeekView({ focusDate, events, onOpen, onPickDate, locale, t }) {
   );
 }
 
-function DayView({ focusDate, events, onOpen, locale, t }) {
+function DayView({ focusDate, events, onOpen, onDragStart, locale, t }) {
   const key = dateKey(focusDate);
   const dayEvents = events.filter(event => event.dateKey === key);
 
@@ -282,7 +313,7 @@ function DayView({ focusDate, events, onOpen, locale, t }) {
             </div>
             <div className="p-2 space-y-2">
               {row.slotEvents.length ? row.slotEvents.map(event => (
-                <CalendarEventRow key={event.id} event={event} onOpen={onOpen} />
+                <CalendarEventRow key={event.id} event={event} onOpen={onOpen} onDragStart={onDragStart} />
               )) : (
                 <div className="h-full min-h-[40px] rounded-md" style={{ background: 'rgba(255,255,255,0.015)' }} />
               )}
@@ -302,6 +333,7 @@ export default function ContentCalendarView({
   setCalYear,
   setCalMonth,
   openContentDetail,
+  onMoveScheduledEvent,
 }) {
   const { t, i18n } = useTranslation();
   const locale = getLocaleTag(i18n.language);
@@ -315,6 +347,7 @@ export default function ContentCalendarView({
   ];
   const [viewMode, setViewMode] = useState('month');
   const [focusDate, setFocusDate] = useState(new Date(calYear, calMonth, 1));
+  const [draggedEvent, setDraggedEvent] = useState(null);
 
   useEffect(() => {
     const next = new Date(focusDate);
@@ -356,6 +389,13 @@ export default function ContentCalendarView({
     if (nextView) setViewMode(nextView);
   };
 
+  const handleDropEvent = async (date) => {
+    if (!draggedEvent) return;
+    const targetDate = startOfDay(date);
+    setDraggedEvent(null);
+    await onMoveScheduledEvent?.(draggedEvent, targetDate);
+  };
+
   return (
     <div className="calendar-container mt-2">
       <div className="flex flex-col gap-3 mb-3">
@@ -389,6 +429,9 @@ export default function ContentCalendarView({
           events={events}
           onOpen={openContentDetail}
           onPickDate={(date) => handlePickDate(date)}
+          onDropEvent={handleDropEvent}
+          onDragStart={setDraggedEvent}
+          draggedEventId={draggedEvent?.id}
           weekdayShort={weekdayShort}
           t={t}
         />
@@ -400,6 +443,9 @@ export default function ContentCalendarView({
           events={events}
           onOpen={openContentDetail}
           onPickDate={handlePickDate}
+          onDropEvent={handleDropEvent}
+          onDragStart={setDraggedEvent}
+          draggedEventId={draggedEvent?.id}
           locale={locale}
           t={t}
         />
@@ -410,6 +456,7 @@ export default function ContentCalendarView({
           focusDate={focusDate}
           events={events}
           onOpen={openContentDetail}
+          onDragStart={setDraggedEvent}
           locale={locale}
           t={t}
         />

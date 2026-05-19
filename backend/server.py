@@ -4179,6 +4179,7 @@ class PublishSchedule(BaseModel):
 class PublishUpdate(BaseModel):
     status: Optional[str] = None
     error_message: Optional[str] = None
+    scheduled_at: Optional[str] = None
 
 
 def _publish_target_query(content_id: str, social_profile_id: str) -> dict:
@@ -4636,12 +4637,19 @@ async def get_all_publish_queue(request: Request):
 
 @api.put("/publish/queue/{item_id}")
 async def update_publish_item(item_id: str, inp: PublishUpdate, request: Request):
-    await get_current_user(request)
+    user = await get_current_user(request)
     updates = {k: v for k, v in inp.model_dump().items() if v is not None}
     if "status" in updates and updates["status"] == "published":
         updates["published_at"] = datetime.now(timezone.utc).isoformat()
+    if "scheduled_at" in updates:
+        try:
+            datetime.fromisoformat(str(updates["scheduled_at"]).replace("Z", "+00:00"))
+        except Exception:
+            raise HTTPException(400, "Data di programmazione non valida")
     if updates:
-        await db.publish_queue.update_one({"id": item_id}, {"$set": updates})
+        result = await db.publish_queue.update_one({"id": item_id, "user_id": user["_id"]}, {"$set": updates})
+        if result.matched_count == 0:
+            raise HTTPException(404, "Elemento di programmazione non trovato")
     return {"ok": True}
 
 @api.delete("/publish/queue/{item_id}")

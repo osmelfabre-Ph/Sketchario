@@ -242,6 +242,9 @@
       "day": "Giorno",
       "defaultTitle": "Contenuto programmato",
       "moreOther": "+{{count}} altri",
+      "moving": "Spostamento programmazione...",
+      "moveSuccess": "Programmazione spostata",
+      "moveError": "Errore spostamento: {{message}}",
       "empty": "Nessun contenuto programmato",
       "emptyDay": "Nessun contenuto programmato in questa giornata."
     }
